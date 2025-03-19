@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package atelerix.execution;
+
+import "google/protobuf/empty.proto"; // For standard empty messages
+
+option go_package = "./proto;emitterproto";
+
+// gRPC Service for Event Emission
+service Emitter {
+  // Retrieves a list of finalized checkpoints from a given block number
+  rpc GetCheckpoints(GetCheckpointsRequest) returns (CheckpointResponse);
+
+  // Stores new pending transactions into HotDB and returns a batch hash
+  rpc CreateInternalTransactionsBatch(google.protobuf.Empty) returns (CreateInternalTransactionsBatchResponse);
+
+  // Retrieves external transactions from a given block number
+  rpc GetExternalTransactions(GetExternalTransactionsRequest) returns (GetExternalTransactionsResponse);
+
+  rpc GetChainId(google.protobuf.Empty) returns (GetChainIDResponse);
+}
+
+// Request for retrieving checkpoints
+message GetCheckpointsRequest {
+  uint64 chain_id = 1;
+  uint64 latest_previous_checkpoint_block_number = 2;
+  optional uint32 limit = 3; // Maximum number of checkpoints to return
+}
+
+message GetChainIDResponse {
+  uint64 chain_id = 1;
+}
+
+// Request for retrieving external transactions
+message GetExternalTransactionsRequest {
+  uint64 latest_previous_block_number = 1; // The block number from which to start retrieving transactions
+  optional uint32 limit = 2; // Maximum number of transactions to return
+}
+
+// Response message containing checkpoints
+message CheckpointResponse {
+  message Checkpoint {
+    uint64 latest_block_number = 1; // Latest Appchain block included in the checkpoint
+    bytes state_root = 2;
+    bytes block_hash = 3;
+    bytes external_tx_root_hash = 4; // Format & DB config for external transactions
+  }
+  repeated Checkpoint checkpoints = 1;
+}
+
+// Helper message for representing byte arrays (to support [][]byte)
+message ByteArray {
+  bytes data = 1;
+}
+
+// External transaction structure
+message ExternalTransaction {
+  uint64 chain_id = 1;
+  bytes tx = 2;
+}
+
+// Response for transaction batch creation
+message CreateInternalTransactionsBatchResponse {
+  bytes batch_hash = 1; // Hash of the transaction batch
+  repeated ByteArray internal_transactions = 2; // Sorted Appchain execution internal transactions
+}
+
+// Response for external transactions
+// Response for external transactions (supports multiple blocks)
+message GetExternalTransactionsResponse {
+  message BlockTransactions {
+    uint64 block_number = 1; // Блок, к которому относятся транзакции
+    bytes transactions_root_hash = 2; // Хеш всех транзакций блока
+    repeated ExternalTransaction external_transactions = 3; // Список транзакций для блока
+  }
+  repeated BlockTransactions blocks = 1; // Список блоков с транзакциями
+}
+
+// gRPC Health Check Service
+service Health {
+  rpc Check(google.protobuf.Empty) returns (HealthCheckResponse);
+  rpc Watch(google.protobuf.Empty) returns (stream HealthCheckResponse);
+}
+
+// Health check response message
+message HealthCheckResponse {
+  enum ServingStatus {
+    UNKNOWN = 0;
+    SERVING = 1;
+    NOT_SERVING = 2;
+    SERVICE_UNKNOWN = 3;  // Used only by the Watch method.
+  }
+  ServingStatus status = 1;
+}
