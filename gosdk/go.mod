@@ -1,4 +1,4 @@
-module github.com/0xAtelerix/sdk
+module github.com/0xAtelerix/sdk/gosdk
 
 go 1.23.6
 
