@@ -3,7 +3,7 @@ package gosdk
 import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 
-	"github.com/0xAtelerix/sdk/types"
+	"github.com/0xAtelerix/sdk/gosdk/types"
 )
 
 type StateTransitionInterface[appTx types.AppTransaction] interface {

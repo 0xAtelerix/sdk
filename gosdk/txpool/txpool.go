@@ -9,7 +9,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
 
-	"github.com/0xAtelerix/sdk/types"
+	"github.com/0xAtelerix/sdk/gosdk/types"
 )
 
 // Определяем таблицы для хранения транзакций

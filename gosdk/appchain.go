@@ -14,13 +14,13 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
-	emitterproto "github.com/0xAtelerix/sdk/proto"
-	"github.com/0xAtelerix/sdk/types"
+	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
+	"github.com/0xAtelerix/sdk/gosdk/types"
 )
 
 func NewAppchain[STI StateTransitionInterface[appTx],
-	appTx types.AppTransaction,
-	AppBlock types.AppchainBlock](sti STI,
+appTx types.AppTransaction,
+AppBlock types.AppchainBlock](sti STI,
 	rootCalculator types.RootCalculator,
 	blockBuilder types.AppchainBlockConstructor[appTx, AppBlock],
 	txpool types.TxPoolInterface[appTx],
