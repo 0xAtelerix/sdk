@@ -6,6 +6,7 @@ require (
 	github.com/fsnotify/fsnotify v1.8.0
 	github.com/ledgerwatch/erigon-lib v1.0.0
 	github.com/ledgerwatch/log/v3 v3.9.0
+	github.com/stretchr/testify v1.8.4
 	google.golang.org/grpc v1.71.0
 	google.golang.org/protobuf v1.36.5
 	pgregory.net/rapid v1.2.0
@@ -21,7 +22,6 @@ require (
 	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/stretchr/testify v1.8.4 // indirect
 	github.com/valyala/fastrand v1.1.0 // indirect
 	github.com/valyala/histogram v1.2.0 // indirect
 	golang.org/x/crypto v0.32.0 // indirect

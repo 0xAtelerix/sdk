@@ -19,8 +19,8 @@ import (
 )
 
 func NewAppchain[STI StateTransitionInterface[appTx],
-	appTx types.AppTransaction,
-	AppBlock types.AppchainBlock](sti STI,
+appTx types.AppTransaction,
+AppBlock types.AppchainBlock](sti STI,
 	rootCalculator types.RootCalculator,
 	blockBuilder types.AppchainBlockConstructor[appTx, AppBlock],
 	txpool types.TxPoolInterface[appTx],
