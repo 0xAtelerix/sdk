@@ -21,8 +21,8 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"pgregory.net/rapid"
 
-	emitterproto "github.com/0xAtelerix/sdk/proto"
-	"github.com/0xAtelerix/sdk/types"
+	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
+	"github.com/0xAtelerix/sdk/gosdk/types"
 
 	"google.golang.org/grpc"
 )

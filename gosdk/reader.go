@@ -9,7 +9,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
-	"github.com/0xAtelerix/sdk/types"
+	"github.com/0xAtelerix/sdk/gosdk/types"
 )
 
 // Что должен дергать апчейн, чтобы получить транзакции
