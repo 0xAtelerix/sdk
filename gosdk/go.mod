@@ -1,6 +1,6 @@
 module github.com/0xAtelerix/sdk/gosdk
 
-go 1.23.6
+go 1.24.1
 
 require (
 	github.com/fsnotify/fsnotify v1.8.0
@@ -33,3 +33,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250115164207-1a7da9e5054f // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/0xAtelerix/sdk/gosdk => .
