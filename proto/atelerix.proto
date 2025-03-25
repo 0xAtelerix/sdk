@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package atelerix.execution;
+package atelerix;
 
 import "google/protobuf/empty.proto"; // For standard empty messages
 
