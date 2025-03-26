@@ -8,7 +8,6 @@ use std::marker::PhantomData;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
-use bincode::error::{EncodeError, DecodeError};
 
 use crate::buckets::TX_POOL;
 use crate::types::AppTransaction;
@@ -18,9 +17,7 @@ pub enum TxPoolError {
     #[error("MDBX error: {0}")]
     MdbxError(#[from] libmdbx::Error),
     #[error("Serialization error: {0}")]
-    SerializationError(#[from] EncodeError),
-    #[error("Deserialization error: {0}")]
-    DeserializationError(#[from] DecodeError),
+    SerializationError(#[from] bincode::Error),
 }
 
 /// Generic transaction pool using MDBX.
@@ -43,7 +40,7 @@ impl<T: AppTransaction> TxPool<T> {
     /// Adds a transaction to the pool using the provided hash as the key.
     pub fn add_transaction(&self, hash: &str, tx: &T) -> Result<(), TxPoolError> {
         // Serialize the transaction to binary.
-        let data = bincode::encode_to_vec(tx, bincode::config::standard())?;
+        let data = bincode::serialize(tx)?;
         let db = self.db.lock().unwrap();
         let txn = db.begin_rw_txn()?;
         // Open (or create) the "txpool" table.
@@ -60,8 +57,9 @@ impl<T: AppTransaction> TxPool<T> {
         let db = self.db.lock().unwrap();
         let txn = db.begin_ro_txn()?;
         let table = txn.open_table(Some("txpool"))?;
-        if let Some(data) = txn.get(&table, hash.as_bytes())? {
-            let tx: T = bincode::decode_from_slice(&data, bincode::config::standard())?;
+        
+        if let Some(data) = txn.get::<Vec<u8>>(&table, hash.as_bytes())? {
+            let tx = bincode::deserialize(&data)?;
             Ok(Some(tx))
         } else {
             Ok(None)
@@ -82,14 +80,16 @@ impl<T: AppTransaction> TxPool<T> {
         let db = self.db.lock().unwrap();
         let txn = db.begin_ro_txn()?;
         let table = txn.open_table(Some(TX_POOL))?;
-        let mut transactions = Vec::<T>::new();
+        let mut transactions = Vec::new();
+        
+        // Specify value type as Vec<u8> for sized deserialization
         let mut cursor = txn.cursor(&table)?;
-        for result in cursor.iter() {
+        for result in cursor.iter::<Vec<u8>, Vec<u8>>() { // Fixed type parameters
             let (_key, value) = result?;
-            // Use bincode::deserialize instead of decode_from_slice.
-            let (tx, _): (T, usize) = bincode::decode_from_slice(&value, bincode::config::standard())?;
+            let tx = bincode::deserialize(&value)?;
             transactions.push(tx);
         }
+        
         Ok(transactions)
     }
     
@@ -106,7 +106,7 @@ mod tests {
     use serde::{Deserialize, Serialize};
     use tempfile::tempdir;
 
-    #[derive(Debug, Serialize, Deserialize, bincode::Encode, bincode::Decode, PartialEq, Clone)]
+    #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
     struct CustomTransaction {
         pub hash: String,
         pub from: String,

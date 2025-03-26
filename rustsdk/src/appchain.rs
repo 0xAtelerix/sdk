@@ -14,22 +14,47 @@ use tonic::transport::Server;
 
 use crate::buckets::*;
 use crate::proto;
+use crate::reader::ReaderError;
 use crate::reader::{BatchReader, ReadBatch};
 use crate::state_transition::StateTransitionInterface;
 use crate::types::{AppTransaction, AppchainBlock, Batch, Checkpoint, RootCalculator};
 
 use tokio_util::sync::CancellationToken;
-use libmdbx::{Database, NoWriteMap, Transaction, RW, RO, WriteFlags};
+use libmdbx::{Database, NoWriteMap, Transaction, RW, WriteFlags};
 
 /// Appchain error type.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum AppchainError {
-    Db(String),
+    #[error("Database error: {0}")]
+    Db(#[from] libmdbx::Error),
+    
+    #[error("State transition error: {0}")]
     StateTransition(String),
+    
+    #[error("Root calculation error: {0}")]
     RootCalculation(String),
+    
+    #[error("Emitter error: {0}")]
     Emitter(String),
-    Io(String),
+    
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    
+    #[error("Serialization error: {0}")]
+    Serialization(#[from] bincode::Error),
+    
+    #[error("Conversion error: {0}")]
     Conversion(String),
+
+    // Add missing variants
+    #[error("Data not found: {0}")]
+    NotFound(String),
+    
+    #[error("Corrupted data: {0}")]
+    CorruptedData(String),
+    
+    #[error("ReaderError data: {0}")]
+    ReadingDB(ReaderError),
 }
 
 /// Appchain configuration.
@@ -96,8 +121,7 @@ where
         emitter_api: E,
         config: AppchainConfig,
     ) -> Result<Self, AppchainError> {
-        let db = DB::open(&config.appchain_db_path)
-            .map_err(|e| AppchainError::Db(e.to_string()))?;
+        let db = DB::open(&config.appchain_db_path)?;
         Ok(Self {
             state_transition,
             root_calculator,
@@ -125,16 +149,14 @@ where
         });
 
         // Retrieve previous block state.
-        let (mut previous_block_number, mut previous_block_hash) =
-            get_last_block(&self.appchain_db).await.map_err(|e| AppchainError::Db(e))?;
+        let (mut previous_block_number, mut previous_block_hash) = get_last_block(&self.appchain_db).await?;
 
         // Main processing loop.
         while !shutdown.is_cancelled() {
             let raw_batches = self
                 .event_stream
                 .get_new_batches_blocking(10)
-                .await
-                .map_err(|e| AppchainError::Io(format!("Error getting new batches: {}", e)))?;
+                .await?;
 
             for raw_batch in raw_batches {
                 let typed_batch = parse_read_batch::<Tx>(raw_batch)
@@ -156,11 +178,10 @@ where
                 let mut db_guard = self.appchain_db.lock().await;
                 {
                     // Begin a write transaction.
-                    let mut txn = db_guard.begin_rw_txn().map_err(|e| AppchainError::Db(e.to_string()))?;
-                    write_block(&mut txn, block.number(), &block.bytes()).map_err(|e| AppchainError::Db(e.to_string()))?;
+                    let mut txn = db_guard.begin_rw_txn()?;
+                    write_block(&mut txn, block.number(), &block.bytes())?;
                     let block_hash = block.hash();
-                    let external_tx_root = write_external_transactions(&mut txn, block_number, &ext_txs)
-                        .map_err(|e| AppchainError::Db(e.to_string()))?;
+                    let external_tx_root = write_external_transactions(&mut txn, block_number, &ext_txs)?;
                     let checkpoint = Checkpoint {
                         chain_id: self.config.chain_id,
                         block_number,
@@ -168,9 +189,9 @@ where
                         state_root,
                         external_transactions_root: external_tx_root,
                     };
-                    write_checkpoint(&mut txn, &checkpoint).map_err(|e| AppchainError::Db(e.to_string()))?;
-                    write_last_block(&mut txn, block_number, block_hash).map_err(|e| AppchainError::Db(e.to_string()))?;
-                    txn.commit().map_err(|e| AppchainError::Db(e.to_string()))?;
+                    write_checkpoint(&mut txn, &checkpoint)?;
+                    write_last_block(&mut txn, block_number, block_hash)?;
+                    txn.commit().map_err(|e| AppchainError::Db(e))?;
                     previous_block_number = block.number();
                     previous_block_hash = block.hash();
                 }
@@ -189,7 +210,7 @@ where
             .map_err(|e| AppchainError::Emitter(e.to_string()))?;
         let listener = TcpListener::bind(addr)
             .await
-            .map_err(|e| AppchainError::Io(e.to_string()))?;
+            .map_err(|e| AppchainError::Io(e))?;
         let incoming = TcpListenerStream::new(listener);
 
         Server::builder()
@@ -208,9 +229,7 @@ where
 #[derive(Debug, thiserror::Error)]
 enum ConversionError {
     #[error("Serialization error: {0}")]
-    Serialization(#[from] bincode::error::EncodeError),
-    #[error("Deserialization error: {0}")]
-    Deserialization(#[from] bincode::error::DecodeError),
+    Serialization(#[from] bincode::Error),
 }
 
 /// Converts a raw ReadBatch into a typed Batch<T>.
@@ -218,7 +237,7 @@ fn parse_read_batch<T: AppTransaction>(raw: ReadBatch) -> Result<crate::types::B
     use crate::types::Batch;
     let mut transactions = Vec::new();
     for event in raw.events {
-        // fixme: won't work as far as it tries to decode event, not a transaction
+        // FIXME: won't work as far as it tries to decode event, not a transaction
         let tx: T = bincode::deserialize(&event)?;
         transactions.push(tx);
     }
@@ -253,28 +272,30 @@ where
     Ok(())
 }
 
-/// Reads the last block info from the "config" bucket.
-fn get_last_block<E>(db: &Arc<Mutex<DB>>) -> impl std::future::Future<Output = Result<(u64, [u8; 32]), String>>
-where
-    E: libmdbx::DatabaseKind,
-{
-    let db_clone = db.clone();
-    async move {
-        let db_guard = db_clone.lock().await;
-        let txn = db_guard.begin_ro_txn().map_err(|e| e.to_string())?;
-        let table = txn.open_table(Some(CONFIG_BUCKET)).map_err(|e| e.to_string())?;
-        let value: Vec<u8> = txn
-            .get(&table, LAST_BLOCK_KEY.as_bytes())
-            .map_err(|e| e.to_string())?
-            .ok_or("last block key not found".to_string())?;
-        if value.len() != 8 + 32 {
-            return Err(format!("inconsistent last block value: len {}", value.len()));
-        }
-        let number = u64::from_be_bytes(value[..8].try_into().unwrap());
-        let mut hash = [0u8; 32];
-        hash.copy_from_slice(&value[8..]);
-        Ok((number, hash))
+async fn get_last_block(db: &Arc<Mutex<DB>>) -> Result<(u64, [u8; 32]), AppchainError> {
+    let db_guard = db.lock().await;
+    let txn = db_guard.begin_ro_txn()?;
+    let table = txn.open_table(Some(CONFIG_BUCKET))?;
+    
+    let value = txn.get::<Vec<u8>>(&table, LAST_BLOCK_KEY.as_bytes())?
+        .ok_or(AppchainError::NotFound("Last block data".into()))?;
+
+    if value.len() != 8 + 32 {
+        return Err(AppchainError::CorruptedData(format!(
+            "Invalid last block data length: {} bytes", 
+            value.len()
+        )));
     }
+
+    let number = u64::from_be_bytes(
+        value[..8].try_into()
+            .map_err(|_| AppchainError::CorruptedData("Block number conversion failed".into()))?
+    );
+    
+    let mut hash = [0u8; 32];
+    hash.copy_from_slice(&value[8..40]);
+    
+    Ok((number, hash))
 }
 
 /// Serializes external transactions using protobuf and writes them to the "external_transactions" bucket.
@@ -322,7 +343,7 @@ fn transaction_to_proto(
 fn write_checkpoint<E>(
     txn: &mut Transaction<RW, E>,
     checkpoint: &Checkpoint,
-) -> Result<(), Box<dyn std::error::Error>>
+) -> Result<(), AppchainError>
 where
     E: libmdbx::DatabaseKind,
 {
