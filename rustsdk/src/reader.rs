@@ -76,7 +76,8 @@ impl EventReader {
             // Read 4 bytes for batch size.
             let mut size_buf = [0u8; 4];
             match self.file.read_exact(&mut size_buf).await {
-                Ok(()) => {},
+                Ok(n) if n == size_buf.len() => {},
+                Ok(_) => return Err(ReaderError::CorruptedBatch),
                 Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                     self.reached_eof = true;
                     break;
@@ -87,7 +88,13 @@ impl EventReader {
             // Read atropos (32 bytes).
             let mut atropos = [0u8; 32];
             match self.file.read_exact(&mut atropos).await {
-                Ok(()) => {},
+                Ok(n) if n == atropos.len() => {},
+                Ok(_) => {
+                    // TODO: recheck this logic.
+                    self.file.seek(SeekFrom::Start(batch_start)).await?;
+                    self.reached_eof = true;
+                    break;
+                },
                 Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                     // Roll back position.
                     self.file.seek(SeekFrom::Start(batch_start)).await?;
@@ -100,7 +107,12 @@ impl EventReader {
             let remaining = batch_size.checked_sub(32).ok_or(ReaderError::CorruptedBatch)?;
             let mut remaining_data = vec![0u8; remaining as usize];
             match self.file.read_exact(&mut remaining_data).await {
-                Ok(()) => {},
+                Ok(n) if n == remaining_data.len() => {},
+                Ok(_) => {
+                    self.file.seek(SeekFrom::Start(batch_start)).await?;
+                    self.reached_eof = true;
+                    break;
+                },
                 Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                     self.file.seek(SeekFrom::Start(batch_start)).await?;
                     self.reached_eof = true;

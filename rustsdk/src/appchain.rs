@@ -218,6 +218,7 @@ fn parse_read_batch<T: AppTransaction>(raw: ReadBatch) -> Result<crate::types::B
     use crate::types::Batch;
     let mut transactions = Vec::new();
     for event in raw.events {
+        // fixme: won't work as far as it tries to decode event, not a transaction
         let tx: T = bincode::deserialize(&event)?;
         transactions.push(tx);
     }
