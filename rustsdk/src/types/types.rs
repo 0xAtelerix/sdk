@@ -10,7 +10,7 @@ use std::fmt::Debug;
 /// All types used as appchain transactions must implement Serialize, Deserialize, and Debug.
 pub trait AppTransaction: Serialize + for<'de> Deserialize<'de> + Debug + bincode::Decode<()> + bincode::Encode {}
 
-impl<T> AppTransaction for T where T: Serialize + for<'de> Deserialize<'de> + Debug {}
+impl<T> AppTransaction for T where T: Serialize + for<'de> Deserialize<'de> + Debug + bincode::Decode<()> + bincode::Encode {}
 
 /// A batch containing both transactions and external blocks.
 #[derive(Debug, Serialize, Deserialize, Clone)]

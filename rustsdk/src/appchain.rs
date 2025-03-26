@@ -85,7 +85,7 @@ where
     Tx: AppTransaction + Send + Sync + 'static,
     Block: AppchainBlock + Send + Sync + 'static,
     BR: BatchReader + Send + Sync + 'static,
-    E: Clone + Send + Sync + 'static,
+    E: proto::emitter_server::Emitter + Clone + Send + Sync + 'static,
 {
     /// Constructs a new Appchain.
     pub fn new(
@@ -118,7 +118,7 @@ where
         let emitter_api = self.emitter_api.clone();
         tokio::spawn(async move {
             if let Err(e) =
-                Self::run_emitter_api(emitter_port, db_clone, chain_id, emitter_api).await
+                Self::run_emitter_api(emitter_port, emitter_api).await
             {
                 log::error!("Emitter API error: {:?}", e);
             }
@@ -156,11 +156,11 @@ where
                 let mut db_guard = self.appchain_db.lock().await;
                 {
                     // Begin a write transaction.
-                    let mut txn = db_guard.begin_rw_txn().map_err(|e| e.to_string())?;
-                    write_block(&mut txn, block.number(), &block.bytes()).map_err(|e| e.to_string())?;
+                    let mut txn = db_guard.begin_rw_txn().map_err(|e| AppchainError::Db(e.to_string()))?;
+                    write_block(&mut txn, block.number(), &block.bytes()).map_err(|e| AppchainError::Db(e.to_string()))?;
                     let block_hash = block.hash();
                     let external_tx_root = write_external_transactions(&mut txn, block_number, &ext_txs)
-                        .map_err(|e| e.to_string())?;
+                        .map_err(|e| AppchainError::Db(e.to_string()))?;
                     let checkpoint = Checkpoint {
                         chain_id: self.config.chain_id,
                         block_number,
@@ -168,9 +168,9 @@ where
                         state_root,
                         external_transactions_root: external_tx_root,
                     };
-                    write_checkpoint(&mut txn, &checkpoint).map_err(|e| e.to_string())?;
-                    write_last_block(&mut txn, block_number, block_hash).map_err(|e| e.to_string())?;
-                    txn.commit().map_err(|e| e.to_string())?;
+                    write_checkpoint(&mut txn, &checkpoint).map_err(|e| AppchainError::Db(e.to_string()))?;
+                    write_last_block(&mut txn, block_number, block_hash).map_err(|e| AppchainError::Db(e.to_string()))?;
+                    txn.commit().map_err(|e| AppchainError::Db(e.to_string()))?;
                     previous_block_number = block.number();
                     previous_block_hash = block.hash();
                 }
@@ -182,12 +182,10 @@ where
     /// Runs the emitter API gRPC server.
     async fn run_emitter_api(
         emitter_port: String,
-        db: Arc<Mutex<DB>>,
-        chain_id: u64,
         emitter_api: E,
     ) -> Result<(), AppchainError> {
         let addr = emitter_port
-            .parse()
+            .parse::<std::net::SocketAddr>()
             .map_err(|e| AppchainError::Emitter(e.to_string()))?;
         let listener = TcpListener::bind(addr)
             .await
@@ -197,7 +195,7 @@ where
         Server::builder()
             .add_service(proto::emitter_server::EmitterServer::new(emitter_api))
             .add_service(
-                proto::health_server::HealthServer::new(crate::health_server::HealthService::default()),
+                proto::health_server::HealthServer::new(HealthCheckServiceServer::default()),
             )
             .serve_with_incoming(incoming)
             .await
@@ -209,8 +207,10 @@ where
 /// Internal conversion error.
 #[derive(Debug, thiserror::Error)]
 enum ConversionError {
+    #[error("Serialization error: {0}")]
+    Serialization(#[from] bincode::error::EncodeError),
     #[error("Deserialization error: {0}")]
-    Deserialization(#[from] bincode::Error),
+    Deserialization(#[from] bincode::error::DecodeError),
 }
 
 /// Converts a raw ReadBatch into a typed Batch<T>.
@@ -261,9 +261,9 @@ where
     async move {
         let db_guard = db_clone.lock().await;
         let txn = db_guard.begin_ro_txn().map_err(|e| e.to_string())?;
-        let table = txn.open_table(Some(CONFIG_BUCKET))?;
-        let value = txn
-            .get_one(&table, LAST_BLOCK_KEY.as_bytes())
+        let table = txn.open_table(Some(CONFIG_BUCKET)).map_err(|e| e.to_string())?;
+        let value: Vec<u8> = txn
+            .get(&table, LAST_BLOCK_KEY.as_bytes())
             .map_err(|e| e.to_string())?
             .ok_or("last block key not found".to_string())?;
         if value.len() != 8 + 32 {
@@ -336,4 +336,30 @@ where
 /// (This is a placeholder; implement the actual Merkleization as needed.)
 fn merklize(_txs: &[crate::types::ExternalTransaction]) -> [u8; 32] {
     [0u8; 32]
+}
+
+#[derive(Default)]
+pub struct HealthCheckServiceServer {}
+
+#[tonic::async_trait]
+impl proto::health_server::Health for HealthCheckServiceServer {
+    async fn check(
+        &self,
+        _request: tonic::Request<()>,
+    ) -> Result<tonic::Response<proto::HealthCheckResponse>, tonic::Status> {
+        Ok(tonic::Response::new(proto::HealthCheckResponse {
+            status: proto::health_check_response::ServingStatus::Serving as i32,
+        }))
+    }
+
+    type WatchStream = tokio_stream::wrappers::ReceiverStream<Result<proto::HealthCheckResponse, tonic::Status>>;
+
+    async fn watch(
+        &self,
+        _request: tonic::Request<()>,
+    ) -> Result<tonic::Response<Self::WatchStream>, tonic::Status> {
+        // Implement your stream here
+        let (_tx, rx) = tokio::sync::mpsc::channel(4);
+        Ok(tonic::Response::new(tokio_stream::wrappers::ReceiverStream::new(rx)))
+    }
 }

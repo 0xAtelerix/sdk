@@ -4,7 +4,6 @@
 //! Transactions must implement the `AppTransaction` trait (bound by Serialize/Deserialize).
 
 use libmdbx::{Database, TableFlags, WriteFlags, NoWriteMap};
-use serde::{de::DeserializeOwned, Serialize};
 use std::marker::PhantomData;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -46,7 +45,7 @@ impl<T: AppTransaction> TxPool<T> {
         // Serialize the transaction to binary.
         let data = bincode::encode_to_vec(tx, bincode::config::standard())?;
         let db = self.db.lock().unwrap();
-        let mut txn = db.begin_rw_txn()?;
+        let txn = db.begin_rw_txn()?;
         // Open (or create) the "txpool" table.
         let table = txn
             .open_table(Some("txpool"))
@@ -83,7 +82,7 @@ impl<T: AppTransaction> TxPool<T> {
         let db = self.db.lock().unwrap();
         let txn = db.begin_ro_txn()?;
         let table = txn.open_table(Some(TX_POOL))?;
-        let mut transactions = Vec::new();
+        let mut transactions = Vec::<T>::new();
         let mut cursor = txn.cursor(&table)?;
         for result in cursor.iter() {
             let (_key, value) = result?;
@@ -107,15 +106,13 @@ mod tests {
     use serde::{Deserialize, Serialize};
     use tempfile::tempdir;
 
-    #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+    #[derive(Debug, Serialize, Deserialize, bincode::Encode, bincode::Decode, PartialEq, Clone)]
     struct CustomTransaction {
         pub hash: String,
         pub from: String,
         pub to: String,
         pub value: i32,
     }
-
-    impl AppTransaction for CustomTransaction {}
 
     fn random_transaction(hash: &str) -> CustomTransaction {
         CustomTransaction {
