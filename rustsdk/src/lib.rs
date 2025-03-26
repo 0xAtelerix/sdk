@@ -2,59 +2,21 @@ pub mod proto {
     tonic::include_proto!("atelerix");
 }
 
-use serde::{Deserialize, Serialize};
-
-pub mod appchain;
-pub mod buckets;
-pub mod emitter_api;
-pub mod health;
-pub mod reader;
-pub mod state_transition;
-pub mod txpool;
-pub mod errors;
-pub mod db;
-pub mod config;
-
-// Re-export important types
-pub use appchain::*;
-pub use buckets::*;
-pub use emitter_api::AppchainEmitterServer;
-pub use health::HealthService;
-
-pub use appchain::{
+pub use proto::{
     CheckpointResponse, CreateInternalTransactionsBatchResponse,
     GetChainIdResponse, GetCheckpointsRequest, GetExternalTransactionsRequest,
     GetExternalTransactionsResponse, HealthCheckResponse, emitter_client, emitter_server,
     health_client, health_server,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Checkpoint {
-    pub chain_id: u64,
-    pub block_number: u64,
-    pub block_hash: [u8; 32],
-    pub state_root: [u8; 32],
-    pub external_transactions_root: [u8; 32],
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExternalTransaction {
-    pub chain_id: u64,
-    pub tx: Vec<u8>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Batch<T> {
-    pub transactions: Vec<T>,
-    pub external_blocks: Vec<ExternalBlock>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExternalBlock {
-    pub chain_id: u64,
-    pub block_number: u64,
-    pub block_hash: [u8; 32],
-}
+pub mod appchain;
+pub mod buckets;
+pub mod emitter_api;
+pub mod health_server_api;
+pub mod reader;
+pub mod state_transition;
+pub mod txpool;
+pub mod types;
 
 #[cfg(test)]
 mod tests {
