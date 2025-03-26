@@ -8,7 +8,7 @@ use std::fmt::Debug;
 
 /// A marker trait for application transactions.
 /// All types used as appchain transactions must implement Serialize, Deserialize, and Debug.
-pub trait AppTransaction: Serialize + for<'de> Deserialize<'de> + Debug {}
+pub trait AppTransaction: Serialize + for<'de> Deserialize<'de> + Debug + bincode::Decode<()> + bincode::Encode {}
 
 impl<T> AppTransaction for T where T: Serialize + for<'de> Deserialize<'de> + Debug {}
 

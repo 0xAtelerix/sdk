@@ -12,6 +12,7 @@ use thiserror::Error;
 use bincode::error::{EncodeError, DecodeError};
 
 use crate::buckets::TX_POOL;
+use crate::types::AppTransaction;
 
 #[derive(Debug, Error)]
 pub enum TxPoolError {
@@ -22,9 +23,6 @@ pub enum TxPoolError {
     #[error("Deserialization error: {0}")]
     DeserializationError(#[from] DecodeError),
 }
-
-/// Trait bound for application transactions.
-pub trait AppTransaction: Serialize + DeserializeOwned {}
 
 /// Generic transaction pool using MDBX.
 /// The DB is opened on the provided path and a table named "txpool" is used.
@@ -81,22 +79,7 @@ impl<T: AppTransaction> TxPool<T> {
         Ok(())
     }
 
-    /// Retrieves all transactions from the pool.
     pub fn get_all_transactions(&self) -> Result<Vec<T>, TxPoolError> {
-        let db = self.db.lock().unwrap();
-        let txn = db.begin_ro_txn()?;
-        let table = txn.open_table(Some(TX_POOL))?;
-        let mut transactions = Vec::new();
-        let mut cursor = txn.cursor(&table)?;
-        for result in cursor.iter() {
-            let (_key, value) = result?;
-            let tx: T = bincode::decode_from_slice(&value, bincode::config::standard())?;
-            transactions.push(tx);
-        }
-        Ok(transactions)
-    }
-
-    pub fn get_all_transactions1(&self) -> Result<Vec<T>, TxPoolError> {
         let db = self.db.lock().unwrap();
         let txn = db.begin_ro_txn()?;
         let table = txn.open_table(Some(TX_POOL))?;
@@ -106,7 +89,6 @@ impl<T: AppTransaction> TxPool<T> {
             let (_key, value) = result?;
             // Use bincode::deserialize instead of decode_from_slice.
             let (tx, _): (T, usize) = bincode::decode_from_slice(&value, bincode::config::standard())?;
-            serde::deserialize(&value).unwrap();
             transactions.push(tx);
         }
         Ok(transactions)
