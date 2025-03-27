@@ -19,8 +19,8 @@ import (
 )
 
 func NewAppchain[STI StateTransitionInterface[appTx],
-	appTx types.AppTransaction,
-	AppBlock types.AppchainBlock](sti STI,
+appTx types.AppTransaction,
+AppBlock types.AppchainBlock](sti STI,
 	rootCalculator types.RootCalculator,
 	blockBuilder types.AppchainBlockConstructor[appTx, AppBlock],
 	txpool types.TxPoolInterface[appTx],
@@ -131,6 +131,15 @@ runFor:
 		batches, err := a.eventStream.GetNewBatchesBlocking(10)
 		if err != nil {
 			return fmt.Errorf("Failed to get new batch: %w", err)
+		}
+
+		if len(batches) == 0 {
+			log.Info().Msg("No new batches")
+		} else {
+			log.Info().Int("batches num", len(batches)).Msg("received new batch")
+			for i := range batches {
+				log.Info().Int("batch", i).Int("tx", len(batches[i].Transactions)).Int("blocks", len(batches[i].ExternalBlocks)).Msg("received new batch")
+			}
 		}
 
 		for _, batch := range batches {
