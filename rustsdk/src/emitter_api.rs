@@ -1,10 +1,4 @@
 //! Module implementing the gRPC Emitter API service.
-//!
-//! This version uses dummy implementations for DB operations using `libmdbx-rs`.
-//! It returns simulated data for checkpoints and external transactions.
-//!
-//! Note: In a production implementation, you would replace these dummy functions
-//! with actual MDBX transaction logic.
 
 use async_trait::async_trait;
 use libmdbx::{Database, NoWriteMap};
@@ -14,21 +8,20 @@ use tokio::sync::Mutex;
 use tonic::{Request, Response, Status};
 
 use crate::{
-    appchain::AppchainError,
+    appchain::{AppchainError, merklize},
     buckets::{CHECKPOINT_BUCKET, EXTERNAL_TX_BUCKET},
-    proto,
     proto::{
-        CheckpointResponse, ExternalTransaction as ProtoExternalTransaction, GetChainIdResponse,
-        GetCheckpointsRequest, GetExternalTransactionsRequest, GetExternalTransactionsResponse,
-        emitter_server::Emitter,
+        self, CheckpointResponse, ExternalTransaction as ProtoExternalTransaction,
+        GetChainIdResponse, GetCheckpointsRequest, GetExternalTransactionsRequest,
+        GetExternalTransactionsResponse, emitter_server::Emitter,
     },
-    types::Checkpoint,
+    types::{Checkpoint, ExternalTransaction},
 };
 
 // Type alias for our DB; we use NoWriteMap mode as in the examples.
 type DB = Database<NoWriteMap>;
 
-/// AppchainEmitterService is our gRPC service backed by a (dummy) MDBX database.
+/// AppchainEmitterService is our gRPC service backed by a MDBX database.
 #[derive(Debug)]
 pub struct AppchainEmitterService {
     /// Shared MDBX database.
@@ -99,11 +92,9 @@ impl AppchainEmitterService {
             }
 
             let (key_bytes, value) = entry?;
-            let block_number = u64::from_be_bytes(
-                key_bytes[..8]
-                    .try_into()
-                    .map_err(|e: std::array::TryFromSliceError| AppchainError::Conversion(e.to_string()))?,
-            );
+            let block_number = u64::from_be_bytes(key_bytes[..8].try_into().map_err(
+                |e: std::array::TryFromSliceError| AppchainError::Conversion(e.to_string()),
+            )?);
 
             let block_tx = proto::get_external_transactions_response::BlockTransactions::decode(
                 value.as_slice(),
@@ -126,7 +117,6 @@ impl Emitter for AppchainEmitterService {
         let limit = req.limit.unwrap_or(10);
 
         // In a real scenario, you'd acquire a read transaction on the DB.
-        // Here we use the dummy implementation.
         let checkpoints = self
             .read_checkpoints(start_block, limit)
             .await
@@ -139,6 +129,7 @@ impl Emitter for AppchainEmitterService {
         }))
     }
 
+    // TODO: dummy implementation
     async fn create_internal_transactions_batch(
         &self,
         _request: Request<()>,
@@ -170,7 +161,12 @@ impl Emitter for AppchainEmitterService {
             .map(|(block_number, txs)| {
                 crate::proto::get_external_transactions_response::BlockTransactions {
                     block_number,
-                    transactions_root_hash: b"dummy_tx_hash".to_vec(), // dummy hash
+                    transactions_root_hash: merklize(
+                        &txs.iter()
+                            .map(|ptx| ExternalTransaction::from(ptx.clone()))
+                            .collect::<Vec<_>>(),
+                    )
+                    .to_vec(),
                     external_transactions: txs,
                 }
             })

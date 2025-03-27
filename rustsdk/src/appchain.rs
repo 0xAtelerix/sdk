@@ -391,7 +391,7 @@ where
 }
 
 /// Computes a Merkle root for the external transactions.
-fn merklize(txs: &[crate::types::ExternalTransaction]) -> [u8; 32] {
+pub fn merklize(txs: &[crate::types::ExternalTransaction]) -> [u8; 32] {
     if txs.is_empty() {
         return [0u8; 32];
     }

@@ -7,6 +7,8 @@ use libmdbx::{DatabaseKind, Transaction, TransactionKind};
 use serde::{Serialize, Deserialize};
 use std::fmt::Debug;
 
+use crate::proto;
+
 /// A marker trait for application transactions.
 /// All types used as appchain transactions must implement Serialize, Deserialize, and Debug.
 pub trait AppTransaction: Serialize + for<'de> Deserialize<'de> + Debug {}
@@ -87,4 +89,22 @@ pub trait TxPoolInterface<T: AppTransaction> {
 pub struct ExternalTransaction {
     pub chain_id: u64,
 	pub tx:       Vec<u8>,
+}
+
+impl From<proto::ExternalTransaction> for ExternalTransaction {
+    fn from(ptx: proto::ExternalTransaction) -> Self {
+        ExternalTransaction {
+            chain_id: ptx.chain_id,
+            tx: ptx.tx,
+        }
+    }
+}
+
+impl From<ExternalTransaction> for proto::ExternalTransaction {
+    fn from(ptx: ExternalTransaction) -> Self {
+        proto::ExternalTransaction {
+            chain_id: ptx.chain_id,
+            tx: ptx.tx,
+        }
+    }
 }
