@@ -116,7 +116,7 @@ impl Emitter for AppchainEmitterService {
 
         let proto_cps = checkpoints
             .iter()
-            .map(|cp| Self::checkpoint_to_proto(cp))
+            .map(Self::checkpoint_to_proto)
             .collect();
 
         Ok(Response::new(CheckpointResponse { checkpoints: proto_cps }))

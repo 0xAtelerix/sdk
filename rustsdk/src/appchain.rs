@@ -53,8 +53,11 @@ pub enum AppchainError {
     #[error("Corrupted data: {0}")]
     CorruptedData(String),
     
-    #[error("ReaderError data: {0}")]
-    ReadingDB(ReaderError),
+    #[error("Reader data: {0}")]
+    Reader(ReaderError),
+
+    #[error("Block processing error: {0}")]
+    BlockProcessing(String),
 }
 
 /// Appchain configuration.
@@ -83,19 +86,21 @@ impl AppchainConfig {
 /// Type alias for our MDBX database.
 type DB = Database<NoWriteMap>;
 
+type BlockBuilderFn<Tx, Block> = dyn Fn(u64, [u8; 32], [u8; 32], &Batch<Tx>) -> Block + Send + Sync;
+
 /// The Appchain struct.
 pub struct Appchain<STI, Tx, Block, BR, E>
 where
-    STI: StateTransitionInterface<Tx> + Send + Sync + 'static,
-    Tx: AppTransaction + Send + Sync + 'static,
-    Block: AppchainBlock + Send + Sync + 'static,
-    BR: BatchReader + Send + Sync + 'static,
-    E: Clone + Send + Sync + 'static, // Emitter API server type
+    STI: StateTransitionInterface<Tx> + Send + Sync,
+    Tx: AppTransaction + Send + Sync,
+    Block: AppchainBlock + Send + Sync,
+    BR: BatchReader + Send + Sync,
+    E: Clone + Send + Sync, // Emitter API server type
 {
     pub state_transition: STI,
     pub root_calculator: Arc<dyn RootCalculator + Send + Sync>,
     /// Closure to build a block.
-    pub block_builder: Arc<dyn Fn(u64, [u8; 32], [u8; 32], &Batch<Tx>) -> Block + Send + Sync>,
+    pub block_builder: Arc<BlockBuilderFn<Tx, Block>>,
     pub event_stream: BR,
     /// Emitter API server.
     pub emitter_api: E,
@@ -106,17 +111,17 @@ where
 
 impl<STI, Tx, Block, BR, E> Appchain<STI, Tx, Block, BR, E>
 where
-    STI: StateTransitionInterface<Tx> + Send + Sync + 'static,
-    Tx: AppTransaction + Send + Sync + 'static,
-    Block: AppchainBlock + Send + Sync + 'static,
-    BR: BatchReader + Send + Sync + 'static,
+    STI: StateTransitionInterface<Tx> + Send + Sync,
+    Tx: AppTransaction + Send + Sync,
+    Block: AppchainBlock + Send + Sync,
+    BR: BatchReader + Send + Sync,
     E: proto::emitter_server::Emitter + Clone + Send + Sync + 'static,
 {
     /// Constructs a new Appchain.
     pub fn new(
         state_transition: STI,
         root_calculator: Arc<dyn RootCalculator + Send + Sync>,
-        block_builder: Arc<dyn Fn(u64, [u8; 32], [u8; 32], &Batch<Tx>) -> Block + Send + Sync>,
+        block_builder: Arc<BlockBuilderFn<Tx, Block>>,
         event_stream: BR,
         emitter_api: E,
         config: AppchainConfig,
@@ -137,8 +142,6 @@ where
     pub async fn run(&mut self, shutdown: CancellationToken) -> Result<(), AppchainError> {
         // Spawn the emitter API server.
         let emitter_port = self.config.emitter_port.clone();
-        let db_clone = self.appchain_db.clone();
-        let chain_id = self.config.chain_id;
         let emitter_api = self.emitter_api.clone();
         tokio::spawn(async move {
             if let Err(e) =
@@ -156,7 +159,8 @@ where
             let raw_batches = self
                 .event_stream
                 .get_new_batches_blocking(10)
-                .await?;
+                .await
+                .map_err(|e| AppchainError::BlockProcessing(e.to_string()))?;
 
             for raw_batch in raw_batches {
                 let typed_batch = parse_read_batch::<Tx>(raw_batch)
@@ -175,13 +179,13 @@ where
                 let block_number = previous_block_number + 1;
                 let block = (self.block_builder)(block_number, state_root, previous_block_hash, &typed_batch);
 
-                let mut db_guard = self.appchain_db.lock().await;
+                let db_guard = self.appchain_db.lock().await;
                 {
                     // Begin a write transaction.
                     let mut txn = db_guard.begin_rw_txn()?;
-                    write_block(&mut txn, block.number(), &block.bytes())?;
+                    write_block(&mut txn, block.number(), &block.bytes()).map_err(|e| AppchainError::BlockProcessing(e.to_string()))?;
                     let block_hash = block.hash();
-                    let external_tx_root = write_external_transactions(&mut txn, block_number, &ext_txs)?;
+                    let external_tx_root = write_external_transactions(&mut txn, block_number, &ext_txs).map_err(|e| AppchainError::BlockProcessing(e.to_string()))?;
                     let checkpoint = Checkpoint {
                         chain_id: self.config.chain_id,
                         block_number,
@@ -190,8 +194,8 @@ where
                         external_transactions_root: external_tx_root,
                     };
                     write_checkpoint(&mut txn, &checkpoint)?;
-                    write_last_block(&mut txn, block_number, block_hash)?;
-                    txn.commit().map_err(|e| AppchainError::Db(e))?;
+                    write_last_block(&mut txn, block_number, block_hash).map_err(|e| AppchainError::BlockProcessing(e.to_string()))?;
+                    txn.commit().map_err(AppchainError::Db)?;
                     previous_block_number = block.number();
                     previous_block_hash = block.hash();
                 }
@@ -210,7 +214,7 @@ where
             .map_err(|e| AppchainError::Emitter(e.to_string()))?;
         let listener = TcpListener::bind(addr)
             .await
-            .map_err(|e| AppchainError::Io(e))?;
+            .map_err(AppchainError::Io)?;
         let incoming = TcpListenerStream::new(listener);
 
         Server::builder()
@@ -253,9 +257,9 @@ fn write_block<E>(txn: &mut Transaction<RW, E>, block_number: u64, block_bytes: 
 where
     E: libmdbx::DatabaseKind,
 {
-    let key = block_number.to_be_bytes();
     let table = txn.open_table(Some(BLOCKS_BUCKET))?;
-    txn.put(&table, &key, block_bytes, WriteFlags::empty())?;
+    let key = block_number.to_be_bytes();
+    txn.put(&table, key, block_bytes, WriteFlags::empty())?;
     Ok(())
 }
 
@@ -264,11 +268,11 @@ fn write_last_block<E>(txn: &mut Transaction<RW, E>, number: u64, hash: [u8; 32]
 where
     E: libmdbx::DatabaseKind,
 {
+    let table = txn.open_table(Some(CONFIG_BUCKET))?;
     let mut value = [0u8; 8 + 32];
     value[..8].copy_from_slice(&number.to_be_bytes());
     value[8..].copy_from_slice(&hash);
-    let table = txn.open_table(Some(CONFIG_BUCKET))?;
-    txn.put(&table, LAST_BLOCK_KEY.as_bytes(), &value, WriteFlags::empty())?;
+    txn.put(&table, LAST_BLOCK_KEY.as_bytes(), value, WriteFlags::empty())?;
     Ok(())
 }
 
@@ -310,9 +314,9 @@ where
 {
     let root = merklize(txs);
     let proto_bytes = transaction_to_proto(txs, block_number, root)?;
-    let key = block_number.to_be_bytes();
     let table = txn.open_table(Some(EXTERNAL_TX_BUCKET))?;
-    txn.put(&table, &key, &proto_bytes, WriteFlags::empty())?;
+    let key = block_number.to_be_bytes();
+    txn.put(&table, key, &proto_bytes, WriteFlags::empty())?;
     Ok(root)
 }
 
@@ -347,10 +351,10 @@ fn write_checkpoint<E>(
 where
     E: libmdbx::DatabaseKind,
 {
-    let key = checkpoint.block_number.to_be_bytes();
-    let value = serde_json::to_vec(checkpoint)?;
+    let value = serde_json::to_vec(checkpoint).map_err(|e| AppchainError::Conversion(e.to_string()))?;
     let table = txn.open_table(Some(CHECKPOINT_BUCKET))?;
-    txn.put(&table, &key, &value, WriteFlags::empty())?;
+    let key = checkpoint.block_number.to_be_bytes();
+    txn.put(&table, key, &value, WriteFlags::empty())?;
     Ok(())
 }
 
