@@ -116,6 +116,10 @@ func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(ctx context.Conte
 		count++
 	}
 
+	if len(blockMap) == 0 {
+		return nil, nil
+	}
+
 	// Формируем список блоков с транзакциями
 	var blocks []*emitterproto.GetExternalTransactionsResponse_BlockTransactions
 	for blockNumber, txs := range blockMap {
@@ -140,6 +144,9 @@ func (s *AppchainEmitterServer[appTx]) CreateInternalTransactionsBatch(context.C
 	txs, err := s.txpool.GetAllTransactions()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get transactions: %w", err)
+	}
+	if len(txs) == 0 {
+		return nil, nil
 	}
 
 	hash := sha256.New()

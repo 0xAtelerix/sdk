@@ -44,7 +44,7 @@ func TestEmitterCall(t *testing.T) {
 		Open()
 
 	// Создаем сервер с MDBX
-	srv := NewServer(db, 1)
+	srv := NewServer[any](db, 1, nil)
 	if err != nil {
 		t.Fatalf("Ошибка создания сервера: %v", err)
 	}
@@ -155,7 +155,7 @@ func randomCheckpoint(t *rapid.T, chainID uint64, blockNumber uint64) types.Chec
 }
 
 // Запускаем gRPC сервер в отдельной горутине
-func startGRPCServer(t *rapid.T, srv *AppchainEmitterServer) (string, func()) {
+func startGRPCServer[apptx any](t *rapid.T, srv *AppchainEmitterServer[apptx]) (string, func()) {
 	listener, err := net.Listen("tcp", ":0") // Используем ":0", чтобы ОС выделила свободный порт
 	if err != nil {
 		t.Fatalf("Ошибка запуска сервера: %v", err)
@@ -205,7 +205,7 @@ func TestEmitterCall_PropertyBased(t *testing.T) {
 		}
 		defer tx.Rollback()
 		// Создаем сервер с MDBX
-		srv := NewServer(db, 1)
+		srv := NewServer[any](db, 1, nil)
 		defer srv.appchainDB.Close()
 
 		// Запускаем gRPC сервер и получаем динамический адрес
@@ -326,7 +326,7 @@ func TestGetExternalTransactions_PropertyBased(t *testing.T) {
 			}).
 			Open()
 
-		srv := NewServer(db, 1)
+		srv := NewServer[any](db, 1, nil)
 		defer srv.appchainDB.Close()
 
 		tx, err := db.BeginRw(context.TODO())
