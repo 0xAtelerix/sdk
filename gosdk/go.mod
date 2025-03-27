@@ -6,6 +6,7 @@ require (
 	github.com/fsnotify/fsnotify v1.8.0
 	github.com/ledgerwatch/erigon-lib v1.0.0
 	github.com/ledgerwatch/log/v3 v3.9.0
+	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.8.4
 	google.golang.org/grpc v1.71.0
 	google.golang.org/protobuf v1.36.5

@@ -2,6 +2,7 @@ package gosdk
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/0xAtelerix/sdk/gosdk/types"
 )
 
@@ -20,7 +21,7 @@ func (ews *EventStreamWrapper[appTx]) GetNewBatchesBlocking(limit int) ([]types.
 		for j, txBytes := range batch[i].Events {
 			err := json.Unmarshal(txBytes, &res[i].Transactions[j])
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to unmarshal batch %w", err)
 			}
 		}
 

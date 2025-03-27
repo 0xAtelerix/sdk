@@ -9,6 +9,7 @@ import (
 	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
 	"github.com/0xAtelerix/sdk/gosdk/types"
 	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -29,18 +30,27 @@ func NewServer[appTx types.AppTransaction](db kv.RwDB, chainID uint64, txpool ty
 
 // Метод GetCheckpoints: выбираем все чекпоинты >= LatestBlockNumber
 func (s *AppchainEmitterServer[appTx]) GetCheckpoints(ctx context.Context, req *emitterproto.GetCheckpointsRequest) (*emitterproto.CheckpointResponse, error) {
-	fmt.Printf("Получен запрос: latest_previous_checkpoint_block_number=%d, limit=%d\n",
-		req.LatestPreviousCheckpointBlockNumber, req.Limit)
+	log.Info().
+		Uint64("latest_previous_checkpoint_block_number", req.LatestPreviousCheckpointBlockNumber).
+		Uint32("limit", func() uint32 {
+			if req.Limit != nil {
+				return *req.Limit
+			}
+			return 0
+		}()).
+		Msg("Received request")
 
 	txn, err := s.appchainDB.BeginRo(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("ошибка открытия транзакции БД: %w", err)
+		log.Error().Err(err).Msg("Failed to open DB transaction")
+		return nil, fmt.Errorf("failed to open DB transaction: %w", err)
 	}
 	defer txn.Rollback()
 
 	cursor, err := txn.Cursor(checkpointBucket)
 	if err != nil {
-		return nil, fmt.Errorf("ошибка создания курсора: %w", err)
+		log.Error().Err(err).Msg("Failed to create cursor")
+		return nil, fmt.Errorf("failed to create cursor: %w", err)
 	}
 	defer cursor.Close()
 
@@ -62,7 +72,8 @@ func (s *AppchainEmitterServer[appTx]) GetCheckpoints(ctx context.Context, req *
 		}
 		checkpoint := &types.Checkpoint{}
 		if err := json.Unmarshal(v, &checkpoint); err != nil {
-			return nil, fmt.Errorf("ошибка десериализации чекпоинта: %w", err)
+			log.Error().Err(err).Msg("Checkpoint deserialization failed")
+			return nil, fmt.Errorf("checkpoint deserialization failed: %w", err)
 		}
 		checkpoints = append(checkpoints, CheckpointToProto(*checkpoint))
 		count++
@@ -73,18 +84,29 @@ func (s *AppchainEmitterServer[appTx]) GetCheckpoints(ctx context.Context, req *
 
 // Метод GetExternalTransactions: выбираем все транзакции >= LatestPreviousBlockNumber
 func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(ctx context.Context, req *emitterproto.GetExternalTransactionsRequest) (*emitterproto.GetExternalTransactionsResponse, error) {
-	fmt.Printf("Получен запрос: latest_previous_block_number=%d, limit=%d\n",
-		req.LatestPreviousBlockNumber, req.Limit)
+	log.Info().
+		Str("method", "GetExternalTransactions").
+		Uint64("latest_previous_block_number", req.LatestPreviousBlockNumber).
+		Uint32("limit", func() uint32 {
+			if req.Limit != nil {
+				return *req.Limit
+			}
+			return 0
+		}()).
+		Msg("Received request")
 
 	txn, err := s.appchainDB.BeginRo(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("ошибка открытия транзакции БД: %w", err)
+		log.Error().Err(err).Msg("Failed to open DB transaction")
+		return nil, fmt.Errorf("failed to open DB transaction: %w", err)
 	}
 	defer txn.Rollback()
 
 	cursor, err := txn.Cursor(externalTxBucket)
 	if err != nil {
-		return nil, fmt.Errorf("ошибка создания курсора: %w", err)
+		log.Error().Err(err).Msg("Failed to create cursor")
+		return nil, fmt.Errorf("failed to create cursor: %w", err)
+
 	}
 	defer cursor.Close()
 
@@ -109,7 +131,8 @@ func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(ctx context.Conte
 
 		tx := &emitterproto.ExternalTransaction{}
 		if err := proto.Unmarshal(v, tx); err != nil {
-			return nil, fmt.Errorf("ошибка десериализации транзакции: %w", err)
+			log.Error().Err(err).Msg("Transaction deserialization failed")
+			return nil, fmt.Errorf("transaction deserialization failed: %w", err)
 		}
 
 		blockMap[blockNumber] = append(blockMap[blockNumber], tx)

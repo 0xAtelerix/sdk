@@ -5,12 +5,12 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
@@ -26,6 +26,8 @@ func NewAppchain[STI StateTransitionInterface[appTx],
 	txpool types.TxPoolInterface[appTx],
 	config AppchainConfig) (Appchain[STI, appTx, AppBlock], error) {
 
+	log.Info().Str("db_path", config.AppchainDBPath).Msg("Initializing MDBX database")
+
 	// инициализируем базу на нашей стороне
 	db, err := mdbx.NewMDBX(mdbxlog.New()).
 		Path(config.AppchainDBPath).
@@ -40,12 +42,20 @@ func NewAppchain[STI StateTransitionInterface[appTx],
 		}).
 		Open()
 	if err != nil {
-		return Appchain[STI, appTx, AppBlock]{}, fmt.Errorf("ошибка инициализации MDBX: %w", err)
+		log.Error().Err(err).Msg("Failed to initialize MDBX")
+		return Appchain[STI, appTx, AppBlock]{}, fmt.Errorf("failed to initialize MDBX: %w", err)
 	}
 
+	log.Info().Str("event_stream_dir", config.EventStreamDir).Msg("Initializing event reader")
 	eventStream, err := NewEventReader(config.EventStreamDir, 8)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to initialize event reader")
+		return Appchain[STI, appTx, AppBlock]{}, fmt.Errorf("failed to initialize event reader: %w", err)
+	}
 
 	emiterAPI := NewServer(db, config.ChainID, txpool)
+	log.Info().Msg("Appchain initialized successfully")
+
 	return Appchain[STI, appTx, AppBlock]{
 		appchainStateExecution: sti,
 		rootCalculator:         rootCalculator,
@@ -90,6 +100,8 @@ type Appchain[STI StateTransitionInterface[appTx], appTx types.AppTransaction, A
 }
 
 func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
+	log.Info().Msg("Appchain run started")
+
 	go a.RunEmitterAPI()
 
 	var (
@@ -102,8 +114,8 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
 		previousBlockNumber, previousBlockHash, err = GetLastBlock(tx)
 		return err
 	})
-
 	if err != nil {
+		log.Error().Err(err).Msg("Failed to get last block")
 		return fmt.Errorf("Failed to get last block: %w", err)
 	}
 
@@ -111,6 +123,7 @@ runFor:
 	for {
 		select {
 		case <-ctx.Done():
+			log.Info().Msg("Appchain context cancelled, stopping")
 			break runFor
 		default:
 		}
@@ -124,6 +137,7 @@ runFor:
 			err = func() error {
 				rwtx, err := a.AppchainDB.BeginRw(context.TODO())
 				if err != nil {
+					log.Error().Err(err).Msg("Failed to get new batch")
 					return fmt.Errorf("Failed to begin write tx: %w", err)
 				}
 				defer rwtx.Rollback()
@@ -131,12 +145,14 @@ runFor:
 				//2) Process Batch. Execute transaction there.
 				extTxs, err := a.appchainStateExecution.ProcessBatch(batch, rwtx)
 				if err != nil {
+					log.Error().Err(err).Msg("Failed to process batch")
 					return fmt.Errorf("Failed to process batch: %w", err)
 				}
 
 				// Разделение на блоки(возможное) тоже тут.
 				stateRoot, err := a.rootCalculator.StateRootCalculator(rwtx)
 				if err != nil {
+					log.Error().Err(err).Msg("Failed to calculate state root")
 					return fmt.Errorf("Failed to calculate state root: %w", err)
 				}
 
@@ -147,6 +163,7 @@ runFor:
 
 				// сохраняем блок
 				if err = WriteBlock(rwtx, block.Number(), block.Bytes()); err != nil {
+					log.Error().Err(err).Msg("Failed to write block")
 					return fmt.Errorf("Failed to write block: %w", err)
 				}
 
@@ -154,6 +171,7 @@ runFor:
 
 				externalTXRoot, err := WriteExternalTransactions(context.TODO(), rwtx, blockNumber, extTxs)
 				if err != nil {
+					log.Error().Err(err).Msg("Failed to write external transactions")
 					return fmt.Errorf("Failed to write external transactions: %w", err)
 				}
 
@@ -167,18 +185,23 @@ runFor:
 
 				err = WriteCheckpoint(context.TODO(), rwtx, checkpoint)
 				if err != nil {
+					log.Error().Err(err).Msg("Failed to write checkpoint")
 					return fmt.Errorf("Failed to write checkpoint: %w", err)
 				}
 
 				err = WriteLastBlock(rwtx, blockNumber, blockHash)
 				if err != nil {
+					log.Error().Err(err).Msg("Failed to write last block")
 					return fmt.Errorf("Failed to write last block: %w", err)
 				}
 
 				err = rwtx.Commit()
 				if err != nil {
+					log.Error().Err(err).Msg("Failed to commit")
 					return fmt.Errorf("Failed to commit: %w", err)
 				}
+
+				log.Info().Uint64("block_number", blockNumber).Msg("Block processed and committed")
 
 				previousBlockNumber = block.Number()
 				previousBlockHash = block.Hash()
@@ -187,6 +210,7 @@ runFor:
 			}()
 
 			if err != nil {
+				log.Error().Err(err).Msg("Failed to handle batch")
 				return err
 			}
 		}
@@ -197,8 +221,9 @@ runFor:
 func (a *Appchain[STI, appTx, AppBlock]) RunEmitterAPI() {
 	lis, err := net.Listen("tcp", a.config.EmitterPort)
 	if err != nil {
-		log.Fatalf("Не удалось создать listener на %s: %v", a.config.EmitterPort, err)
+		log.Fatal().Err(err).Str("port", a.config.EmitterPort).Msg("Failed to create listener")
 	}
+	log.Info().Str("port", a.config.EmitterPort).Msg("Starting gRPC server")
 
 	// Создаем gRPC сервер
 	grpcServer := grpc.NewServer()
@@ -206,7 +231,7 @@ func (a *Appchain[STI, appTx, AppBlock]) RunEmitterAPI() {
 	emitterproto.RegisterHealthServer(grpcServer, &HealthServer{})
 
 	if err := grpcServer.Serve(lis); err != nil {
-		log.Fatalf("Ошибка работы сервера: %v", err)
+		log.Fatal().Err(err).Msg("gRPC server crashed")
 	}
 }
 
@@ -247,7 +272,8 @@ func WriteExternalTransactions(ctx context.Context, dbTx kv.RwTx, blockNumber ui
 
 	value, err := proto.Marshal(TransactionToProto(txs, blockNumber, root))
 	if err != nil {
-		return [32]byte{}, fmt.Errorf("ошибка сериализации транзакции: %w", err)
+		log.Error().Err(err).Msg("Transaction serialization failed")
+		return [32]byte{}, fmt.Errorf("transaction serialization failed: %w", err)
 	}
 
 	// Записываем в базу
@@ -301,7 +327,8 @@ func WriteCheckpoint(ctx context.Context, dbTx kv.RwTx, checkpoint types.Checkpo
 	// Сериализуем чекпоинт
 	value, err := json.Marshal(checkpoint)
 	if err != nil {
-		return fmt.Errorf("ошибка сериализации чекпоинта: %w", err)
+		log.Error().Err(err).Msg("Checkpoint serialization failed")
+		return fmt.Errorf("checkpoint serialization failed: %w", err)
 	}
 
 	// Записываем в базу
