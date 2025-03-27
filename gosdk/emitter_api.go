@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
@@ -31,6 +32,7 @@ func NewServer[appTx types.AppTransaction](db kv.RwDB, chainID uint64, txpool ty
 // Метод GetCheckpoints: выбираем все чекпоинты >= LatestBlockNumber
 func (s *AppchainEmitterServer[appTx]) GetCheckpoints(ctx context.Context, req *emitterproto.GetCheckpointsRequest) (*emitterproto.CheckpointResponse, error) {
 	log.Info().
+		Str("method", "GetCheckpoints").
 		Uint64("latest_previous_checkpoint_block_number", req.LatestPreviousCheckpointBlockNumber).
 		Uint32("limit", func() uint32 {
 			if req.Limit != nil {
@@ -77,6 +79,17 @@ func (s *AppchainEmitterServer[appTx]) GetCheckpoints(ctx context.Context, req *
 		}
 		checkpoints = append(checkpoints, CheckpointToProto(*checkpoint))
 		count++
+	}
+	if len(checkpoints) > 0 {
+		log.Info().
+			Str("method", "GetCheckpoints").
+			Uint64("last checkpoint", checkpoints[len(checkpoints)-1].LatestBlockNumber).
+			Msg("No new checkpoints")
+
+	} else {
+		log.Info().
+			Str("method", "GetCheckpoints").
+			Msg("No new checkpoints")
 	}
 
 	return &emitterproto.CheckpointResponse{Checkpoints: checkpoints}, nil
@@ -140,6 +153,10 @@ func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(ctx context.Conte
 	}
 
 	if len(blockMap) == 0 {
+		log.Info().
+			Str("method", "GetExternalTransactions").
+			Msg("No new external transactions")
+
 		return nil, nil
 	}
 
@@ -163,12 +180,18 @@ func (s *AppchainEmitterServer[appTx]) GetChainId(context.Context, *emptypb.Empt
 }
 
 func (s *AppchainEmitterServer[appTx]) CreateInternalTransactionsBatch(context.Context, *emptypb.Empty) (*emitterproto.CreateInternalTransactionsBatchResponse, error) {
+	log.Info().
+		Str("method", "CreateInternalTransactionsBatch").
+		Msg("Received request")
 
 	txs, err := s.txpool.GetAllTransactions()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get transactions: %w", err)
 	}
 	if len(txs) == 0 {
+		log.Info().
+			Str("method", "CreateInternalTransactionsBatch").
+			Msg("No new transactions")
 		return nil, nil
 	}
 
@@ -183,8 +206,14 @@ func (s *AppchainEmitterServer[appTx]) CreateInternalTransactionsBatch(context.C
 		hash.Write(b)
 	}
 
-	return &emitterproto.CreateInternalTransactionsBatchResponse{
+	resp := &emitterproto.CreateInternalTransactionsBatchResponse{
 		BatchHash:            hash.Sum(nil),
 		InternalTransactions: txsBytes,
-	}, nil
+	}
+	log.Info().
+		Str("batch hash", hex.EncodeToString(resp.BatchHash)).
+		Int("num of tx", len(resp.InternalTransactions)).
+		Msg("No new transactions")
+
+	return resp, nil
 }
