@@ -19,8 +19,8 @@ import (
 )
 
 func NewAppchain[STI StateTransitionInterface[appTx],
-appTx types.AppTransaction,
-AppBlock types.AppchainBlock](sti STI,
+	appTx types.AppTransaction,
+	AppBlock types.AppchainBlock](sti STI,
 	rootCalculator types.RootCalculator,
 	blockBuilder types.AppchainBlockConstructor[appTx, AppBlock],
 	txpool types.TxPoolInterface[appTx],
@@ -135,6 +135,7 @@ runFor:
 
 		if len(batches) == 0 {
 			log.Info().Msg("No new batches")
+			continue
 		} else {
 			log.Info().Int("batches num", len(batches)).Msg("received new batch")
 			for i := range batches {
@@ -171,6 +172,7 @@ runFor:
 				block := a.blockBuilder(blockNumber, stateRoot, previousBlockHash, batch)
 
 				// сохраняем блок
+				log.Info().Uint64("block", blockNumber).Msg("Write block")
 				if err = WriteBlock(rwtx, block.Number(), block.Bytes()); err != nil {
 					log.Error().Err(err).Msg("Failed to write block")
 					return fmt.Errorf("Failed to write block: %w", err)
@@ -192,6 +194,7 @@ runFor:
 					ExternalTransactionsRoot: externalTXRoot,
 				}
 
+				log.Info().Uint64("block", checkpoint.BlockNumber).Msg("Write checkpoint")
 				err = WriteCheckpoint(context.TODO(), rwtx, checkpoint)
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to write checkpoint")
