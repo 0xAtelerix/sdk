@@ -226,7 +226,7 @@ func GetLastBlock(tx kv.Tx) (uint64, [32]byte, error) {
 	}
 
 	if len(value) != 8+32 {
-		return 0, [32]byte{}, fmt.Errorf("got inconsistant last block value: len %d, value %v", len(value), value)
+		return 0, [32]byte{}, nil
 	}
 
 	number := binary.BigEndian.Uint64(value[:8])
