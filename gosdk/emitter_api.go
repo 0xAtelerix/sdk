@@ -2,6 +2,7 @@ package gosdk
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -13,20 +14,21 @@ import (
 )
 
 // Server с поддержкой MDBX
-type AppchainEmitterServer struct {
+type AppchainEmitterServer[appTx types.AppTransaction] struct {
 	emitterproto.UnimplementedEmitterServer
 	appchainDB kv.RwDB
 	chainID    uint64
+	txpool     types.TxPoolInterface[appTx]
 }
 
 // Создание нового сервера с MDBX
 // todo add txpool?
-func NewServer(db kv.RwDB, chainID uint64) *AppchainEmitterServer {
-	return &AppchainEmitterServer{appchainDB: db, chainID: chainID}
+func NewServer[appTx types.AppTransaction](db kv.RwDB, chainID uint64, txpool types.TxPoolInterface[appTx]) *AppchainEmitterServer[appTx] {
+	return &AppchainEmitterServer[appTx]{appchainDB: db, chainID: chainID, txpool: txpool}
 }
 
 // Метод GetCheckpoints: выбираем все чекпоинты >= LatestBlockNumber
-func (s *AppchainEmitterServer) GetCheckpoints(ctx context.Context, req *emitterproto.GetCheckpointsRequest) (*emitterproto.CheckpointResponse, error) {
+func (s *AppchainEmitterServer[appTx]) GetCheckpoints(ctx context.Context, req *emitterproto.GetCheckpointsRequest) (*emitterproto.CheckpointResponse, error) {
 	fmt.Printf("Получен запрос: latest_previous_checkpoint_block_number=%d, limit=%d\n",
 		req.LatestPreviousCheckpointBlockNumber, req.Limit)
 
@@ -70,7 +72,7 @@ func (s *AppchainEmitterServer) GetCheckpoints(ctx context.Context, req *emitter
 }
 
 // Метод GetExternalTransactions: выбираем все транзакции >= LatestPreviousBlockNumber
-func (s *AppchainEmitterServer) GetExternalTransactions(ctx context.Context, req *emitterproto.GetExternalTransactionsRequest) (*emitterproto.GetExternalTransactionsResponse, error) {
+func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(ctx context.Context, req *emitterproto.GetExternalTransactionsRequest) (*emitterproto.GetExternalTransactionsResponse, error) {
 	fmt.Printf("Получен запрос: latest_previous_block_number=%d, limit=%d\n",
 		req.LatestPreviousBlockNumber, req.Limit)
 
@@ -127,8 +129,32 @@ func (s *AppchainEmitterServer) GetExternalTransactions(ctx context.Context, req
 	return &emitterproto.GetExternalTransactionsResponse{Blocks: blocks}, nil
 }
 
-func (s *AppchainEmitterServer) GetChainId(context.Context, *emptypb.Empty) (*emitterproto.GetChainIDResponse, error) {
+func (s *AppchainEmitterServer[appTx]) GetChainId(context.Context, *emptypb.Empty) (*emitterproto.GetChainIDResponse, error) {
 	return &emitterproto.GetChainIDResponse{
 		ChainId: s.chainID,
+	}, nil
+}
+
+func (s *AppchainEmitterServer[appTx]) CreateInternalTransactionsBatch(context.Context, *emptypb.Empty) (*emitterproto.CreateInternalTransactionsBatchResponse, error) {
+
+	txs, err := s.txpool.GetAllTransactions()
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get transactions: %w", err)
+	}
+
+	hash := sha256.New()
+	txsBytes := make([]*emitterproto.ByteArray, len(txs))
+	for i := range txs {
+		b, err := json.Marshal(txs[i])
+		if err != nil {
+			return nil, fmt.Errorf("Failed to serialize transaction: %w, %v", err, txs[i])
+		}
+		txsBytes[i] = &emitterproto.ByteArray{Data: b}
+		hash.Write(b)
+	}
+
+	return &emitterproto.CreateInternalTransactionsBatchResponse{
+		BatchHash:            hash.Sum(nil),
+		InternalTransactions: txsBytes,
 	}, nil
 }

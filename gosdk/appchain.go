@@ -43,14 +43,19 @@ func NewAppchain[STI StateTransitionInterface[appTx],
 		return Appchain[STI, appTx, AppBlock]{}, fmt.Errorf("ошибка инициализации MDBX: %w", err)
 	}
 
-	emiterAPI := NewServer(db, config.ChainID)
+	eventStream, err := NewEventReader(config.EventStreamDir, 8)
+
+	emiterAPI := NewServer(db, config.ChainID, txpool)
 	return Appchain[STI, appTx, AppBlock]{
 		appchainStateExecution: sti,
 		rootCalculator:         rootCalculator,
 		blockBuilder:           blockBuilder,
 		emiterAPI:              emiterAPI,
 		AppchainDB:             db,
-		config:                 config,
+		eventStream: &EventStreamWrapper[appTx]{
+			eventStream: eventStream,
+		},
+		config: config,
 	}, nil
 }
 
