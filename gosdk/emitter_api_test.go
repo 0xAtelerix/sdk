@@ -28,7 +28,6 @@ import (
 )
 
 func TestEmitterCall(t *testing.T) {
-	t.Skip("listener error")
 	dbPath := "./testdb"
 	_ = os.RemoveAll(dbPath)   // Очищаем базу перед тестом
 	defer os.RemoveAll(dbPath) // Очищаем базу после теста
