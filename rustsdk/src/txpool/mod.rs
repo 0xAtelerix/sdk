@@ -3,7 +3,7 @@
 //! The TxPool struct allows adding, retrieving, removing, and listing all transactions.
 //! Transactions must implement the `AppTransaction` trait (bound by Serialize/Deserialize).
 
-use libmdbx::{Database, TableFlags, WriteFlags, NoWriteMap};
+use libmdbx::{Database, DatabaseOptions, NoWriteMap, TableFlags, WriteFlags};
 use std::marker::PhantomData;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -30,7 +30,13 @@ pub struct TxPool<T: AppTransaction> {
 impl<T: AppTransaction> TxPool<T> {
     /// Creates a new TxPool. Opens (or creates) the MDBX environment at the given path.
     pub fn new<P: AsRef<Path>>(db_path: P) -> Result<Self, TxPoolError> {
-        let env = Database::open(db_path)?;
+        let env = Database::open_with_options(
+            db_path,
+            DatabaseOptions {
+                max_tables: Some(255),
+                ..Default::default()
+            },
+        )?;
         Ok(Self {
             db: Arc::new(Mutex::new(env)),
             phantom: PhantomData,
@@ -41,12 +47,15 @@ impl<T: AppTransaction> TxPool<T> {
     pub fn add_transaction(&self, hash: &str, tx: &T) -> Result<(), TxPoolError> {
         // Serialize the transaction to binary.
         let data = bincode::serialize(tx)?;
+
         let db = self.db.lock().unwrap();
         let txn = db.begin_rw_txn()?;
+
         // Open (or create) the "txpool" table.
         let table = txn
-            .open_table(Some("txpool"))
-            .or_else(|_| txn.create_table(Some("txpool"), TableFlags::empty()))?;
+            .open_table(Some(TX_POOL))
+            .or_else(|_| txn.create_table(Some(TX_POOL), TableFlags::empty()))?;
+
         txn.put(&table, hash.as_bytes(), &data, WriteFlags::empty())?;
         txn.commit()?;
         Ok(())
@@ -56,7 +65,7 @@ impl<T: AppTransaction> TxPool<T> {
     pub fn get_transaction(&self, hash: &str) -> Result<Option<T>, TxPoolError> {
         let db = self.db.lock().unwrap();
         let txn = db.begin_ro_txn()?;
-        let table = txn.open_table(Some("txpool"))?;
+        let table = txn.open_table(Some(TX_POOL))?;
         
         if let Some(data) = txn.get::<Vec<u8>>(&table, hash.as_bytes())? {
             let tx = bincode::deserialize(&data)?;
@@ -70,7 +79,7 @@ impl<T: AppTransaction> TxPool<T> {
     pub fn remove_transaction(&self, hash: &str) -> Result<(), TxPoolError> {
         let db = self.db.lock().unwrap();
         let txn = db.begin_rw_txn()?;
-        let table = txn.open_table(Some("txpool"))?;
+        let table = txn.open_table(Some(TX_POOL))?;
         txn.del(&table, hash.as_bytes(), None)?;
         txn.commit()?;
         Ok(())
@@ -157,6 +166,7 @@ mod tests {
         pool.add_transaction(&tx2.hash, &tx2)?;
 
         let mut all_txs = pool.get_all_transactions()?;
+
         // Order may be arbitrary, so sort by hash.
         all_txs.sort_by(|a: &CustomTransaction, b: &CustomTransaction| a.hash.cmp(&b.hash));
 
