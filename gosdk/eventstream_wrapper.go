@@ -11,7 +11,7 @@ type EventStreamWrapper[appTx types.AppTransaction] struct {
 }
 
 func (ews *EventStreamWrapper[appTx]) GetNewBatchesBlocking(limit int) ([]types.Batch[appTx], error) {
-	batch, err := ews.eventStream.GetNewBatchesNonBlocking(limit)
+	batch, err := ews.eventStream.GetNewBatchesBlocking(limit)
 	if err != nil {
 		return nil, err
 	}
