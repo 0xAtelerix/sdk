@@ -34,6 +34,8 @@ func NewAppchain[STI StateTransitionInterface[appTx],
 				checkpointBucket: {},
 				externalTxBucket: {},
 				blocksBucket:     {},
+				configBucket:     {},
+				stateBucket:      {},
 			}
 		}).
 		Open()
