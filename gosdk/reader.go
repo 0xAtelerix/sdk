@@ -61,9 +61,10 @@ func (er *EventReader) Close() {
 
 // Batch содержит атропос и события
 type ReadBatch struct {
-	Atropos [32]byte
-	Events  [][]byte
-	Offset  int64 // Сохранённая позиция этого батча в файле
+	Atropos   [32]byte
+	Events    [][]byte
+	Offset    int64 // Сохранённая позиция этого батча в файле
+	EndOffset int64 // позиция сразу после батча
 }
 
 // readNewBatches читает новые батчи, но не более `limit` за один вызов.
@@ -130,11 +131,14 @@ func (er *EventReader) readNewBatches(limit int) ([]ReadBatch, error) {
 			offset += int(valueSize)
 		}
 
+		batchEndPos := batchStartPos + int64(4+batchSize)
+
 		// Добавляем batch в список
 		batches = append(batches, ReadBatch{
-			Atropos: atropos,
-			Events:  events,
-			Offset:  batchStartPos,
+			Atropos:   atropos,
+			Events:    events,
+			Offset:    batchStartPos,
+			EndOffset: batchEndPos,
 		})
 
 		// Если успешно прочитали весь батч, сдвигаем позицию

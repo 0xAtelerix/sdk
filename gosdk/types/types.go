@@ -18,6 +18,7 @@ type Batch[appTx AppTransaction] struct {
 	ExternalBlocks []ExternalBlock
 	//todo add crossappchain tx
 	//ExternalTransactions [][]byte
+	EndOffset int64
 }
 
 type ExternalBlock struct {

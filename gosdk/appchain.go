@@ -3,16 +3,16 @@ package gosdk
 import (
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"net"
-
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
+	"net"
 
 	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
 	"github.com/0xAtelerix/sdk/gosdk/types"
@@ -32,13 +32,7 @@ func NewAppchain[STI StateTransitionInterface[appTx],
 	db, err := mdbx.NewMDBX(mdbxlog.New()).
 		Path(config.AppchainDBPath).
 		WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
-			return kv.TableCfg{
-				checkpointBucket: {},
-				externalTxBucket: {},
-				blocksBucket:     {},
-				configBucket:     {},
-				stateBucket:      {},
-			}
+			return defaultTables
 		}).
 		Open()
 	if err != nil {
@@ -46,8 +40,21 @@ func NewAppchain[STI StateTransitionInterface[appTx],
 		return Appchain[STI, appTx, AppBlock]{}, fmt.Errorf("failed to initialize MDBX: %w", err)
 	}
 
-	log.Info().Str("event_stream_dir", config.EventStreamDir).Msg("Initializing event reader")
-	eventStream, err := NewEventReader(config.EventStreamDir, 8)
+	startPos := int64(8)
+	err = db.View(context.TODO(), func(tx kv.Tx) error {
+		pos, err := ReadSnapshotPosition(tx, currentEpoch)
+		if err != nil {
+			return err
+		}
+		startPos = pos
+		return nil
+	})
+	if err != nil {
+		return Appchain[STI, appTx, AppBlock]{}, err
+	}
+
+	log.Info().Str("event_stream_dir", config.EventStreamDir).Int64("from", startPos).Msg("Initializing event reader")
+	eventStream, err := NewEventReader(config.EventStreamDir, startPos)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to initialize event reader")
 		return Appchain[STI, appTx, AppBlock]{}, fmt.Errorf("failed to initialize event reader: %w", err)
@@ -112,6 +119,7 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
 
 	err = a.AppchainDB.View(ctx, func(tx kv.Tx) error {
 		previousBlockNumber, previousBlockHash, err = GetLastBlock(tx)
+
 		return err
 	})
 	if err != nil {
@@ -153,6 +161,7 @@ runFor:
 				defer rwtx.Rollback()
 
 				//2) Process Batch. Execute transaction there.
+				log.Debug().Int("tx", len(batch.Transactions)).Msg("Process batch")
 				extTxs, err := a.appchainStateExecution.ProcessBatch(batch, rwtx)
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to process batch")
@@ -172,7 +181,6 @@ runFor:
 				block := a.blockBuilder(blockNumber, stateRoot, previousBlockHash, batch)
 
 				// сохраняем блок
-				log.Info().Uint64("block", blockNumber).Msg("Write block")
 				if err = WriteBlock(rwtx, block.Number(), block.Bytes()); err != nil {
 					log.Error().Err(err).Msg("Failed to write block")
 					return fmt.Errorf("Failed to write block: %w", err)
@@ -205,6 +213,12 @@ runFor:
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to write last block")
 					return fmt.Errorf("Failed to write last block: %w", err)
+				}
+
+				err = WriteSnapshotPosition(rwtx, currentEpoch, batch.EndOffset)
+				if err != nil {
+					log.Error().Err(err).Msg("Failed to write snapshot pos")
+					return fmt.Errorf("Failed to write snapshot pos: %w", err)
 				}
 
 				err = rwtx.Commit()
@@ -248,12 +262,19 @@ func (a *Appchain[STI, appTx, AppBlock]) RunEmitterAPI() {
 }
 
 func WriteBlock(rwtx kv.RwTx, blockNumber uint64, blockBytes []byte) error {
+	log.Debug().Uint64("block_number", blockNumber).
+		Msg("Write block")
+
 	number := make([]byte, 8)
 	binary.BigEndian.PutUint64(number, blockNumber)
 	return rwtx.Put(blocksBucket, number, blockBytes)
 }
 
 func WriteLastBlock(rwtx kv.RwTx, number uint64, hash [32]byte) error {
+	log.Debug().Uint64("block_number", number).
+		Str("hash", hex.EncodeToString(hash[:])).
+		Msg("Write last block")
+
 	value := make([]byte, 8+32)
 	binary.BigEndian.PutUint64(value[:8], number)
 	copy(value[8:], hash[:])
@@ -346,3 +367,30 @@ func WriteCheckpoint(ctx context.Context, dbTx kv.RwTx, checkpoint types.Checkpo
 	// Записываем в базу
 	return dbTx.Put(checkpointBucket, key, value)
 }
+
+func WriteSnapshotPosition(rwtx kv.RwTx, epoch uint32, pos int64) error {
+	key := make([]byte, 4)
+	binary.BigEndian.PutUint32(key, epoch)
+
+	val := make([]byte, 8)
+	binary.BigEndian.PutUint64(val, uint64(pos))
+
+	return rwtx.Put(snapshot, key, val)
+}
+
+func ReadSnapshotPosition(tx kv.Tx, epoch uint32) (int64, error) {
+	key := make([]byte, 4)
+	binary.BigEndian.PutUint32(key, epoch)
+
+	val, err := tx.GetOne(snapshot, key)
+	if err != nil {
+		return 0, err
+	}
+	if len(val) != 8 {
+		return 0, nil // default to beginning
+	}
+
+	return int64(binary.BigEndian.Uint64(val)), nil
+}
+
+var currentEpoch = uint32(1)
