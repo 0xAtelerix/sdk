@@ -19,8 +19,8 @@ import (
 )
 
 func NewAppchain[STI StateTransitionInterface[appTx],
-appTx types.AppTransaction,
-AppBlock types.AppchainBlock](sti STI,
+	appTx types.AppTransaction,
+	AppBlock types.AppchainBlock](sti STI,
 	rootCalculator types.RootCalculator,
 	blockBuilder types.AppchainBlockConstructor[appTx, AppBlock],
 	txpool types.TxPoolInterface[appTx],
@@ -28,7 +28,7 @@ AppBlock types.AppchainBlock](sti STI,
 
 	// инициализируем базу на нашей стороне
 	db, err := mdbx.NewMDBX(mdbxlog.New()).
-		Path(config.appchainDBPath).
+		Path(config.AppchainDBPath).
 		WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
 			return kv.TableCfg{
 				checkpointBucket: {},
@@ -54,20 +54,20 @@ AppBlock types.AppchainBlock](sti STI,
 
 type AppchainConfig struct {
 	ChainID        uint64
-	emitterPort    string
-	appchainDBPath string
+	EmitterPort    string
+	AppchainDBPath string
 	TmpDBPath      string
-	eventStreamDir string
+	EventStreamDir string
 }
 
 // todo: it should be stored at the first run and checked on next
 func MakeAppchainConfig(chainID uint64) AppchainConfig {
 	return AppchainConfig{
 		ChainID:        chainID,
-		emitterPort:    ":50051",
-		appchainDBPath: "./test",
+		EmitterPort:    ":50051",
+		AppchainDBPath: "./test",
 		TmpDBPath:      "./test_tmp",
-		eventStreamDir: "",
+		EventStreamDir: "",
 	}
 }
 
@@ -97,7 +97,7 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
 	})
 
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to get last block: %w", err)
 	}
 
 runFor:
@@ -110,27 +110,27 @@ runFor:
 
 		batches, err := a.eventStream.GetNewBatchesBlocking(10)
 		if err != nil {
-			return err
+			return fmt.Errorf("Failed to get new batch: %w", err)
 		}
 
 		for _, batch := range batches {
 			err = func() error {
 				rwtx, err := a.AppchainDB.BeginRw(context.TODO())
 				if err != nil {
-					return err
+					return fmt.Errorf("Failed to begin write tx: %w", err)
 				}
 				defer rwtx.Rollback()
 
 				//2) Process Batch. Execute transaction there.
 				extTxs, err := a.appchainStateExecution.ProcessBatch(batch, rwtx)
 				if err != nil {
-					return err
+					return fmt.Errorf("Failed to process batch: %w", err)
 				}
 
 				// Разделение на блоки(возможное) тоже тут.
 				stateRoot, err := a.rootCalculator.StateRootCalculator(rwtx)
 				if err != nil {
-					return err
+					return fmt.Errorf("Failed to calculate state root: %w", err)
 				}
 
 				// blockNumber uint64, stateRoot [32]byte, previousBlockHash [32]byte, txs Batch[appTx]
@@ -140,14 +140,14 @@ runFor:
 
 				// сохраняем блок
 				if err = WriteBlock(rwtx, block.Number(), block.Bytes()); err != nil {
-					return err
+					return fmt.Errorf("Failed to write block: %w", err)
 				}
 
 				blockHash := block.Hash()
 
 				externalTXRoot, err := WriteExternalTransactions(context.TODO(), rwtx, blockNumber, extTxs)
 				if err != nil {
-					return err
+					return fmt.Errorf("Failed to write external transactions: %w", err)
 				}
 
 				checkpoint := types.Checkpoint{
@@ -160,17 +160,17 @@ runFor:
 
 				err = WriteCheckpoint(context.TODO(), rwtx, checkpoint)
 				if err != nil {
-					return err
+					return fmt.Errorf("Failed to write checkpoint: %w", err)
 				}
 
 				err = WriteLastBlock(rwtx, blockNumber, blockHash)
 				if err != nil {
-					return err
+					return fmt.Errorf("Failed to write last block: %w", err)
 				}
 
 				err = rwtx.Commit()
 				if err != nil {
-					return err
+					return fmt.Errorf("Failed to commit: %w", err)
 				}
 
 				previousBlockNumber = block.Number()
@@ -188,9 +188,9 @@ runFor:
 }
 
 func (a *Appchain[STI, appTx, AppBlock]) RunEmitterAPI() {
-	lis, err := net.Listen("tcp", a.config.emitterPort)
+	lis, err := net.Listen("tcp", a.config.EmitterPort)
 	if err != nil {
-		log.Fatalf("Не удалось создать listener на %s: %v", a.config.emitterPort, err)
+		log.Fatalf("Не удалось создать listener на %s: %v", a.config.EmitterPort, err)
 	}
 
 	// Создаем gRPC сервер
