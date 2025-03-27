@@ -31,6 +31,8 @@ ethnum = { version = "1", features = ["serde"] }
 byteorder = "1"
 bytes = { version = "1", features = ["serde"] }
 bytesize = "2"
+notify = "8"
+sha2 = "0.10"
 
 [build-dependencies]
 tonic-build = "0.13.0"

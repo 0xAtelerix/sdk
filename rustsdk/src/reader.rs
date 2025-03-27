@@ -7,10 +7,10 @@
 //! 4-byte size.
 
 use std::path::Path;
+use notify::{recommended_watcher, Event, RecursiveMode, Watcher};
 use thiserror::Error;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
-use tokio::time::{sleep, Duration};
 
 /// Custom error type for reader operations.
 #[derive(Debug, Error)]
@@ -161,17 +161,30 @@ impl EventReader {
 impl BatchReader for EventReader {
     async fn get_new_batches_blocking(&mut self, limit: usize) -> Result<Vec<ReadBatch>, ReaderError> {
         loop {
-            // If we haven't reached EOF, try reading batches.
             if !self.reached_eof {
                 let batches = self.read_new_batches(limit).await?;
                 if !batches.is_empty() {
                     return Ok(batches);
                 }
             }
-            // Simulate waiting for file changes (e.g., via a file watcher).
-            sleep(Duration::from_millis(100)).await;
-            // Reset reached_eof flag to reattempt reading.
-            self.reached_eof = false;
+            // Set up an asynchronous file watcher.
+            let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+            let path = Path::new(&self._data_file_path).to_path_buf();
+            // Create a watcher that sends events into the channel.
+            let mut watcher = recommended_watcher(
+                move |res: Result<Event, notify::Error>| {
+                    // We ignore errors for now; in production, handle them properly.
+                    let _ = tx.blocking_send(res);
+                },
+            ).map_err(|e| ReaderError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            watcher.watch(&path, RecursiveMode::NonRecursive)
+                .map_err(|e| ReaderError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            
+            // Wait for at least one file change event.
+            if let Some(_event) = rx.recv().await {
+                // Reset EOF flag and try reading again.
+                self.reached_eof = false;
+            }
         }
     }
 }

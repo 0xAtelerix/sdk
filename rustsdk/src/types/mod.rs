@@ -3,6 +3,7 @@
 //! This module includes definitions for application transactions, batches, external blocks,
 //! appchain blocks, checkpoints, and a state root calculator trait.
 
+use libmdbx::{DatabaseKind, Transaction, TransactionKind};
 use serde::{Serialize, Deserialize};
 use std::fmt::Debug;
 
@@ -66,9 +67,9 @@ pub struct Checkpoint {
 
 /// Trait for calculating the state root.
 /// This abstraction allows swapping out the state root calculation implementation.
-pub trait RootCalculator {
+pub trait RootCalculator<D: DatabaseKind> {
     /// Calculates and returns the state root.
-    fn state_root_calculator(&self) -> Result<[u8; 32], Box<dyn std::error::Error>>;
+    fn state_root_calculator<K: TransactionKind>(&self, txn: &mut Transaction<'_, K, D>) -> Result<[u8; 32], Box<dyn std::error::Error>>;
 }
 
 /// Trait defining a generic transaction pool interface.
