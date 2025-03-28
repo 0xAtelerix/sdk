@@ -53,6 +53,7 @@ func NewAppchain[STI StateTransitionInterface[appTx],
 		return Appchain[STI, appTx, AppBlock]{}, err
 	}
 
+	//todo надо открывать в run. Отсутствие файла - не должно быть причиной падения
 	log.Info().Str("event_stream_dir", config.EventStreamDir).Int64("from", startPos).Msg("Initializing event reader")
 	eventStream, err := NewEventReader(config.EventStreamDir, startPos)
 	if err != nil {

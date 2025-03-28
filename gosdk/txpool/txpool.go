@@ -31,7 +31,8 @@ func NewTxPool[T types.AppTransaction](dbPath string) (*TxPool[T], error) {
 		Path(dbPath).
 		WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
 			return kv.TableCfg{
-				txPoolBucket: {},
+				txPoolBucket:    {},
+				txBatchesBucket: {},
 			}
 		}).
 		Open()
