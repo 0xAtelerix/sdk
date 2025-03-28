@@ -86,6 +86,8 @@ type TxPoolInterface[T AppTransaction] interface {
 	// GetAllTransactions возвращает все транзакции
 	GetAllTransactions() ([]T, error)
 
+	CreateTransactionBatch() ([]byte, [][]byte, error)
+
 	// Close закрывает хранилище транзакций
 	Close() error
 }

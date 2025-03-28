@@ -2,7 +2,6 @@ package gosdk
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -184,7 +183,7 @@ func (s *AppchainEmitterServer[appTx]) CreateInternalTransactionsBatch(context.C
 		Str("method", "CreateInternalTransactionsBatch").
 		Msg("Received request")
 
-	txs, err := s.txpool.GetAllTransactions()
+	batchHash, txs, err := s.txpool.CreateTransactionBatch()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get transactions: %w", err)
 	}
@@ -195,19 +194,13 @@ func (s *AppchainEmitterServer[appTx]) CreateInternalTransactionsBatch(context.C
 		return nil, nil
 	}
 
-	hash := sha256.New()
 	txsBytes := make([]*emitterproto.ByteArray, len(txs))
 	for i := range txs {
-		b, err := json.Marshal(txs[i])
-		if err != nil {
-			return nil, fmt.Errorf("Failed to serialize transaction: %w, %v", err, txs[i])
-		}
-		txsBytes[i] = &emitterproto.ByteArray{Data: b}
-		hash.Write(b)
+		txsBytes[i] = &emitterproto.ByteArray{Data: txs[i]}
 	}
 
 	resp := &emitterproto.CreateInternalTransactionsBatchResponse{
-		BatchHash:            hash.Sum(nil),
+		BatchHash:            batchHash,
 		InternalTransactions: txsBytes,
 	}
 	log.Info().

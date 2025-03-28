@@ -2,9 +2,10 @@ package txpool
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-
+	"github.com/0xAtelerix/sdk/gosdk/utility"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
@@ -14,7 +15,8 @@ import (
 
 // Определяем таблицы для хранения транзакций
 const (
-	txPoolBucket = "txpool"
+	txPoolBucket    = "txpool"
+	txBatchesBucket = "txBatches"
 )
 
 // TxPool - generic пул транзакций с MDBX-хранилищем
@@ -109,6 +111,40 @@ func (p *TxPool[T]) GetAllTransactions() ([]T, error) {
 	}
 
 	return transactions, nil
+}
+
+// GetAllTransactions получает все транзакции (generic)
+func (p *TxPool[T]) CreateTransactionBatch() ([]byte, [][]byte, error) {
+	var transactions [][]byte
+	var batchHash []byte
+
+	err := p.db.Update(context.TODO(), func(txn kv.RwTx) error {
+		it, err := txn.Cursor(txPoolBucket)
+		if err != nil {
+			return err
+		}
+		defer it.Close()
+
+		for k, v, err := it.First(); k != nil && err == nil; k, v, err = it.Next() {
+			transactions = append(transactions, v)
+			err = txn.Delete(txPoolBucket, k)
+			if err != nil {
+				return err
+			}
+		}
+
+		txs := utility.Flatten(transactions)
+		hash := sha256.New()
+		hash.Write(txs)
+		batchHash = hash.Sum(nil)
+
+		return txn.Put(txBatchesBucket, batchHash, txs)
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return batchHash, transactions, nil
 }
 
 // Close закрывает MDBX
