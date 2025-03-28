@@ -3,8 +3,11 @@
 //! This module includes definitions for application transactions, batches, external blocks,
 //! appchain blocks, checkpoints, and a state root calculator trait.
 
+use libmdbx::{DatabaseKind, Transaction, TransactionKind};
 use serde::{Serialize, Deserialize};
 use std::fmt::Debug;
+
+use crate::proto;
 
 /// A marker trait for application transactions.
 /// All types used as appchain transactions must implement Serialize, Deserialize, and Debug.
@@ -66,9 +69,9 @@ pub struct Checkpoint {
 
 /// Trait for calculating the state root.
 /// This abstraction allows swapping out the state root calculation implementation.
-pub trait RootCalculator {
+pub trait RootCalculator<D: DatabaseKind> {
     /// Calculates and returns the state root.
-    fn state_root_calculator(&self) -> Result<[u8; 32], Box<dyn std::error::Error>>;
+    fn state_root_calculator<K: TransactionKind>(&self, txn: &mut Transaction<'_, K, D>) -> Result<[u8; 32], Box<dyn std::error::Error>>;
 }
 
 /// Trait defining a generic transaction pool interface.
@@ -86,4 +89,22 @@ pub trait TxPoolInterface<T: AppTransaction> {
 pub struct ExternalTransaction {
     pub chain_id: u64,
 	pub tx:       Vec<u8>,
+}
+
+impl From<proto::ExternalTransaction> for ExternalTransaction {
+    fn from(ptx: proto::ExternalTransaction) -> Self {
+        ExternalTransaction {
+            chain_id: ptx.chain_id,
+            tx: ptx.tx,
+        }
+    }
+}
+
+impl From<ExternalTransaction> for proto::ExternalTransaction {
+    fn from(ptx: ExternalTransaction) -> Self {
+        proto::ExternalTransaction {
+            chain_id: ptx.chain_id,
+            tx: ptx.tx,
+        }
+    }
 }

@@ -5,59 +5,62 @@
 //!
 //! It closely follows the original Go code structure and behavior.
 
-use std::convert::TryInto;
-use std::sync::Arc;
-use tokio::net::TcpListener;
-use tokio::sync::Mutex;
+use std::{convert::TryInto, sync::Arc};
+use sha2::{Sha256, Digest};
+use tokio::{net::TcpListener, sync::Mutex};
 use tokio_stream::wrappers::TcpListenerStream;
 use tonic::transport::Server;
 
-use crate::buckets::*;
-use crate::proto;
-use crate::reader::ReaderError;
-use crate::reader::{BatchReader, ReadBatch};
-use crate::state_transition::StateTransitionInterface;
-use crate::types::{AppTransaction, AppchainBlock, Batch, Checkpoint, RootCalculator};
+use crate::{
+    buckets::*,
+    proto,
+    reader::{BatchReader, ReadBatch, ReaderError},
+    state_transition::StateTransitionInterface,
+    types::{AppTransaction, AppchainBlock, Batch, Checkpoint, RootCalculator},
+};
 
+use libmdbx::{Database, RW, Transaction, WriteFlags};
 use tokio_util::sync::CancellationToken;
-use libmdbx::{Database, NoWriteMap, Transaction, RW, WriteFlags};
 
 /// Appchain error type.
 #[derive(Debug, thiserror::Error)]
 pub enum AppchainError {
     #[error("Database error: {0}")]
     Db(#[from] libmdbx::Error),
-    
+
     #[error("State transition error: {0}")]
     StateTransition(String),
-    
+
     #[error("Root calculation error: {0}")]
     RootCalculation(String),
-    
+
     #[error("Emitter error: {0}")]
     Emitter(String),
-    
+
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
-    
+
     #[error("Serialization error: {0}")]
     Serialization(#[from] bincode::Error),
-    
+
     #[error("Conversion error: {0}")]
     Conversion(String),
 
     // Add missing variants
     #[error("Data not found: {0}")]
     NotFound(String),
-    
+
     #[error("Corrupted data: {0}")]
     CorruptedData(String),
-    
+
     #[error("Reader data: {0}")]
     Reader(ReaderError),
 
     #[error("Block processing error: {0}")]
     BlockProcessing(String),
+
+    #[error("Protobuf decode error: {0}")]
+    ProtoDecode(#[from] prost::DecodeError),
 }
 
 /// Appchain configuration.
@@ -83,50 +86,51 @@ impl AppchainConfig {
     }
 }
 
-/// Type alias for our MDBX database.
-type DB = Database<NoWriteMap>;
-
 type BlockBuilderFn<Tx, Block> = dyn Fn(u64, [u8; 32], [u8; 32], &Batch<Tx>) -> Block + Send + Sync;
 
 /// The Appchain struct.
-pub struct Appchain<STI, Tx, Block, BR, E>
+pub struct Appchain<STI, Tx, D, Block, BR, E, RC>
 where
-    STI: StateTransitionInterface<Tx> + Send + Sync,
+    STI: StateTransitionInterface<Tx, D> + Send + Sync,
     Tx: AppTransaction + Send + Sync,
+    D: libmdbx::DatabaseKind,
     Block: AppchainBlock + Send + Sync,
     BR: BatchReader + Send + Sync,
     E: Clone + Send + Sync, // Emitter API server type
+    RC: RootCalculator<D> + Send + Sync,
 {
     pub state_transition: STI,
-    pub root_calculator: Arc<dyn RootCalculator + Send + Sync>,
+    pub root_calculator: Arc<RC>,
     /// Closure to build a block.
     pub block_builder: Arc<BlockBuilderFn<Tx, Block>>,
     pub event_stream: BR,
     /// Emitter API server.
     pub emitter_api: E,
     /// MDBX database environment.
-    pub appchain_db: Arc<Mutex<DB>>,
+    pub appchain_db: Arc<Mutex<Database<D>>>,
     pub config: AppchainConfig,
 }
 
-impl<STI, Tx, Block, BR, E> Appchain<STI, Tx, Block, BR, E>
+impl<STI, Tx, D, Block, BR, E, RC> Appchain<STI, Tx, D, Block, BR, E, RC>
 where
-    STI: StateTransitionInterface<Tx> + Send + Sync,
+    STI: StateTransitionInterface<Tx, D> + Send + Sync,
     Tx: AppTransaction + Send + Sync,
+    D: libmdbx::DatabaseKind,
     Block: AppchainBlock + Send + Sync,
     BR: BatchReader + Send + Sync,
     E: proto::emitter_server::Emitter + Clone + Send + Sync + 'static,
+    RC: RootCalculator<D> + Send + Sync,
 {
     /// Constructs a new Appchain.
     pub fn new(
         state_transition: STI,
-        root_calculator: Arc<dyn RootCalculator + Send + Sync>,
+        root_calculator: Arc<RC>,
         block_builder: Arc<BlockBuilderFn<Tx, Block>>,
         event_stream: BR,
         emitter_api: E,
         config: AppchainConfig,
     ) -> Result<Self, AppchainError> {
-        let db = DB::open(&config.appchain_db_path)?;
+        let db = Database::open(&config.appchain_db_path)?;
         Ok(Self {
             state_transition,
             root_calculator,
@@ -144,15 +148,14 @@ where
         let emitter_port = self.config.emitter_port.clone();
         let emitter_api = self.emitter_api.clone();
         tokio::spawn(async move {
-            if let Err(e) =
-                Self::run_emitter_api(emitter_port, emitter_api).await
-            {
+            if let Err(e) = Self::run_emitter_api(emitter_port, emitter_api).await {
                 log::error!("Emitter API error: {:?}", e);
             }
         });
 
         // Retrieve previous block state.
-        let (mut previous_block_number, mut previous_block_hash) = get_last_block(&self.appchain_db).await?;
+        let (mut previous_block_number, mut previous_block_hash) =
+            get_last_block(&self.appchain_db).await?;
 
         // Main processing loop.
         while !shutdown.is_cancelled() {
@@ -166,26 +169,37 @@ where
                 let typed_batch = parse_read_batch::<Tx>(raw_batch)
                     .map_err(|e| AppchainError::Conversion(e.to_string()))?;
 
-                let ext_txs = self
-                    .state_transition
-                    .process_batch(&typed_batch)
-                    .map_err(|e| AppchainError::StateTransition(format!("{:?}", e)))?;
-
-                let state_root = self
-                    .root_calculator
-                    .state_root_calculator()
-                    .map_err(|e| AppchainError::RootCalculation(e.to_string()))?;
-
                 let block_number = previous_block_number + 1;
-                let block = (self.block_builder)(block_number, state_root, previous_block_hash, &typed_batch);
 
                 let db_guard = self.appchain_db.lock().await;
                 {
                     // Begin a write transaction.
                     let mut txn = db_guard.begin_rw_txn()?;
-                    write_block(&mut txn, block.number(), &block.bytes()).map_err(|e| AppchainError::BlockProcessing(e.to_string()))?;
+                    let ext_txs = self
+                        .state_transition
+                        .process_batch(&typed_batch, &mut txn)
+                        .map_err(|e| AppchainError::StateTransition(format!("{:?}", e)))?;
+
+                    let state_root = self
+                        .root_calculator
+                        .state_root_calculator(&mut txn)
+                        .map_err(|e| AppchainError::RootCalculation(e.to_string()))?;
+
+                    let block = (self.block_builder)(
+                        block_number,
+                        state_root,
+                        previous_block_hash,
+                        &typed_batch,
+                    );
+
+                    write_block(&mut txn, block.number(), &block.bytes())
+                        .map_err(|e| AppchainError::BlockProcessing(e.to_string()))?;
+
                     let block_hash = block.hash();
-                    let external_tx_root = write_external_transactions(&mut txn, block_number, &ext_txs).map_err(|e| AppchainError::BlockProcessing(e.to_string()))?;
+                    let external_tx_root =
+                        write_external_transactions(&mut txn, block_number, &ext_txs)
+                            .map_err(|e| AppchainError::BlockProcessing(e.to_string()))?;
+
                     let checkpoint = Checkpoint {
                         chain_id: self.config.chain_id,
                         block_number,
@@ -193,9 +207,14 @@ where
                         state_root,
                         external_transactions_root: external_tx_root,
                     };
+
                     write_checkpoint(&mut txn, &checkpoint)?;
-                    write_last_block(&mut txn, block_number, block_hash).map_err(|e| AppchainError::BlockProcessing(e.to_string()))?;
+
+                    write_last_block(&mut txn, block_number, block_hash)
+                        .map_err(|e| AppchainError::BlockProcessing(e.to_string()))?;
+
                     txn.commit().map_err(AppchainError::Db)?;
+
                     previous_block_number = block.number();
                     previous_block_hash = block.hash();
                 }
@@ -205,23 +224,18 @@ where
     }
 
     /// Runs the emitter API gRPC server.
-    async fn run_emitter_api(
-        emitter_port: String,
-        emitter_api: E,
-    ) -> Result<(), AppchainError> {
+    async fn run_emitter_api(emitter_port: String, emitter_api: E) -> Result<(), AppchainError> {
         let addr = emitter_port
             .parse::<std::net::SocketAddr>()
             .map_err(|e| AppchainError::Emitter(e.to_string()))?;
-        let listener = TcpListener::bind(addr)
-            .await
-            .map_err(AppchainError::Io)?;
+        let listener = TcpListener::bind(addr).await.map_err(AppchainError::Io)?;
         let incoming = TcpListenerStream::new(listener);
 
         Server::builder()
             .add_service(proto::emitter_server::EmitterServer::new(emitter_api))
-            .add_service(
-                proto::health_server::HealthServer::new(HealthCheckServiceServer::default()),
-            )
+            .add_service(proto::health_server::HealthServer::new(
+                HealthCheckServiceServer::default(),
+            ))
             .serve_with_incoming(incoming)
             .await
             .map_err(|e| AppchainError::Emitter(e.to_string()))?;
@@ -237,7 +251,9 @@ enum ConversionError {
 }
 
 /// Converts a raw ReadBatch into a typed Batch<T>.
-fn parse_read_batch<T: AppTransaction>(raw: ReadBatch) -> Result<crate::types::Batch<T>, ConversionError> {
+fn parse_read_batch<T: AppTransaction>(
+    raw: ReadBatch,
+) -> Result<crate::types::Batch<T>, ConversionError> {
     use crate::types::Batch;
     let mut transactions = Vec::new();
     for event in raw.events {
@@ -253,7 +269,11 @@ fn parse_read_batch<T: AppTransaction>(raw: ReadBatch) -> Result<crate::types::B
 
 /// Writes a block into the "blocks" bucket.
 /// Accepts a mutable reference to a write transaction.
-fn write_block<E>(txn: &mut Transaction<RW, E>, block_number: u64, block_bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>>
+fn write_block<E>(
+    txn: &mut Transaction<RW, E>,
+    block_number: u64,
+    block_bytes: &[u8],
+) -> Result<(), Box<dyn std::error::Error>>
 where
     E: libmdbx::DatabaseKind,
 {
@@ -264,7 +284,11 @@ where
 }
 
 /// Writes last block info into the "config" bucket.
-fn write_last_block<E>(txn: &mut Transaction<RW, E>, number: u64, hash: [u8; 32]) -> Result<(), Box<dyn std::error::Error>>
+fn write_last_block<E>(
+    txn: &mut Transaction<RW, E>,
+    number: u64,
+    hash: [u8; 32],
+) -> Result<(), Box<dyn std::error::Error>>
 where
     E: libmdbx::DatabaseKind,
 {
@@ -272,33 +296,40 @@ where
     let mut value = [0u8; 8 + 32];
     value[..8].copy_from_slice(&number.to_be_bytes());
     value[8..].copy_from_slice(&hash);
-    txn.put(&table, LAST_BLOCK_KEY.as_bytes(), value, WriteFlags::empty())?;
+    txn.put(
+        &table,
+        LAST_BLOCK_KEY.as_bytes(),
+        value,
+        WriteFlags::empty(),
+    )?;
     Ok(())
 }
 
-async fn get_last_block(db: &Arc<Mutex<DB>>) -> Result<(u64, [u8; 32]), AppchainError> {
+async fn get_last_block<D: libmdbx::DatabaseKind>(db: &Arc<Mutex<Database<D>>>) -> Result<(u64, [u8; 32]), AppchainError> {
     let db_guard = db.lock().await;
     let txn = db_guard.begin_ro_txn()?;
     let table = txn.open_table(Some(CONFIG_BUCKET))?;
-    
-    let value = txn.get::<Vec<u8>>(&table, LAST_BLOCK_KEY.as_bytes())?
+
+    let value = txn
+        .get::<Vec<u8>>(&table, LAST_BLOCK_KEY.as_bytes())?
         .ok_or(AppchainError::NotFound("Last block data".into()))?;
 
     if value.len() != 8 + 32 {
         return Err(AppchainError::CorruptedData(format!(
-            "Invalid last block data length: {} bytes", 
+            "Invalid last block data length: {} bytes",
             value.len()
         )));
     }
 
     let number = u64::from_be_bytes(
-        value[..8].try_into()
-            .map_err(|_| AppchainError::CorruptedData("Block number conversion failed".into()))?
+        value[..8]
+            .try_into()
+            .map_err(|_| AppchainError::CorruptedData("Block number conversion failed".into()))?,
     );
-    
+
     let mut hash = [0u8; 32];
     hash.copy_from_slice(&value[8..40]);
-    
+
     Ok((number, hash))
 }
 
@@ -351,7 +382,8 @@ fn write_checkpoint<E>(
 where
     E: libmdbx::DatabaseKind,
 {
-    let value = serde_json::to_vec(checkpoint).map_err(|e| AppchainError::Conversion(e.to_string()))?;
+    let value =
+        serde_json::to_vec(checkpoint).map_err(|e| AppchainError::Conversion(e.to_string()))?;
     let table = txn.open_table(Some(CHECKPOINT_BUCKET))?;
     let key = checkpoint.block_number.to_be_bytes();
     txn.put(&table, key, &value, WriteFlags::empty())?;
@@ -359,9 +391,42 @@ where
 }
 
 /// Computes a Merkle root for the external transactions.
-/// (This is a placeholder; implement the actual Merkleization as needed.)
-fn merklize(_txs: &[crate::types::ExternalTransaction]) -> [u8; 32] {
-    [0u8; 32]
+pub fn merklize(txs: &[crate::types::ExternalTransaction]) -> [u8; 32] {
+    if txs.is_empty() {
+        return [0u8; 32];
+    }
+    // Hash each transaction.
+    let mut hashes: Vec<[u8; 32]> = txs
+        .iter()
+        .map(|tx| {
+            let mut hasher = Sha256::new();
+            hasher.update(&tx.tx);
+            let result = hasher.finalize();
+            let mut hash = [0u8; 32];
+            hash.copy_from_slice(&result);
+            hash
+        })
+        .collect();
+
+    // Build the Merkle tree.
+    while hashes.len() > 1 {
+        if hashes.len() % 2 != 0 {
+            // If the number of nodes is odd, duplicate the last node.
+            hashes.push(*hashes.last().unwrap());
+        }
+        let mut next_level = Vec::with_capacity(hashes.len() / 2);
+        for chunk in hashes.chunks(2) {
+            let mut hasher = Sha256::new();
+            hasher.update(chunk[0]);
+            hasher.update(chunk[1]);
+            let result = hasher.finalize();
+            let mut combined = [0u8; 32];
+            combined.copy_from_slice(&result);
+            next_level.push(combined);
+        }
+        hashes = next_level;
+    }
+    hashes[0]
 }
 
 #[derive(Default)]
@@ -378,7 +443,8 @@ impl proto::health_server::Health for HealthCheckServiceServer {
         }))
     }
 
-    type WatchStream = tokio_stream::wrappers::ReceiverStream<Result<proto::HealthCheckResponse, tonic::Status>>;
+    type WatchStream =
+        tokio_stream::wrappers::ReceiverStream<Result<proto::HealthCheckResponse, tonic::Status>>;
 
     async fn watch(
         &self,
@@ -386,6 +452,8 @@ impl proto::health_server::Health for HealthCheckServiceServer {
     ) -> Result<tonic::Response<Self::WatchStream>, tonic::Status> {
         // Implement your stream here
         let (_tx, rx) = tokio::sync::mpsc::channel(4);
-        Ok(tonic::Response::new(tokio_stream::wrappers::ReceiverStream::new(rx)))
+        Ok(tonic::Response::new(
+            tokio_stream::wrappers::ReceiverStream::new(rx),
+        ))
     }
 }
