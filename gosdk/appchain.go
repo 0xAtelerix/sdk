@@ -19,8 +19,8 @@ import (
 )
 
 func NewAppchain[STI StateTransitionInterface[appTx],
-	appTx types.AppTransaction,
-	AppBlock types.AppchainBlock](sti STI,
+appTx types.AppTransaction,
+AppBlock types.AppchainBlock](sti STI,
 	rootCalculator types.RootCalculator,
 	blockBuilder types.AppchainBlockConstructor[appTx, AppBlock],
 	txpool types.TxPoolInterface[appTx],
@@ -143,12 +143,12 @@ runFor:
 		}
 
 		if len(batches) == 0 {
-			log.Info().Msg("No new batches")
+			log.Debug().Msg("No new batches")
 			continue
 		} else {
-			log.Info().Int("batches num", len(batches)).Msg("received new batch")
+			log.Debug().Int("batches num", len(batches)).Msg("received new batch")
 			for i := range batches {
-				log.Info().Int("batch", i).Int("tx", len(batches[i].Transactions)).Int("blocks", len(batches[i].ExternalBlocks)).Msg("received new batch")
+				log.Debug().Int("batch", i).Int("tx", len(batches[i].Transactions)).Int("blocks", len(batches[i].ExternalBlocks)).Msg("received new batch")
 			}
 		}
 
@@ -203,7 +203,7 @@ runFor:
 					ExternalTransactionsRoot: externalTXRoot,
 				}
 
-				log.Info().Uint64("block", checkpoint.BlockNumber).Msg("Write checkpoint")
+				log.Debug().Uint64("block", checkpoint.BlockNumber).Msg("Write checkpoint")
 				err = WriteCheckpoint(context.TODO(), rwtx, checkpoint)
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to write checkpoint")
@@ -216,6 +216,7 @@ runFor:
 					return fmt.Errorf("Failed to write last block: %w", err)
 				}
 
+				log.Debug().Int64("Next snapshot pos", batch.EndOffset).Msg("Write checkpoint")
 				err = WriteSnapshotPosition(rwtx, currentEpoch, batch.EndOffset)
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to write snapshot pos")
@@ -294,6 +295,9 @@ func GetLastBlock(tx kv.Tx) (uint64, [32]byte, error) {
 	}
 
 	number := binary.BigEndian.Uint64(value[:8])
+	log.Debug().Uint64("Block", number).
+		Str("hash", hex.EncodeToString((value[8:]))).
+		Msg("GetLastBlock")
 
 	return number, ([32]byte)(value[8:]), err
 }
