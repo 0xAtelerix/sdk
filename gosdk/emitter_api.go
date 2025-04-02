@@ -23,7 +23,6 @@ type AppchainEmitterServer[appTx types.AppTransaction] struct {
 }
 
 // Создание нового сервера с MDBX
-// todo add txpool?
 func NewServer[appTx types.AppTransaction](db kv.RwDB, chainID uint64, txpool types.TxPoolInterface[appTx]) *AppchainEmitterServer[appTx] {
 	return &AppchainEmitterServer[appTx]{appchainDB: db, chainID: chainID, txpool: txpool}
 }

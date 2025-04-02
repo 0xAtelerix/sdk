@@ -1,6 +1,8 @@
 package types
 
 import (
+	"bytes"
+	"encoding/json"
 	"github.com/ledgerwatch/erigon-lib/kv"
 )
 
@@ -18,7 +20,8 @@ type Batch[appTx AppTransaction] struct {
 	ExternalBlocks []ExternalBlock
 	//todo add crossappchain tx
 	//ExternalTransactions [][]byte
-	EndOffset int64
+	EndOffset   int64
+	TxEndOffset int64 // txReader.position после чтения
 }
 
 type ExternalBlock struct {
@@ -99,4 +102,45 @@ type Checkpoint struct {
 	BlockHash                [32]byte
 	StateRoot                [32]byte
 	ExternalTransactionsRoot [32]byte
+}
+
+type Event struct {
+	Base         BaseEvent
+	CreationTime uint64
+	//todo возможно тут должно быть MedianTime
+	PrevEpochHash [32]byte
+
+	//батчи транзакций, которые были уже переданы другим валидаторам и у нас есть подпись, что они получены
+	TxPool []AppchainTxPoolBatch
+	//обновления состояния аппчейна, какой новый стейт рут, блок и внешние транзакции
+	Appchains []Checkpoint
+	// внешние блоки
+	BlockVotes []ExternalBlock
+
+	Signature [64]byte
+}
+
+func (e Event) Bytes() ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	if err := enc.Encode(e); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+
+}
+
+type BaseEvent struct {
+	ID      [32]byte
+	Epoch   uint32
+	Seq     uint32
+	Frame   uint32
+	Creator uint32
+	Lamport uint32
+	Parents [][32]byte
+}
+
+type AppchainAddresses struct {
+	ChainID        uint32
+	EmitterAddress string
 }

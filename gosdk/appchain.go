@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
+	"github.com/0xAtelerix/sdk/gosdk/types"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
@@ -13,23 +15,21 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	"net"
-
-	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
-	"github.com/0xAtelerix/sdk/gosdk/types"
+	"path/filepath"
 )
 
 func NewAppchain[STI StateTransitionInterface[appTx],
-appTx types.AppTransaction,
-AppBlock types.AppchainBlock](sti STI,
+	appTx types.AppTransaction,
+	AppBlock types.AppchainBlock](sti STI,
 	rootCalculator types.RootCalculator,
 	blockBuilder types.AppchainBlockConstructor[appTx, AppBlock],
 	txpool types.TxPoolInterface[appTx],
 	config AppchainConfig) (Appchain[STI, appTx, AppBlock], error) {
 
-	log.Info().Str("db_path", config.AppchainDBPath).Msg("Initializing MDBX database")
+	log.Info().Str("db_path", config.AppchainDBPath).Msg("Initializing appchain database")
 
 	// инициализируем базу на нашей стороне
-	db, err := mdbx.NewMDBX(mdbxlog.New()).
+	appchainDB, err := mdbx.NewMDBX(mdbxlog.New()).
 		Path(config.AppchainDBPath).
 		WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
 			return defaultTables
@@ -40,28 +40,31 @@ AppBlock types.AppchainBlock](sti STI,
 		return Appchain[STI, appTx, AppBlock]{}, fmt.Errorf("failed to initialize MDBX: %w", err)
 	}
 
-	startPos := int64(8)
-	err = db.View(context.TODO(), func(tx kv.Tx) error {
-		pos, err := ReadSnapshotPosition(tx, currentEpoch)
+	startEventPos := int64(8)
+	startTxPos := int64(8)
+
+	err = appchainDB.View(context.TODO(), func(tx kv.Tx) error {
+		startEventPos, err = ReadSnapshotPosition(tx, currentEpoch)
 		if err != nil {
 			return err
 		}
-		startPos = pos
-		return nil
+
+		startTxPos, err = ReadTxSnapshotPosition(tx, currentEpoch)
+		return err
 	})
 	if err != nil {
 		return Appchain[STI, appTx, AppBlock]{}, err
 	}
 
 	//todo надо открывать в run. Отсутствие файла - не должно быть причиной падения
-	log.Info().Str("event_stream_dir", config.EventStreamDir).Int64("from", startPos).Msg("Initializing event reader")
-	eventStream, err := NewEventReader(config.EventStreamDir, startPos)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to initialize event reader")
-		return Appchain[STI, appTx, AppBlock]{}, fmt.Errorf("failed to initialize event reader: %w", err)
-	}
+	log.Info().Str("dir", config.EventStreamDir).Int64("start event", startEventPos).Int64("start tx", startTxPos).Msg("Initializing event readers")
+	eventStream, err := NewEventStreamWrapper[appTx](filepath.Join(config.EventStreamDir, "epoch_0.data"),
+		filepath.Join(config.TxStreamDir, fmt.Sprintf("%d", config.ChainID), "epoch_0_"+fmt.Sprintf("%d", config.ChainID)+"_tx.data"),
+		uint32(config.ChainID),
+		startEventPos, startTxPos,
+	)
 
-	emiterAPI := NewServer(db, config.ChainID, txpool)
+	emiterAPI := NewServer(appchainDB, config.ChainID, txpool)
 	log.Info().Msg("Appchain initialized successfully")
 
 	return Appchain[STI, appTx, AppBlock]{
@@ -69,11 +72,9 @@ AppBlock types.AppchainBlock](sti STI,
 		rootCalculator:         rootCalculator,
 		blockBuilder:           blockBuilder,
 		emiterAPI:              emiterAPI,
-		AppchainDB:             db,
-		eventStream: &EventStreamWrapper[appTx]{
-			eventStream: eventStream,
-		},
-		config: config,
+		AppchainDB:             appchainDB,
+		eventStream:            eventStream,
+		config:                 config,
 	}, nil
 }
 
@@ -83,6 +84,7 @@ type AppchainConfig struct {
 	AppchainDBPath string
 	TmpDBPath      string
 	EventStreamDir string
+	TxStreamDir    string
 }
 
 // todo: it should be stored at the first run and checked on next
@@ -90,9 +92,10 @@ func MakeAppchainConfig(chainID uint64) AppchainConfig {
 	return AppchainConfig{
 		ChainID:        chainID,
 		EmitterPort:    ":50051",
-		AppchainDBPath: "./test",
-		TmpDBPath:      "./test_tmp",
-		EventStreamDir: "",
+		AppchainDBPath: "appchaindb",
+		TmpDBPath:      "tmpdb",
+		EventStreamDir: "epochs",
+		TxStreamDir:    fmt.Sprintf("%d", chainID),
 	}
 }
 
@@ -396,6 +399,31 @@ func ReadSnapshotPosition(tx kv.Tx, epoch uint32) (int64, error) {
 	}
 
 	return int64(binary.BigEndian.Uint64(val)), nil
+}
+
+func ReadTxSnapshotPosition(tx kv.Tx, epoch uint32) (int64, error) {
+	key := make([]byte, 4)
+	binary.BigEndian.PutUint32(key, epoch)
+
+	val, err := tx.GetOne(txSnapshot, key)
+	if err != nil {
+		return 8, nil // fallback: пропускаем заголовок
+	}
+	if len(val) != 8 {
+		return 8, nil
+	}
+
+	return int64(binary.BigEndian.Uint64(val)), nil
+}
+
+func WriteTxSnapshotPosition(rwtx kv.RwTx, epoch uint32, pos int64) error {
+	key := make([]byte, 4)
+	binary.BigEndian.PutUint32(key, epoch)
+
+	val := make([]byte, 8)
+	binary.BigEndian.PutUint64(val, uint64(pos))
+
+	return rwtx.Put(txSnapshot, key, val)
 }
 
 var currentEpoch = uint32(1)
