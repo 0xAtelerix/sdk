@@ -2,12 +2,14 @@ package gosdk
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
 	"github.com/0xAtelerix/sdk/gosdk/types"
+	"github.com/0xAtelerix/sdk/gosdk/utility"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/proto"
@@ -161,11 +163,25 @@ func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(ctx context.Conte
 	// Формируем список блоков с транзакциями
 	var blocks []*emitterproto.GetExternalTransactionsResponse_BlockTransactions
 	for blockNumber, txs := range blockMap {
+		var rawTxs [][]byte
+		for _, tx := range txs {
+			rawTxs = append(rawTxs, tx.Tx)
+		}
+		// Генерация корректного хеша
+		txsFlat := utility.Flatten(rawTxs)
+		hash := sha256.Sum256(txsFlat)
+
 		blocks = append(blocks, &emitterproto.GetExternalTransactionsResponse_BlockTransactions{
 			BlockNumber:          blockNumber,
-			TransactionsRootHash: []byte("fake_tx_hash"), // Можно заменить на реальный хеш
+			TransactionsRootHash: hash[:], //todo Нужно заменить на реальный root
 			ExternalTransactions: txs,
 		})
+
+		log.Debug().
+			Uint64("block", blockNumber).
+			Int("txCount", len(txs)).
+			Str("hash", hex.EncodeToString(hash[:])).
+			Msg("Generated hash for external transactions block")
 	}
 
 	return &emitterproto.GetExternalTransactionsResponse{Blocks: blocks}, nil
