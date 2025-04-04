@@ -18,13 +18,12 @@ import (
 	"path/filepath"
 )
 
-func NewAppchain[STI StateTransitionInterface[appTx],
-	appTx types.AppTransaction,
+func NewAppchain[STI StateTransitionInterface[AppTx],
+	AppTx types.AppTransaction,
 	AppBlock types.AppchainBlock](sti STI,
-	rootCalculator types.RootCalculator,
-	blockBuilder types.AppchainBlockConstructor[appTx, AppBlock],
-	txpool types.TxPoolInterface[appTx],
-	config AppchainConfig) (Appchain[STI, appTx, AppBlock], error) {
+	blockBuilder types.AppchainBlockConstructor[AppTx, AppBlock],
+	txpool types.TxPoolInterface[AppTx],
+	config AppchainConfig, options ...func(a *Appchain[STI, AppTx, AppBlock])) (Appchain[STI, AppTx, AppBlock], error) {
 
 	log.Info().Str("db_path", config.AppchainDBPath).Msg("Initializing appchain database")
 
@@ -37,58 +36,44 @@ func NewAppchain[STI StateTransitionInterface[appTx],
 		Open()
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to initialize MDBX")
-		return Appchain[STI, appTx, AppBlock]{}, fmt.Errorf("failed to initialize MDBX: %w", err)
+		return Appchain[STI, AppTx, AppBlock]{}, fmt.Errorf("failed to initialize MDBX: %w", err)
 	}
-
-	startEventPos := int64(8)
-	startTxPos := int64(8)
-
-	err = appchainDB.View(context.TODO(), func(tx kv.Tx) error {
-		startEventPos, err = ReadSnapshotPosition(tx, currentEpoch)
-		if err != nil {
-			return err
-		}
-
-		startTxPos, err = ReadTxSnapshotPosition(tx, currentEpoch)
-		return err
-	})
-	if err != nil {
-		return Appchain[STI, appTx, AppBlock]{}, err
-	}
-
-	//todo надо открывать в run. Отсутствие файла - не должно быть причиной падения
-	log.Info().Str("dir", config.EventStreamDir).Int64("start event", startEventPos).Int64("start tx", startTxPos).Msg("Initializing event readers")
-	eventStream, err := NewEventStreamWrapper[appTx](filepath.Join(config.EventStreamDir, "epoch_0.data"),
-		filepath.Join(config.TxStreamDir, fmt.Sprintf("%d", config.ChainID), "epoch_0_"+fmt.Sprintf("%d", config.ChainID)+"_tx.data"),
-		uint32(config.ChainID),
-		startEventPos, startTxPos,
-	)
 
 	emiterAPI := NewServer(appchainDB, config.ChainID, txpool)
 	log.Info().Msg("Appchain initialized successfully")
 	multichainDB, err := NewMultichainStateAccess(config.MultichainStateDB)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to initialize MultichainStateAccess")
-		return Appchain[STI, appTx, AppBlock]{}, err
+		return Appchain[STI, AppTx, AppBlock]{}, err
 	}
-
-	return Appchain[STI, appTx, AppBlock]{
+	appchain := Appchain[STI, AppTx, AppBlock]{
 		appchainStateExecution: sti,
-		rootCalculator:         rootCalculator,
+		rootCalculator:         NewStubRootCalculator(),
 		blockBuilder:           blockBuilder,
 		emiterAPI:              emiterAPI,
 		AppchainDB:             appchainDB,
-		eventStream:            eventStream,
 		config:                 config,
 		multichainDB:           multichainDB,
-	}, nil
+	}
+	for _, option := range options {
+		option(&appchain)
+	}
+
+	return appchain, nil
+}
+
+func WithRootCalculator[STI StateTransitionInterface[AppTx],
+	AppTx types.AppTransaction,
+	AppBlock types.AppchainBlock](rc types.RootCalculator) func(a *Appchain[STI, AppTx, AppBlock]) {
+	return func(a *Appchain[STI, AppTx, AppBlock]) {
+		a.rootCalculator = rc
+	}
 }
 
 type AppchainConfig struct {
 	ChainID           uint64
 	EmitterPort       string
 	AppchainDBPath    string
-	TmpDBPath         string
 	EventStreamDir    string
 	TxStreamDir       string
 	MultichainStateDB map[uint32]string
@@ -99,8 +84,7 @@ func MakeAppchainConfig(chainID uint64) AppchainConfig {
 	return AppchainConfig{
 		ChainID:        chainID,
 		EmitterPort:    ":50051",
-		AppchainDBPath: "appchaindb",
-		TmpDBPath:      "tmpdb",
+		AppchainDBPath: "chaindb",
 		EventStreamDir: "epochs",
 		TxStreamDir:    fmt.Sprintf("%d", chainID),
 	}
@@ -111,7 +95,6 @@ type Appchain[STI StateTransitionInterface[appTx], appTx types.AppTransaction, A
 	rootCalculator         types.RootCalculator
 	blockBuilder           types.AppchainBlockConstructor[appTx, AppBlock]
 
-	eventStream  BatchReader[appTx] //тут наши детерминированные снепшоты
 	emiterAPI    emitterproto.EmitterServer
 	AppchainDB   kv.RwDB
 	config       AppchainConfig
@@ -123,10 +106,22 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
 
 	go a.RunEmitterAPI()
 
+	startEventPos, startTxPos, err := GetLastStreamPositions(a.AppchainDB)
+	if err != nil {
+		return err
+	}
+
+	//todo надо открывать в run. Отсутствие файла - не должно быть причиной падения
+	log.Info().Str("dir", a.config.EventStreamDir).Int64("start event", startEventPos).Int64("start tx", startTxPos).Msg("Initializing event readers")
+	eventStream, err := NewEventStreamWrapper[appTx](filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
+		filepath.Join(a.config.TxStreamDir, fmt.Sprintf("%d", a.config.ChainID), "epoch_0_"+fmt.Sprintf("%d", a.config.ChainID)+"_tx.data"),
+		uint32(a.config.ChainID),
+		startEventPos, startTxPos,
+	)
+
 	var (
 		previousBlockNumber uint64
 		previousBlockHash   [32]byte
-		err                 error
 	)
 
 	err = a.AppchainDB.View(ctx, func(tx kv.Tx) error {
@@ -148,7 +143,7 @@ runFor:
 		default:
 		}
 
-		batches, err := a.eventStream.GetNewBatchesBlocking(10)
+		batches, err := eventStream.GetNewBatchesBlocking(10)
 		if err != nil {
 			return fmt.Errorf("Failed to get new batch: %w", err)
 		}
@@ -435,3 +430,23 @@ func WriteTxSnapshotPosition(rwtx kv.RwTx, epoch uint32, pos int64) error {
 }
 
 var currentEpoch = uint32(1)
+
+func GetLastStreamPositions(appchainDB kv.RwDB) (int64, int64, error) {
+	startEventPos := int64(8)
+	startTxPos := int64(8)
+
+	err := appchainDB.View(context.TODO(), func(tx kv.Tx) error {
+		var err error
+		startEventPos, err = ReadSnapshotPosition(tx, currentEpoch)
+		if err != nil {
+			return err
+		}
+
+		startTxPos, err = ReadTxSnapshotPosition(tx, currentEpoch)
+		return err
+	})
+	if err != nil {
+		return 0, 0, fmt.Errorf("Faild to get stream positions:%w", err)
+	}
+	return startEventPos, startTxPos, nil
+}

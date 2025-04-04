@@ -4,13 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"fmt"
+	"github.com/0xAtelerix/sdk/gosdk/types"
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 	"github.com/ledgerwatch/erigon-lib/kv"
-	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
-	mdbxlog "github.com/ledgerwatch/log/v3"
-
-	"github.com/0xAtelerix/sdk/gosdk/types"
 )
 
 // Определяем таблицы для хранения транзакций
@@ -19,28 +15,19 @@ const (
 	txBatchesBucket = "txBatches"
 )
 
+var TxPoolTables = kv.TableCfg{
+	txPoolBucket:    {},
+	txBatchesBucket: {},
+}
+
 // TxPool - generic пул транзакций с MDBX-хранилищем
 type TxPool[T types.AppTransaction] struct {
 	db kv.RwDB
 }
 
 // NewTxPool создает новый пул транзакций с MDBX-хранилищем
-func NewTxPool[T types.AppTransaction](dbPath string) (*TxPool[T], error) {
-	// Инициализация MDBX с логированием
-	db, err := mdbx.NewMDBX(mdbxlog.New()).
-		Path(dbPath).
-		WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
-			return kv.TableCfg{
-				txPoolBucket:    {},
-				txBatchesBucket: {},
-			}
-		}).
-		Open()
-	if err != nil {
-		return nil, fmt.Errorf("ошибка инициализации MDBX: %w", err)
-	}
-
-	return &TxPool[T]{db: db}, nil
+func NewTxPool[T types.AppTransaction](db kv.RwDB) *TxPool[T] {
+	return &TxPool[T]{db: db}
 }
 
 // AddTransaction добавляет транзакцию (generic)
@@ -86,7 +73,7 @@ func (p *TxPool[T]) RemoveTransaction(hash string) error {
 }
 
 // GetAllTransactions получает все транзакции (generic)
-func (p *TxPool[T]) GetAllTransactions() ([]T, error) {
+func (p *TxPool[T]) GetPendingTransactions() ([]T, error) {
 	var transactions []T
 
 	err := p.db.View(context.TODO(), func(txn kv.Tx) error {

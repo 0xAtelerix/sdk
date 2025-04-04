@@ -86,8 +86,8 @@ type TxPoolInterface[T AppTransaction] interface {
 	// RemoveTransaction удаляет транзакцию из пула
 	RemoveTransaction(hash string) error
 
-	// GetAllTransactions возвращает все транзакции
-	GetAllTransactions() ([]T, error)
+	// GetPendingTransactions возвращает все транзакции
+	GetPendingTransactions() ([]T, error)
 
 	CreateTransactionBatch() ([]byte, [][]byte, error)
 

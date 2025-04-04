@@ -2,6 +2,10 @@ package txpool
 
 import (
 	"encoding/json"
+	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
+	mdbxlog "github.com/ledgerwatch/log/v3"
+	"github.com/stretchr/testify/require"
 	"os"
 	"pgregory.net/rapid"
 	"testing"
@@ -38,11 +42,17 @@ func TestTxPool_PropertyBased(t *testing.T) {
 		dbPath := "./test_txpool_db"
 		defer os.RemoveAll(dbPath) // Удаляем базу после теста
 
+		// Инициализация MDBX с логированием
+		db, err := mdbx.NewMDBX(mdbxlog.New()).
+			Path(dbPath).
+			WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
+				return TxPoolTables
+			}).
+			Open()
+		require.NoError(t, err)
+
 		// Создаем новый TxPool
-		txPool, err := NewTxPool[CustomTransaction](dbPath)
-		if err != nil {
-			t.Fatalf("Ошибка создания TxPool: %v", err)
-		}
+		txPool := NewTxPool[CustomTransaction](db)
 		defer txPool.Close()
 
 		// Генерируем случайное количество транзакций (1-100)
@@ -81,8 +91,8 @@ func TestTxPool_PropertyBased(t *testing.T) {
 			}
 		}
 
-		// Проверяем, что GetAllTransactions возвращает корректное количество
-		allTxs, err := txPool.GetAllTransactions()
+		// Проверяем, что GetPendingTransactions возвращает корректное количество
+		allTxs, err := txPool.GetPendingTransactions()
 		if err != nil {
 			t.Fatalf("Ошибка получения всех транзакций: %v", err)
 		}
@@ -124,8 +134,8 @@ func TestTxPool_PropertyBased(t *testing.T) {
 			}
 		}
 
-		// Проверяем, что GetAllTransactions теперь возвращает уменьшенное количество
-		allTxs, err = txPool.GetAllTransactions()
+		// Проверяем, что GetPendingTransactions теперь возвращает уменьшенное количество
+		allTxs, err = txPool.GetPendingTransactions()
 		if err != nil {
 			t.Fatalf("Ошибка получения всех транзакций: %v", err)
 		}

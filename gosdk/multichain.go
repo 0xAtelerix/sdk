@@ -29,7 +29,7 @@ func NewMultichainStateAccess(cfg map[uint32]string) (*MultichainStateAccess, er
 			Path(path).Readonly().Open()
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to initialize MDBX")
-			return nil, fmt.Errorf("failed to initialize %v db: %w", err)
+			return nil, fmt.Errorf("failed to initialize %v db: %w", chainID, err)
 		}
 		multichainStateDB.stateAccessDB[chainID] = stateAccessDB
 	}
