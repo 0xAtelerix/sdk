@@ -39,6 +39,16 @@ func NewAppchain[STI StateTransitionInterface[appTx],
 		log.Error().Err(err).Msg("Failed to initialize MDBX")
 		return Appchain[STI, appTx, AppBlock]{}, fmt.Errorf("failed to initialize MDBX: %w", err)
 	}
+	// инициализируем базу на нашей стороне
+	multichainDB, err := mdbx.NewMDBX(mdbxlog.New()).
+		Path(config.MultichainDBPath).
+		WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
+			return multichainTables
+		}).Readonly().Open()
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to initialize MDBX")
+		return Appchain[STI, appTx, AppBlock]{}, fmt.Errorf("failed to initialize MDBX: %w", err)
+	}
 
 	startEventPos := int64(8)
 	startTxPos := int64(8)
@@ -75,16 +85,18 @@ func NewAppchain[STI StateTransitionInterface[appTx],
 		AppchainDB:             appchainDB,
 		eventStream:            eventStream,
 		config:                 config,
+		multichainDB:           MultichainStateAccess{multichainDB},
 	}, nil
 }
 
 type AppchainConfig struct {
-	ChainID        uint64
-	EmitterPort    string
-	AppchainDBPath string
-	TmpDBPath      string
-	EventStreamDir string
-	TxStreamDir    string
+	ChainID          uint64
+	EmitterPort      string
+	AppchainDBPath   string
+	TmpDBPath        string
+	EventStreamDir   string
+	TxStreamDir      string
+	MultichainDBPath string
 }
 
 // todo: it should be stored at the first run and checked on next
@@ -104,10 +116,11 @@ type Appchain[STI StateTransitionInterface[appTx], appTx types.AppTransaction, A
 	rootCalculator         types.RootCalculator
 	blockBuilder           types.AppchainBlockConstructor[appTx, AppBlock]
 
-	eventStream BatchReader[appTx] //тут наши детерминированные снепшоты
-	emiterAPI   emitterproto.EmitterServer
-	AppchainDB  kv.RwDB
-	config      AppchainConfig
+	eventStream  BatchReader[appTx] //тут наши детерминированные снепшоты
+	emiterAPI    emitterproto.EmitterServer
+	AppchainDB   kv.RwDB
+	config       AppchainConfig
+	multichainDB MultichainStateAccess
 }
 
 func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {

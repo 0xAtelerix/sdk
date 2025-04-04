@@ -24,3 +24,13 @@ var defaultTables = kv.TableCfg{
 	stateBucket:      {},
 	snapshot:         {},
 }
+
+const (
+	EthBlocks   = "eth_blocks"
+	EthReceipts = "eth_receipts"
+)
+
+var multichainTables = kv.TableCfg{
+	EthBlocks:   {},
+	EthReceipts: {},
+}
