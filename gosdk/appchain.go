@@ -15,7 +15,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	"net"
+	"os"
 	"path/filepath"
+	"time"
 )
 
 func NewAppchain[STI StateTransitionInterface[AppTx],
@@ -113,6 +115,15 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
 
 	//todo надо открывать в run. Отсутствие файла - не должно быть причиной падения
 	log.Info().Str("dir", a.config.EventStreamDir).Int64("start event", startEventPos).Int64("start tx", startTxPos).Msg("Initializing event readers")
+	for {
+		_, err := os.Stat(a.config.EventStreamDir)
+		if err != nil {
+			log.Warn().Err(err).Msg("waiting event stream file")
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+	}
 	eventStream, err := NewEventStreamWrapper[appTx](filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
 		filepath.Join(a.config.TxStreamDir, fmt.Sprintf("%d", a.config.ChainID), "epoch_0_"+fmt.Sprintf("%d", a.config.ChainID)+"_tx.data"),
 		uint32(a.config.ChainID),
