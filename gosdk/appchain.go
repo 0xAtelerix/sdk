@@ -39,16 +39,6 @@ func NewAppchain[STI StateTransitionInterface[appTx],
 		log.Error().Err(err).Msg("Failed to initialize MDBX")
 		return Appchain[STI, appTx, AppBlock]{}, fmt.Errorf("failed to initialize MDBX: %w", err)
 	}
-	// инициализируем базу на нашей стороне
-	multichainDB, err := mdbx.NewMDBX(mdbxlog.New()).
-		Path(config.MultichainDBPath).
-		WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
-			return multichainTables
-		}).Readonly().Open()
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to initialize MDBX")
-		return Appchain[STI, appTx, AppBlock]{}, fmt.Errorf("failed to initialize MDBX: %w", err)
-	}
 
 	startEventPos := int64(8)
 	startTxPos := int64(8)
@@ -76,6 +66,11 @@ func NewAppchain[STI StateTransitionInterface[appTx],
 
 	emiterAPI := NewServer(appchainDB, config.ChainID, txpool)
 	log.Info().Msg("Appchain initialized successfully")
+	multichainDB, err := NewMultichainStateAccess(config.MultichainStateDB)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to initialize MultichainStateAccess")
+		return Appchain[STI, appTx, AppBlock]{}, err
+	}
 
 	return Appchain[STI, appTx, AppBlock]{
 		appchainStateExecution: sti,
@@ -85,18 +80,18 @@ func NewAppchain[STI StateTransitionInterface[appTx],
 		AppchainDB:             appchainDB,
 		eventStream:            eventStream,
 		config:                 config,
-		multichainDB:           MultichainStateAccess{multichainDB},
+		multichainDB:           multichainDB,
 	}, nil
 }
 
 type AppchainConfig struct {
-	ChainID          uint64
-	EmitterPort      string
-	AppchainDBPath   string
-	TmpDBPath        string
-	EventStreamDir   string
-	TxStreamDir      string
-	MultichainDBPath string
+	ChainID           uint64
+	EmitterPort       string
+	AppchainDBPath    string
+	TmpDBPath         string
+	EventStreamDir    string
+	TxStreamDir       string
+	MultichainStateDB map[uint32]string
 }
 
 // todo: it should be stored at the first run and checked on next
@@ -120,7 +115,7 @@ type Appchain[STI StateTransitionInterface[appTx], appTx types.AppTransaction, A
 	emiterAPI    emitterproto.EmitterServer
 	AppchainDB   kv.RwDB
 	config       AppchainConfig
-	multichainDB MultichainStateAccess
+	multichainDB *MultichainStateAccess
 }
 
 func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
