@@ -50,6 +50,12 @@ type MultichainStateAccess struct {
 	stateAccessDB map[uint32]kv.RoDB
 }
 
+func (sa *MultichainStateAccess) Close() error {
+	for _, db := range sa.stateAccessDB {
+		db.Close()
+	}
+	return nil
+}
 func (sa *MultichainStateAccess) EthBlock(block types.ExternalBlock) (*gethtypes.Block, error) {
 	if _, ok := sa.stateAccessDB[uint32(block.ChainID)]; !ok {
 		return nil, fmt.Errorf("failed to find blockchain db %v", block.ChainID)
