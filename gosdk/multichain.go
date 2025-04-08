@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	EthBlocks   = "blocks"
-	EthReceipts = "receipts"
+	ChainIDBucket = "chainid"
+	EthBlocks     = "blocks"
+	EthReceipts   = "receipts"
 )
 
 // todo add tests
