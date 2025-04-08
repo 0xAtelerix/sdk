@@ -56,7 +56,7 @@ func (sa *MultichainStateAccess) EthBlock(block types.ExternalBlock) (*gethtypes
 			return err
 		}
 		//todo fixme rlp or faster encoding
-		return rlp.DecodeBytes(v, &block)
+		return rlp.DecodeBytes(v, &ethBlock)
 	})
 	if err != nil {
 		return nil, err
