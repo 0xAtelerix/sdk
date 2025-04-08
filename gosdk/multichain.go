@@ -89,7 +89,7 @@ func (sa *MultichainStateAccess) EthReceipts(block types.ExternalBlock) ([]*geth
 			return err
 		}
 		k, v, err := c.Seek(key)
-		for ; err == nil && len(k) == 72 && bytes.Equal(key[8:8+32], k[8:8+32]); k, v, err = c.Next() {
+		for ; err == nil && len(k) == 44 && bytes.Equal(key[8:8+32], k[8:8+32]); k, v, err = c.Next() {
 			r := gethtypes.Receipt{}
 			//todo fixme rlp or faster encoding
 			err = rlp.DecodeBytes(v, &r)
