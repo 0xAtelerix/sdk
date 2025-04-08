@@ -21,6 +21,12 @@ const (
 	EthReceipts   = "receipts"
 )
 
+var EvmTables = kv.TableCfg{
+	ChainIDBucket: {},
+	EthBlocks:     {},
+	EthReceipts:   {},
+}
+
 // todo add tests
 func NewMultichainStateAccess(cfg map[uint32]string) (*MultichainStateAccess, error) {
 	multichainStateDB := MultichainStateAccess{
@@ -28,7 +34,9 @@ func NewMultichainStateAccess(cfg map[uint32]string) (*MultichainStateAccess, er
 	}
 	for chainID, path := range cfg {
 		stateAccessDB, err := mdbx.NewMDBX(mdbxlog.New()).
-			Path(path).Readonly().Open()
+			Path(path).WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
+			return EvmTables
+		}).Readonly().Open()
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to initialize MDBX")
 			return nil, fmt.Errorf("failed to initialize %v db: %w", chainID, err)
