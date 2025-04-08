@@ -79,7 +79,7 @@ func (sa *MultichainStateAccess) EthReceipts(block types.ExternalBlock) ([]*geth
 		return nil, fmt.Errorf("failed to find blockchain db %v", block.ChainID)
 	}
 
-	key := make([]byte, 72)
+	key := make([]byte, 44)
 	binary.BigEndian.PutUint64(key[:8], block.BlockNumber)
 	copy(key[8:8+32], block.BlockHash[:])
 	blockReceipts := []*gethtypes.Receipt{}
