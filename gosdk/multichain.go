@@ -161,3 +161,13 @@ func (sa *MultichainStateAccess) SolanaBlock(block types.ExternalBlock) (*client
 
 	return &solBlock, nil
 }
+
+// ViewDB may be not deterministic because on diffenet validators you may have different tip.
+// You can rely on received finalized external blocks that you have received from consensus.
+func (a *MultichainStateAccess) ViewDB(chainID uint32, fn func(tx kv.Tx) error) error {
+	db, ok := a.stateAccessDB[chainID]
+	if !ok {
+		return fmt.Errorf("no DB for chainID %d", chainID)
+	}
+	return db.View(context.Background(), fn)
+}
