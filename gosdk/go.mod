@@ -3,6 +3,7 @@ module github.com/0xAtelerix/sdk/gosdk
 go 1.24.1
 
 require (
+	github.com/blocto/solana-go-sdk v1.30.0
 	github.com/ethereum/go-ethereum v1.15.7
 	github.com/fsnotify/fsnotify v1.8.0
 	github.com/ledgerwatch/erigon-lib v1.0.0
@@ -15,6 +16,7 @@ require (
 )
 
 require (
+	filippo.io/edwards25519 v1.0.0-rc.1 // indirect
 	github.com/VictoriaMetrics/metrics v1.23.1 // indirect
 	github.com/bits-and-blooms/bitset v1.17.0 // indirect
 	github.com/c2h5oh/datasize v0.0.0-20220606134207-859f65c6625b // indirect
@@ -32,6 +34,7 @@ require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mmcloughlin/addchain v0.4.0 // indirect
+	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/supranational/blst v0.3.14 // indirect

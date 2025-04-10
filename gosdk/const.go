@@ -17,5 +17,39 @@ const (
 	GnosisChiadoChainID    = 10200    // Gnosis Chiado Testnet
 	FantomTestnetChainID   = 4002     // Fantom Testnet
 
-	SolanaDevnttChainID = 123231
+	SolanaDevnetChainID  = 123231
+	SolanaTestnetChainID = 123234
+	SolanaChainID        = 1232342
 )
+
+var EvmChains = map[uint32]struct{}{
+	EthereumChainID:        {},
+	PolygonChainID:         {},
+	BNBChainID:             {},
+	AvalancheChainID:       {},
+	GnosisChainID:          {},
+	FantomChainID:          {},
+	BaseChainID:            {},
+	EthereumSepoliaChainID: {},
+	PolygonMumbaiChainID:   {},
+	BNBTestnetChainID:      {},
+	AvalancheFujiChainID:   {},
+	GnosisChiadoChainID:    {},
+	FantomTestnetChainID:   {},
+}
+
+var SolanaChains = map[uint32]struct{}{
+	SolanaTestnetChainID: {},
+	SolanaDevnetChainID:  {},
+	SolanaChainID:        {},
+}
+
+func IsEvmChain(chainID uint32) bool {
+	_, ok := EvmChains[chainID]
+	return ok
+}
+
+func IsSolanaChain(chainID uint32) bool {
+	_, ok := SolanaChains[chainID]
+	return ok
+}

@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
 
 	"fmt"
 	"github.com/0xAtelerix/sdk/gosdk/types"
+	"github.com/blocto/solana-go-sdk/client"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
@@ -19,6 +21,7 @@ const (
 	ChainIDBucket = "chainid"
 	EthBlocks     = "blocks"
 	EthReceipts   = "receipts"
+	SolanaBlocks  = "solana_blocks"
 )
 
 var EvmTables = kv.TableCfg{
@@ -26,16 +29,31 @@ var EvmTables = kv.TableCfg{
 	EthBlocks:     {},
 	EthReceipts:   {},
 }
+var SolanaTables = kv.TableCfg{
+	ChainIDBucket: {},
+	SolanaBlocks:  {},
+}
 
-// todo add tests
 func NewMultichainStateAccess(cfg map[uint32]string) (*MultichainStateAccess, error) {
 	multichainStateDB := MultichainStateAccess{
 		stateAccessDB: make(map[uint32]kv.RoDB, len(cfg)),
 	}
 	for chainID, path := range cfg {
+		var tableCfg kv.TableCfg
+
+		switch {
+		case IsEvmChain(chainID):
+			tableCfg = EvmTables
+		case IsSolanaChain(chainID):
+			tableCfg = SolanaTables
+		default:
+			log.Warn().Uint32("chainID", chainID).Msg("unknown chain type, using EVM tables by default")
+			tableCfg = EvmTables
+		}
+
 		stateAccessDB, err := mdbx.NewMDBX(mdbxlog.New()).
-			Path(path).WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
-			return EvmTables
+			Path(path).WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
+			return tableCfg
 		}).Readonly().Open()
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to initialize MDBX")
@@ -113,4 +131,33 @@ func (sa *MultichainStateAccess) EthReceipts(block types.ExternalBlock) ([]*geth
 	//todo verify receipt root
 
 	return blockReceipts, nil
+}
+
+func (sa *MultichainStateAccess) SolanaBlock(block types.ExternalBlock) (*client.Block, error) {
+	db, ok := sa.stateAccessDB[uint32(block.ChainID)]
+	if !ok {
+		return nil, fmt.Errorf("failed to find blockchain db %v", block.ChainID)
+	}
+
+	key := make([]byte, 8)
+	binary.BigEndian.PutUint64(key, block.BlockNumber)
+
+	var solBlock client.Block
+	err := db.View(context.TODO(), func(tx kv.Tx) error {
+		v, err := tx.GetOne(SolanaBlocks, key)
+		if err != nil {
+			return err
+		}
+		return json.Unmarshal(v, &solBlock)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	////  todo ✅ Проверка целостности по хешу
+	//if solBlock.Blockhash != "" && block.BlockHash.String() != solBlock.Blockhash {
+	//	return nil, fmt.Errorf("block hash mismatch: expected %s, got %s", block.BlockHash.String(), solBlock.Blockhash)
+	//}
+
+	return &solBlock, nil
 }
