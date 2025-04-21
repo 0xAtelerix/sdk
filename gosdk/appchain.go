@@ -272,7 +272,7 @@ func WriteBlock(rwtx kv.RwTx, blockNumber uint64, blockBytes []byte) error {
 
 	number := make([]byte, 8)
 	binary.BigEndian.PutUint64(number, blockNumber)
-	return rwtx.Put(blocksBucket, number, blockBytes)
+	return rwtx.Put(BlocksBucket, number, blockBytes)
 }
 
 func WriteLastBlock(rwtx kv.RwTx, number uint64, hash [32]byte) error {
@@ -284,11 +284,11 @@ func WriteLastBlock(rwtx kv.RwTx, number uint64, hash [32]byte) error {
 	binary.BigEndian.PutUint64(value[:8], number)
 	copy(value[8:], hash[:])
 
-	return rwtx.Put(configBucket, []byte(lastBlockKey), value)
+	return rwtx.Put(ConfigBucket, []byte(LastBlockKey), value)
 }
 
 func GetLastBlock(tx kv.Tx) (uint64, [32]byte, error) {
-	value, err := tx.GetOne(configBucket, []byte(lastBlockKey))
+	value, err := tx.GetOne(ConfigBucket, []byte(LastBlockKey))
 	if err != nil {
 		return 0, [32]byte{}, err
 	}
@@ -321,7 +321,7 @@ func WriteExternalTransactions(ctx context.Context, dbTx kv.RwTx, blockNumber ui
 	key := make([]byte, 8)
 	binary.BigEndian.PutUint64(key, blockNumber)
 
-	if err = dbTx.Put(externalTxBucket, key, value); err != nil {
+	if err = dbTx.Put(ExternalTxBucket, key, value); err != nil {
 		return [32]byte{}, fmt.Errorf("can't write external transactions to the DB: error %w", err)
 	}
 
@@ -373,7 +373,7 @@ func WriteCheckpoint(ctx context.Context, dbTx kv.RwTx, checkpoint types.Checkpo
 	}
 
 	// Записываем в базу
-	return dbTx.Put(checkpointBucket, key, value)
+	return dbTx.Put(CheckpointBucket, key, value)
 }
 
 func WriteSnapshotPosition(rwtx kv.RwTx, epoch uint32, pos int64) error {
@@ -383,14 +383,14 @@ func WriteSnapshotPosition(rwtx kv.RwTx, epoch uint32, pos int64) error {
 	val := make([]byte, 8)
 	binary.BigEndian.PutUint64(val, uint64(pos))
 
-	return rwtx.Put(snapshot, key, val)
+	return rwtx.Put(Snapshot, key, val)
 }
 
 func ReadSnapshotPosition(tx kv.Tx, epoch uint32) (int64, error) {
 	key := make([]byte, 4)
 	binary.BigEndian.PutUint32(key, epoch)
 
-	val, err := tx.GetOne(snapshot, key)
+	val, err := tx.GetOne(Snapshot, key)
 	if err != nil {
 		return 0, err
 	}
@@ -405,7 +405,7 @@ func ReadTxSnapshotPosition(tx kv.Tx, epoch uint32) (int64, error) {
 	key := make([]byte, 4)
 	binary.BigEndian.PutUint32(key, epoch)
 
-	val, err := tx.GetOne(txSnapshot, key)
+	val, err := tx.GetOne(TxSnapshot, key)
 	if err != nil {
 		return 8, nil // fallback: пропускаем заголовок
 	}
@@ -423,7 +423,7 @@ func WriteTxSnapshotPosition(rwtx kv.RwTx, epoch uint32, pos int64) error {
 	val := make([]byte, 8)
 	binary.BigEndian.PutUint64(val, uint64(pos))
 
-	return rwtx.Put(txSnapshot, key, val)
+	return rwtx.Put(TxSnapshot, key, val)
 }
 
 var currentEpoch = uint32(1)

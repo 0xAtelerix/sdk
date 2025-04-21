@@ -49,7 +49,7 @@ func (s *AppchainEmitterServer[appTx]) GetCheckpoints(ctx context.Context, req *
 	}
 	defer txn.Rollback()
 
-	cursor, err := txn.Cursor(checkpointBucket)
+	cursor, err := txn.Cursor(CheckpointBucket)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create cursor")
 		return nil, fmt.Errorf("failed to create cursor: %w", err)
@@ -115,7 +115,7 @@ func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(ctx context.Conte
 	}
 	defer txn.Rollback()
 
-	cursor, err := txn.Cursor(externalTxBucket)
+	cursor, err := txn.Cursor(ExternalTxBucket)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create cursor")
 		return nil, fmt.Errorf("failed to create cursor: %w", err)

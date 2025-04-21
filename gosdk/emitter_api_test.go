@@ -36,9 +36,9 @@ func TestEmitterCall(t *testing.T) {
 		Path(dbPath).
 		WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
 			return kv.TableCfg{
-				checkpointBucket: {},
-				externalTxBucket: {},
-				blocksBucket:     {},
+				CheckpointBucket: {},
+				ExternalTxBucket: {},
+				BlocksBucket:     {},
 			}
 		}).
 		Open()
@@ -192,9 +192,9 @@ func TestEmitterCall_PropertyBased(t *testing.T) {
 			Path(dbPath).
 			WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
 				return kv.TableCfg{
-					checkpointBucket: {},
-					externalTxBucket: {},
-					blocksBucket:     {},
+					CheckpointBucket: {},
+					ExternalTxBucket: {},
+					BlocksBucket:     {},
 				}
 			}).
 			Open()
@@ -319,9 +319,9 @@ func TestGetExternalTransactions_PropertyBased(t *testing.T) {
 			Path(dbPath).
 			WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
 				return kv.TableCfg{
-					checkpointBucket: {},
-					externalTxBucket: {},
-					blocksBucket:     {},
+					CheckpointBucket: {},
+					ExternalTxBucket: {},
+					BlocksBucket:     {},
 				}
 			}).
 			Open()

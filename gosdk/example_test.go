@@ -67,7 +67,7 @@ func ExampleAppchain() {
 	appchainDB, err := mdbx.NewMDBX(mdbxlog.New()).
 		Path(config.AppchainDBPath).
 		WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
-			return defaultTables
+			return DefaultTables
 		}).
 		Open()
 	if err != nil {
