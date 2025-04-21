@@ -19,8 +19,8 @@ import (
 )
 
 func NewAppchain[STI StateTransitionInterface[AppTx],
-AppTx types.AppTransaction,
-AppBlock types.AppchainBlock](sti STI,
+	AppTx types.AppTransaction,
+	AppBlock types.AppchainBlock](sti STI,
 	blockBuilder types.AppchainBlockConstructor[AppTx, AppBlock],
 	txpool types.TxPoolInterface[AppTx],
 	config AppchainConfig, appchainDB kv.RwDB, options ...func(a *Appchain[STI, AppTx, AppBlock])) (Appchain[STI, AppTx, AppBlock], error) {
@@ -51,8 +51,8 @@ AppBlock types.AppchainBlock](sti STI,
 }
 
 func WithRootCalculator[STI StateTransitionInterface[AppTx],
-AppTx types.AppTransaction,
-AppBlock types.AppchainBlock](rc types.RootCalculator) func(a *Appchain[STI, AppTx, AppBlock]) {
+	AppTx types.AppTransaction,
+	AppBlock types.AppchainBlock](rc types.RootCalculator) func(a *Appchain[STI, AppTx, AppBlock]) {
 	return func(a *Appchain[STI, AppTx, AppBlock]) {
 		a.rootCalculator = rc
 	}
@@ -108,7 +108,7 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
 			time.Sleep(5 * time.Second)
 			continue
 		}
-
+		break
 	}
 	eventStream, err := NewEventStreamWrapper[appTx](filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
 		filepath.Join(a.config.TxStreamDir, fmt.Sprintf("%d", a.config.ChainID), "epoch_0_"+fmt.Sprintf("%d", a.config.ChainID)+"_tx.data"),
