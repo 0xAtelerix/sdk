@@ -63,6 +63,17 @@ func ExampleAppchain() {
 	}
 	txPool := txpool.NewTxPool[*ExampleTransaction](localDB)
 
+	// инициализируем базу на нашей стороне
+	appchainDB, err := mdbx.NewMDBX(mdbxlog.New()).
+		Path(config.AppchainDBPath).
+		WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
+			return defaultTables
+		}).
+		Open()
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to appchain mdbx database")
+	}
+
 	log.Info().Msg("Starting appchain...")
 	appchainExample, err := NewAppchain(
 		stateTransition,
@@ -70,7 +81,8 @@ func ExampleAppchain() {
 			return &ExampleBlock{}
 		},
 		txPool,
-		config)
+		config,
+		appchainDB)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to start appchain")
 	}

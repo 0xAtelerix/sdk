@@ -9,8 +9,6 @@ import (
 	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
 	"github.com/0xAtelerix/sdk/gosdk/types"
 	"github.com/ledgerwatch/erigon-lib/kv"
-	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
-	mdbxlog "github.com/ledgerwatch/log/v3"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
@@ -21,25 +19,13 @@ import (
 )
 
 func NewAppchain[STI StateTransitionInterface[AppTx],
-	AppTx types.AppTransaction,
-	AppBlock types.AppchainBlock](sti STI,
+AppTx types.AppTransaction,
+AppBlock types.AppchainBlock](sti STI,
 	blockBuilder types.AppchainBlockConstructor[AppTx, AppBlock],
 	txpool types.TxPoolInterface[AppTx],
-	config AppchainConfig, options ...func(a *Appchain[STI, AppTx, AppBlock])) (Appchain[STI, AppTx, AppBlock], error) {
+	config AppchainConfig, appchainDB kv.RwDB, options ...func(a *Appchain[STI, AppTx, AppBlock])) (Appchain[STI, AppTx, AppBlock], error) {
 
 	log.Info().Str("db_path", config.AppchainDBPath).Msg("Initializing appchain database")
-
-	// инициализируем базу на нашей стороне
-	appchainDB, err := mdbx.NewMDBX(mdbxlog.New()).
-		Path(config.AppchainDBPath).
-		WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
-			return defaultTables
-		}).
-		Open()
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to initialize MDBX")
-		return Appchain[STI, AppTx, AppBlock]{}, fmt.Errorf("failed to initialize MDBX: %w", err)
-	}
 
 	emiterAPI := NewServer(appchainDB, config.ChainID, txpool)
 	log.Info().Msg("Appchain initialized successfully")
@@ -65,8 +51,8 @@ func NewAppchain[STI StateTransitionInterface[AppTx],
 }
 
 func WithRootCalculator[STI StateTransitionInterface[AppTx],
-	AppTx types.AppTransaction,
-	AppBlock types.AppchainBlock](rc types.RootCalculator) func(a *Appchain[STI, AppTx, AppBlock]) {
+AppTx types.AppTransaction,
+AppBlock types.AppchainBlock](rc types.RootCalculator) func(a *Appchain[STI, AppTx, AppBlock]) {
 	return func(a *Appchain[STI, AppTx, AppBlock]) {
 		a.rootCalculator = rc
 	}
