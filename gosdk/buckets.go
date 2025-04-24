@@ -24,3 +24,13 @@ var DefaultTables = kv.TableCfg{
 	StateBucket:      {},
 	Snapshot:         {},
 }
+
+func MergeTables(bucketSets ...kv.TableCfg) kv.TableCfg {
+	final := kv.TableCfg{}
+	for _, buckets := range bucketSets {
+		for i := range buckets {
+			final[i] = buckets[i]
+		}
+	}
+	return final
+}
