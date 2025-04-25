@@ -108,6 +108,12 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
 			time.Sleep(5 * time.Second)
 			continue
 		}
+		_, err = os.Stat(a.config.TxStreamDir)
+		if err != nil {
+			log.Warn().Err(err).Msg("waiting tx stream file")
+			time.Sleep(5 * time.Second)
+			continue
+		}
 		break
 	}
 	eventStream, err := NewEventStreamWrapper[appTx](filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
@@ -115,6 +121,10 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
 		uint32(a.config.ChainID),
 		startEventPos, startTxPos,
 	)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create event stream")
+		return fmt.Errorf("Failed to create event stream: %w", err)
+	}
 
 	var (
 		previousBlockNumber uint64
