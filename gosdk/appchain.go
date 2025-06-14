@@ -117,7 +117,7 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
 		break
 	}
 	eventStream, err := NewEventStreamWrapper[appTx](filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
-		filepath.Join(a.config.TxStreamDir, fmt.Sprintf("%d", a.config.ChainID), "epoch_0_"+fmt.Sprintf("%d", a.config.ChainID)+"_tx.data"),
+		filepath.Join(a.config.TxStreamDir, "epoch_0_"+fmt.Sprintf("%d", a.config.ChainID)+"_tx.data"),
 		uint32(a.config.ChainID),
 		startEventPos, startTxPos,
 	)

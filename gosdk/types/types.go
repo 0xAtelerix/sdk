@@ -108,7 +108,7 @@ type Event struct {
 	Base         BaseEvent
 	CreationTime uint64
 	//todo возможно тут должно быть MedianTime
-	PrevEpochHash [32]byte
+	PrevEpochHash *[32]byte
 
 	//батчи транзакций, которые были уже переданы другим валидаторам и у нас есть подпись, что они получены
 	TxPool []AppchainTxPoolBatch
