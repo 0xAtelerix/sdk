@@ -11,6 +11,7 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/types"
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -22,16 +23,17 @@ type AppchainEmitterServer[appTx types.AppTransaction] struct {
 	appchainDB kv.RwDB
 	chainID    uint64
 	txpool     types.TxPoolInterface[appTx]
+	logger     *zerolog.Logger
 }
 
 // Создание нового сервера с MDBX
 func NewServer[appTx types.AppTransaction](db kv.RwDB, chainID uint64, txpool types.TxPoolInterface[appTx]) *AppchainEmitterServer[appTx] {
-	return &AppchainEmitterServer[appTx]{appchainDB: db, chainID: chainID, txpool: txpool}
+	return &AppchainEmitterServer[appTx]{appchainDB: db, chainID: chainID, txpool: txpool, logger: &log.Logger}
 }
 
 // Метод GetCheckpoints: выбираем все чекпоинты >= LatestBlockNumber
 func (s *AppchainEmitterServer[appTx]) GetCheckpoints(ctx context.Context, req *emitterproto.GetCheckpointsRequest) (*emitterproto.CheckpointResponse, error) {
-	log.Info().
+	s.logger.Debug().
 		Str("method", "GetCheckpoints").
 		Uint64("latest_previous_checkpoint_block_number", req.LatestPreviousCheckpointBlockNumber).
 		Uint32("limit", func() uint32 {
@@ -44,14 +46,14 @@ func (s *AppchainEmitterServer[appTx]) GetCheckpoints(ctx context.Context, req *
 
 	txn, err := s.appchainDB.BeginRo(ctx)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to open DB transaction")
+		s.logger.Error().Err(err).Msg("Failed to open DB transaction")
 		return nil, fmt.Errorf("failed to open DB transaction: %w", err)
 	}
 	defer txn.Rollback()
 
 	cursor, err := txn.Cursor(CheckpointBucket)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to create cursor")
+		s.logger.Error().Err(err).Msg("Failed to create cursor")
 		return nil, fmt.Errorf("failed to create cursor: %w", err)
 	}
 	defer cursor.Close()
@@ -74,20 +76,20 @@ func (s *AppchainEmitterServer[appTx]) GetCheckpoints(ctx context.Context, req *
 		}
 		checkpoint := &types.Checkpoint{}
 		if err := json.Unmarshal(v, &checkpoint); err != nil {
-			log.Error().Err(err).Msg("Checkpoint deserialization failed")
+			s.logger.Error().Err(err).Msg("Checkpoint deserialization failed")
 			return nil, fmt.Errorf("checkpoint deserialization failed: %w", err)
 		}
 		checkpoints = append(checkpoints, CheckpointToProto(*checkpoint))
 		count++
 	}
 	if len(checkpoints) > 0 {
-		log.Info().
+		s.logger.Debug().
 			Str("method", "GetCheckpoints").
 			Uint64("last checkpoint", checkpoints[len(checkpoints)-1].LatestBlockNumber).
-			Msg("No new checkpoints")
+			Msg("New checkpoints")
 
 	} else {
-		log.Info().
+		s.logger.Debug().
 			Str("method", "GetCheckpoints").
 			Msg("No new checkpoints")
 	}
@@ -97,7 +99,7 @@ func (s *AppchainEmitterServer[appTx]) GetCheckpoints(ctx context.Context, req *
 
 // Метод GetExternalTransactions: выбираем все транзакции >= LatestPreviousBlockNumber
 func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(ctx context.Context, req *emitterproto.GetExternalTransactionsRequest) (*emitterproto.GetExternalTransactionsResponse, error) {
-	log.Info().
+	s.logger.Debug().
 		Str("method", "GetExternalTransactions").
 		Uint64("latest_previous_block_number", req.LatestPreviousBlockNumber).
 		Uint32("limit", func() uint32 {
@@ -110,14 +112,14 @@ func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(ctx context.Conte
 
 	txn, err := s.appchainDB.BeginRo(ctx)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to open DB transaction")
+		s.logger.Error().Err(err).Msg("Failed to open DB transaction")
 		return nil, fmt.Errorf("failed to open DB transaction: %w", err)
 	}
 	defer txn.Rollback()
 
 	cursor, err := txn.Cursor(ExternalTxBucket)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to create cursor")
+		s.logger.Error().Err(err).Msg("Failed to create cursor")
 		return nil, fmt.Errorf("failed to create cursor: %w", err)
 
 	}
@@ -144,7 +146,7 @@ func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(ctx context.Conte
 
 		tx := &emitterproto.ExternalTransaction{}
 		if err := proto.Unmarshal(v, tx); err != nil {
-			log.Error().Err(err).Msg("Transaction deserialization failed")
+			s.logger.Error().Err(err).Msg("Transaction deserialization failed")
 			return nil, fmt.Errorf("transaction deserialization failed: %w", err)
 		}
 
@@ -153,7 +155,7 @@ func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(ctx context.Conte
 	}
 
 	if len(blockMap) == 0 {
-		log.Info().
+		s.logger.Debug().
 			Str("method", "GetExternalTransactions").
 			Msg("No new external transactions")
 
@@ -177,7 +179,7 @@ func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(ctx context.Conte
 			ExternalTransactions: txs,
 		})
 
-		log.Debug().
+		s.logger.Debug().
 			Uint64("block", blockNumber).
 			Int("txCount", len(txs)).
 			Str("hash", hex.EncodeToString(hash[:])).
@@ -194,7 +196,7 @@ func (s *AppchainEmitterServer[appTx]) GetChainId(context.Context, *emptypb.Empt
 }
 
 func (s *AppchainEmitterServer[appTx]) CreateInternalTransactionsBatch(context.Context, *emptypb.Empty) (*emitterproto.CreateInternalTransactionsBatchResponse, error) {
-	log.Info().
+	s.logger.Debug().
 		Str("method", "CreateInternalTransactionsBatch").
 		Msg("Received request")
 
@@ -203,7 +205,7 @@ func (s *AppchainEmitterServer[appTx]) CreateInternalTransactionsBatch(context.C
 		return nil, fmt.Errorf("Failed to get transactions: %w", err)
 	}
 	if len(txs) == 0 {
-		log.Info().
+		s.logger.Debug().
 			Str("method", "CreateInternalTransactionsBatch").
 			Msg("No new transactions")
 		return nil, nil
@@ -218,10 +220,10 @@ func (s *AppchainEmitterServer[appTx]) CreateInternalTransactionsBatch(context.C
 		BatchHash:            batchHash,
 		InternalTransactions: txsBytes,
 	}
-	log.Info().
+	s.logger.Debug().
 		Str("batch hash", hex.EncodeToString(resp.BatchHash)).
 		Int("num of tx", len(resp.InternalTransactions)).
-		Msg("No new transactions")
+		Msg("New transaction batch")
 
 	return resp, nil
 }

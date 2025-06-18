@@ -9,6 +9,7 @@ import (
 	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
 	"github.com/0xAtelerix/sdk/gosdk/types"
 	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
@@ -28,6 +29,10 @@ func NewAppchain[STI StateTransitionInterface[AppTx],
 	log.Info().Str("db_path", config.AppchainDBPath).Msg("Initializing appchain database")
 
 	emiterAPI := NewServer(appchainDB, config.ChainID, txpool)
+	emiterAPI.logger = &log.Logger
+	if config.Logger != nil {
+		emiterAPI.logger = config.Logger
+	}
 	log.Info().Msg("Appchain initialized successfully")
 	multichainDB, err := NewMultichainStateAccess(config.MultichainStateDB)
 	if err != nil {
@@ -65,6 +70,7 @@ type AppchainConfig struct {
 	EventStreamDir    string
 	TxStreamDir       string
 	MultichainStateDB map[uint32]string
+	Logger            *zerolog.Logger
 }
 
 // todo: it should be stored at the first run and checked on next
@@ -90,9 +96,10 @@ type Appchain[STI StateTransitionInterface[appTx], appTx types.AppTransaction, A
 }
 
 func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
-	log.Info().Msg("Appchain run started")
+	logger := log.Ctx(ctx)
+	logger.Info().Msg("Appchain run started")
 
-	go a.RunEmitterAPI()
+	go a.RunEmitterAPI(ctx)
 
 	startEventPos, startTxPos, err := GetLastStreamPositions(a.AppchainDB)
 	if err != nil {
@@ -100,17 +107,17 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
 	}
 
 	//todo надо открывать в run. Отсутствие файла - не должно быть причиной падения
-	log.Info().Str("dir", a.config.EventStreamDir).Int64("start event", startEventPos).Int64("start tx", startTxPos).Msg("Initializing event readers")
+	logger.Info().Str("dir", a.config.EventStreamDir).Int64("start event", startEventPos).Int64("start tx", startTxPos).Msg("Initializing event readers")
 	for {
 		_, err := os.Stat(a.config.EventStreamDir)
 		if err != nil {
-			log.Warn().Err(err).Msg("waiting event stream file")
+			logger.Warn().Err(err).Msg("waiting event stream file")
 			time.Sleep(5 * time.Second)
 			continue
 		}
 		_, err = os.Stat(a.config.TxStreamDir)
 		if err != nil {
-			log.Warn().Err(err).Msg("waiting tx stream file")
+			logger.Warn().Err(err).Msg("waiting tx stream file")
 			time.Sleep(5 * time.Second)
 			continue
 		}
@@ -122,7 +129,7 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
 		startEventPos, startTxPos,
 	)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to create event stream")
+		logger.Error().Err(err).Msg("Failed to create event stream")
 		return fmt.Errorf("Failed to create event stream: %w", err)
 	}
 
@@ -137,7 +144,7 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
 		return err
 	})
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to get last block")
+		logger.Error().Err(err).Msg("Failed to get last block")
 		return fmt.Errorf("Failed to get last block: %w", err)
 	}
 
@@ -145,7 +152,7 @@ runFor:
 	for {
 		select {
 		case <-ctx.Done():
-			log.Info().Msg("Appchain context cancelled, stopping")
+			logger.Info().Msg("Appchain context cancelled, stopping")
 			break runFor
 		default:
 		}
@@ -156,12 +163,12 @@ runFor:
 		}
 
 		if len(batches) == 0 {
-			log.Debug().Msg("No new batches")
+			logger.Debug().Msg("No new batches")
 			continue
 		} else {
-			log.Debug().Int("batches num", len(batches)).Msg("received new batch")
+			logger.Debug().Int("batches num", len(batches)).Msg("received new batch")
 			for i := range batches {
-				log.Debug().Int("batch", i).Int("tx", len(batches[i].Transactions)).Int("blocks", len(batches[i].ExternalBlocks)).Msg("received new batch")
+				logger.Debug().Int("batch", i).Int("tx", len(batches[i].Transactions)).Int("blocks", len(batches[i].ExternalBlocks)).Msg("received new batch")
 			}
 		}
 
@@ -169,23 +176,23 @@ runFor:
 			err = func() error {
 				rwtx, err := a.AppchainDB.BeginRw(context.TODO())
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to get new batch")
+					logger.Error().Err(err).Msg("Failed to get new batch")
 					return fmt.Errorf("Failed to begin write tx: %w", err)
 				}
 				defer rwtx.Rollback()
 
 				//2) Process Batch. Execute transaction there.
-				log.Debug().Int("tx", len(batch.Transactions)).Msg("Process batch")
+				logger.Debug().Int("tx", len(batch.Transactions)).Msg("Process batch")
 				extTxs, err := a.appchainStateExecution.ProcessBatch(batch, rwtx)
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to process batch")
+					logger.Error().Err(err).Msg("Failed to process batch")
 					return fmt.Errorf("Failed to process batch: %w", err)
 				}
 
 				// Разделение на блоки(возможное) тоже тут.
 				stateRoot, err := a.rootCalculator.StateRootCalculator(rwtx)
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to calculate state root")
+					logger.Error().Err(err).Msg("Failed to calculate state root")
 					return fmt.Errorf("Failed to calculate state root: %w", err)
 				}
 
@@ -195,8 +202,10 @@ runFor:
 				block := a.blockBuilder(blockNumber, stateRoot, previousBlockHash, batch)
 
 				// сохраняем блок
+				logger.Debug().Uint64("block_number", blockNumber).
+					Msg("Write block")
 				if err = WriteBlock(rwtx, block.Number(), block.Bytes()); err != nil {
-					log.Error().Err(err).Msg("Failed to write block")
+					logger.Error().Err(err).Msg("Failed to write block")
 					return fmt.Errorf("Failed to write block: %w", err)
 				}
 
@@ -204,7 +213,7 @@ runFor:
 
 				externalTXRoot, err := WriteExternalTransactions(context.TODO(), rwtx, blockNumber, extTxs)
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to write external transactions")
+					logger.Error().Err(err).Msg("Failed to write external transactions")
 					return fmt.Errorf("Failed to write external transactions: %w", err)
 				}
 
@@ -216,33 +225,36 @@ runFor:
 					ExternalTransactionsRoot: externalTXRoot,
 				}
 
-				log.Debug().Uint64("block", checkpoint.BlockNumber).Msg("Write checkpoint")
+				logger.Debug().Uint64("block", checkpoint.BlockNumber).Msg("Write checkpoint")
 				err = WriteCheckpoint(context.TODO(), rwtx, checkpoint)
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to write checkpoint")
+					logger.Error().Err(err).Msg("Failed to write checkpoint")
 					return fmt.Errorf("Failed to write checkpoint: %w", err)
 				}
 
+				logger.Debug().Uint64("block_number", blockNumber).
+					Str("hash", hex.EncodeToString(blockHash[:])).
+					Msg("Write last block")
 				err = WriteLastBlock(rwtx, blockNumber, blockHash)
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to write last block")
+					logger.Error().Err(err).Msg("Failed to write last block")
 					return fmt.Errorf("Failed to write last block: %w", err)
 				}
 
-				log.Debug().Int64("Next snapshot pos", batch.EndOffset).Msg("Write checkpoint")
+				logger.Debug().Int64("Next snapshot pos", batch.EndOffset).Msg("Write checkpoint")
 				err = WriteSnapshotPosition(rwtx, currentEpoch, batch.EndOffset)
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to write snapshot pos")
+					logger.Error().Err(err).Msg("Failed to write snapshot pos")
 					return fmt.Errorf("Failed to write snapshot pos: %w", err)
 				}
 
 				err = rwtx.Commit()
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to commit")
+					logger.Error().Err(err).Msg("Failed to commit")
 					return fmt.Errorf("Failed to commit: %w", err)
 				}
 
-				log.Info().Uint64("block_number", blockNumber).Msg("Block processed and committed")
+				logger.Info().Uint64("block_number", blockNumber).Msg("Block processed and committed")
 
 				previousBlockNumber = block.Number()
 				previousBlockHash = block.Hash()
@@ -251,7 +263,7 @@ runFor:
 			}()
 
 			if err != nil {
-				log.Error().Err(err).Msg("Failed to handle batch")
+				logger.Error().Err(err).Msg("Failed to handle batch")
 				return err
 			}
 		}
@@ -259,12 +271,13 @@ runFor:
 	return nil
 }
 
-func (a *Appchain[STI, appTx, AppBlock]) RunEmitterAPI() {
+func (a *Appchain[STI, appTx, AppBlock]) RunEmitterAPI(ctx context.Context) {
+	logger := log.Ctx(ctx)
 	lis, err := net.Listen("tcp", a.config.EmitterPort)
 	if err != nil {
-		log.Fatal().Err(err).Str("port", a.config.EmitterPort).Msg("Failed to create listener")
+		logger.Fatal().Err(err).Str("port", a.config.EmitterPort).Msg("Failed to create listener")
 	}
-	log.Info().Str("port", a.config.EmitterPort).Msg("Starting gRPC server")
+	logger.Info().Str("port", a.config.EmitterPort).Msg("Starting gRPC server")
 
 	// Создаем gRPC сервер
 	grpcServer := grpc.NewServer()
@@ -272,24 +285,17 @@ func (a *Appchain[STI, appTx, AppBlock]) RunEmitterAPI() {
 	emitterproto.RegisterHealthServer(grpcServer, &HealthServer{})
 
 	if err := grpcServer.Serve(lis); err != nil {
-		log.Fatal().Err(err).Msg("gRPC server crashed")
+		logger.Fatal().Err(err).Msg("gRPC server crashed")
 	}
 }
 
 func WriteBlock(rwtx kv.RwTx, blockNumber uint64, blockBytes []byte) error {
-	log.Debug().Uint64("block_number", blockNumber).
-		Msg("Write block")
-
 	number := make([]byte, 8)
 	binary.BigEndian.PutUint64(number, blockNumber)
 	return rwtx.Put(BlocksBucket, number, blockBytes)
 }
 
 func WriteLastBlock(rwtx kv.RwTx, number uint64, hash [32]byte) error {
-	log.Debug().Uint64("block_number", number).
-		Str("hash", hex.EncodeToString(hash[:])).
-		Msg("Write last block")
-
 	value := make([]byte, 8+32)
 	binary.BigEndian.PutUint64(value[:8], number)
 	copy(value[8:], hash[:])
@@ -308,10 +314,6 @@ func GetLastBlock(tx kv.Tx) (uint64, [32]byte, error) {
 	}
 
 	number := binary.BigEndian.Uint64(value[:8])
-	log.Debug().Uint64("Block", number).
-		Str("hash", hex.EncodeToString((value[8:]))).
-		Msg("GetLastBlock")
-
 	return number, ([32]byte)(value[8:]), err
 }
 
@@ -371,6 +373,8 @@ func Merklize(txs []types.ExternalTransaction) [32]byte {
 // fixme надо писать чекпоинт в staged sync
 // должен быть совместим с GetCheckpoints
 func WriteCheckpoint(ctx context.Context, dbTx kv.RwTx, checkpoint types.Checkpoint) error {
+	logger := log.Ctx(ctx)
+
 	// Генерируем ключ из LatestBlockNumber (8 байт)
 	key := make([]byte, 8)
 	binary.BigEndian.PutUint64(key, checkpoint.BlockNumber)
@@ -378,7 +382,7 @@ func WriteCheckpoint(ctx context.Context, dbTx kv.RwTx, checkpoint types.Checkpo
 	// Сериализуем чекпоинт
 	value, err := json.Marshal(checkpoint)
 	if err != nil {
-		log.Error().Err(err).Msg("Checkpoint serialization failed")
+		logger.Error().Err(err).Msg("Checkpoint serialization failed")
 		return fmt.Errorf("checkpoint serialization failed: %w", err)
 	}
 
