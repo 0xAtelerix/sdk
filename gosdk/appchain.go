@@ -91,6 +91,7 @@ type Appchain[STI StateTransitionInterface[appTx], appTx types.AppTransaction, A
 
 	emiterAPI    emitterproto.EmitterServer
 	AppchainDB   kv.RwDB
+	TxBatchDB    kv.RoDB
 	config       AppchainConfig
 	multichainDB *MultichainStateAccess
 }
@@ -116,18 +117,24 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
 			continue
 		}
 		_, err = os.Stat(a.config.TxStreamDir)
-		if err != nil {
+		if err != nil && a.TxBatchDB == nil {
 			logger.Warn().Err(err).Msg("waiting tx stream file")
 			time.Sleep(5 * time.Second)
 			continue
 		}
 		break
 	}
-	eventStream, err := NewEventStreamWrapper[appTx](filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
-		filepath.Join(a.config.TxStreamDir, "epoch_0_"+fmt.Sprintf("%d", a.config.ChainID)+"_tx.data"),
+
+	eventStream, err := NewMdbxEventStreamWrapper[appTx](filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
 		uint32(a.config.ChainID),
-		startEventPos, startTxPos,
+		startEventPos,
+		a.TxBatchDB,
 	)
+	//eventStream, err := NewEventStreamWrapper[appTx](filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
+	//	filepath.Join(a.config.TxStreamDir, "epoch_0_"+fmt.Sprintf("%d", a.config.ChainID)+"_tx.data"),
+	//	uint32(a.config.ChainID),
+	//	startEventPos, startTxPos,
+	//)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to create event stream")
 		return fmt.Errorf("Failed to create event stream: %w", err)

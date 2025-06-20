@@ -3,8 +3,10 @@ package gosdk
 import (
 	"bytes"
 	"context"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+
 	"github.com/stretchr/testify/require"
-	"log"
 	"math/rand"
 	"net"
 	"os"
@@ -32,6 +34,7 @@ func TestEmitterCall(t *testing.T) {
 	_ = os.RemoveAll(dbPath)   // Очищаем базу перед тестом
 	defer os.RemoveAll(dbPath) // Очищаем базу после теста
 
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	db, err := mdbx.NewMDBX(mdbxlog.New()).
 		Path(dbPath).
 		WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
@@ -95,7 +98,7 @@ func TestEmitterCall(t *testing.T) {
 		grpcServer := grpc.NewServer()
 		emitterproto.RegisterEmitterServer(grpcServer, srv)
 
-		log.Println("Сервер слушает на порту 50051...")
+		log.Info().Msg("Сервер слушает на порту 50051...")
 		wg.Done()
 		if err := grpcServer.Serve(listener); err != nil {
 			t.Fatalf("Ошибка gRPC сервера: %v", err)
@@ -103,7 +106,7 @@ func TestEmitterCall(t *testing.T) {
 	}()
 
 	wg.Wait()
-	time.Sleep(time.Millisecond * 100)
+	time.Sleep(time.Millisecond * 500)
 
 	// Подключение к серверу
 	conn, err := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -174,7 +177,7 @@ func startGRPCServer[apptx any](t *rapid.T, srv *AppchainEmitterServer[apptx]) (
 
 	go func() {
 		if err := grpcServer.Serve(listener); err != nil {
-			log.Fatalf("Ошибка gRPC сервера: %v", err)
+			log.Fatal().Err(err).Msg("Ошибка gRPC сервера")
 		}
 	}()
 

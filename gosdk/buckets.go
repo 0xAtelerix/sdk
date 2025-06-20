@@ -14,7 +14,13 @@ const (
 
 	processed_buckets      = "processed_buckets"
 	eventStreamPositionKey = "event_stream_pos"
+
+	TxBuckets = "txbatch"
 )
+
+var TxBucketsTables = kv.TableCfg{
+	TxBuckets: {},
+}
 
 var DefaultTables = kv.TableCfg{
 	CheckpointBucket: {},
