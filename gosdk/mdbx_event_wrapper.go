@@ -67,7 +67,7 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(limit int) ([]ty
 				})
 			}
 		}
-		ews.logger.Debug().Int("expected batches", len(expectedTxBatches)).Int("txBatches", len(txBatches)).Msg("got batches")
+		ews.logger.Debug().Int("expected batches", len(expectedTxBatches)).Int("txBatches", len(txBatches)).Msg("expectedTxBatches")
 
 		for numOfFound := 0; numOfFound < len(txBatches); {
 			if numOfFound != 0 {
