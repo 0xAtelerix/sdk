@@ -165,7 +165,7 @@ runFor:
 		default:
 		}
 		logger.Info().Msg("getting batches")
-		batches, err := eventStream.GetNewBatchesBlocking(10)
+		batches, err := eventStream.GetNewBatchesBlocking(ctx, 10)
 		if err != nil {
 			logger.Error().Err(err).Msg("Failed to get new batches blocking")
 			return fmt.Errorf("Failed to get new batch: %w", err)

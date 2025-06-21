@@ -2,8 +2,10 @@ package gosdk
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"io"
 	"os"
 
@@ -68,9 +70,9 @@ type ReadBatch struct {
 }
 
 // readNewBatches читает новые батчи, но не более `limit` за один вызов.
-func (er *EventReader) readNewBatches(limit int) ([]ReadBatch, error) {
+func (er *EventReader) readNewBatches(ctx context.Context, limit int) ([]ReadBatch, error) {
 	var batches []ReadBatch
-
+	logger := log.Ctx(ctx)
 	// Перемещаем курсор в нужное место
 	_, err := er.dataFile.Seek(er.position, 0)
 	if err != nil {
@@ -86,6 +88,7 @@ func (er *EventReader) readNewBatches(limit int) ([]ReadBatch, error) {
 		err := binary.Read(er.dataFile, binary.BigEndian, &batchSize)
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			er.reachedEOF = true
+			logger.Trace().Msg("reached eof in reading batch size")
 			break
 		} else if err != nil {
 			return nil, err
@@ -97,6 +100,7 @@ func (er *EventReader) readNewBatches(limit int) ([]ReadBatch, error) {
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			_, _ = er.dataFile.Seek(batchStartPos, 0) // Откат на начало
 			er.reachedEOF = true
+			logger.Trace().Msg("reached eof in reading atropos")
 			break
 		} else if err != nil {
 			return nil, err
@@ -108,6 +112,7 @@ func (er *EventReader) readNewBatches(limit int) ([]ReadBatch, error) {
 		if err == io.EOF || err == io.ErrUnexpectedEOF || n == 0 {
 			_, _ = er.dataFile.Seek(batchStartPos, 0) // Откат на начало
 			er.reachedEOF = true
+			logger.Trace().Msg("reached eof in reading remainingData")
 			break
 		} else if err != nil {
 			return nil, err
@@ -144,20 +149,22 @@ func (er *EventReader) readNewBatches(limit int) ([]ReadBatch, error) {
 		// Если успешно прочитали весь батч, сдвигаем позицию
 		er.position += int64(batchSize) + 4
 	}
-
+	logger.Trace().Int("batches", len(batches)).Msg("readNewBatches return")
 	return batches, nil
 }
 
-func (er *EventReader) GetNewBatchesNonBlocking(limit int) ([]ReadBatch, error) {
-	return er.readNewBatches(limit)
+func (er *EventReader) GetNewBatchesNonBlocking(ctx context.Context, limit int) ([]ReadBatch, error) {
+	return er.readNewBatches(ctx, limit)
 }
 
 // GetNewBatchesBlocking ждёт, пока появятся новые батчи.
-func (er *EventReader) GetNewBatchesBlocking(limit int) ([]ReadBatch, error) {
+func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]ReadBatch, error) {
+	logger := log.Ctx(ctx)
 	for {
 		// 1. Если мы не достигли конца файла, пытаемся читать
 		if !er.reachedEOF {
-			batches, err := er.readNewBatches(limit)
+			logger.Debug().Msg("not reached reachedEOF")
+			batches, err := er.readNewBatches(ctx, limit)
 			if err != nil {
 				return nil, err
 			}
@@ -169,9 +176,10 @@ func (er *EventReader) GetNewBatchesBlocking(limit int) ([]ReadBatch, error) {
 		// 2. Если достигли конца файла, ждём изменений
 		select {
 		case event := <-er.watcher.Events:
+			logger.Debug().Str("watcher", event.String()).Msg("watcher event")
 			if event.Op&fsnotify.Write == fsnotify.Write {
 				// Файл изменился — читаем новые данные
-				batches, err := er.readNewBatches(limit)
+				batches, err := er.readNewBatches(ctx, limit)
 				if err != nil {
 					return nil, err
 				}

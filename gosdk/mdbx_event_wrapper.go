@@ -32,8 +32,8 @@ func NewMdbxEventStreamWrapper[appTx types.AppTransaction](eventsPath string, ch
 	}, nil
 }
 
-func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(limit int) ([]types.Batch[appTx], error) {
-	eventBatches, err := ews.eventReader.GetNewBatchesBlocking(limit)
+func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Context, limit int) ([]types.Batch[appTx], error) {
+	eventBatches, err := ews.eventReader.GetNewBatchesBlocking(ctx, limit)
 	if err != nil {
 		return nil, err
 	}

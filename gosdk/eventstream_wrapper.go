@@ -2,6 +2,7 @@ package gosdk
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/0xAtelerix/sdk/gosdk/types"
@@ -32,8 +33,8 @@ func NewEventStreamWrapper[appTx types.AppTransaction](eventsPath, txPath string
 	}, nil
 }
 
-func (ews *EventStreamWrapper[appTx]) GetNewBatchesBlocking(limit int) ([]types.Batch[appTx], error) {
-	eventBatches, err := ews.eventReader.GetNewBatchesBlocking(limit)
+func (ews *EventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Context, limit int) ([]types.Batch[appTx], error) {
+	eventBatches, err := ews.eventReader.GetNewBatchesBlocking(ctx, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +73,7 @@ func (ews *EventStreamWrapper[appTx]) GetNewBatchesBlocking(limit int) ([]types.
 		}
 		collected := make(map[[32]byte]collectedTx, len(expectedTxBatches))
 		for len(collected) < len(expectedTxBatches) {
-			txBatches, err := ews.txReader.GetNewBatchesBlocking(len(expectedTxBatches)) // ограничим разумно
+			txBatches, err := ews.txReader.GetNewBatchesBlocking(ctx, len(expectedTxBatches)) // ограничим разумно
 			if err != nil {
 				return nil, fmt.Errorf("reading txs: %w", err)
 			}
