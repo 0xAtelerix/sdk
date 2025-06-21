@@ -7,6 +7,7 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/types"
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/rs/zerolog"
 	"time"
 )
 
@@ -14,9 +15,10 @@ type MdbxEventStreamWrapper[appTx types.AppTransaction] struct {
 	eventReader *EventReader
 	txReader    kv.RoDB
 	chainID     uint32
+	logger      *zerolog.Logger
 }
 
-func NewMdbxEventStreamWrapper[appTx types.AppTransaction](eventsPath string, chainID uint32, eventStartPos int64, txBatchDB kv.RoDB) (*MdbxEventStreamWrapper[appTx], error) {
+func NewMdbxEventStreamWrapper[appTx types.AppTransaction](eventsPath string, chainID uint32, eventStartPos int64, txBatchDB kv.RoDB, logger *zerolog.Logger) (*MdbxEventStreamWrapper[appTx], error) {
 	eventReader, err := NewEventReader(eventsPath, eventStartPos)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create event reader: %w", err)
@@ -26,6 +28,7 @@ func NewMdbxEventStreamWrapper[appTx types.AppTransaction](eventsPath string, ch
 		eventReader: eventReader,
 		txReader:    txBatchDB,
 		chainID:     chainID,
+		logger:      logger,
 	}, nil
 }
 
@@ -35,6 +38,7 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(limit int) ([]ty
 		return nil, err
 	}
 
+	ews.logger.Debug().Int("batches", len(eventBatches)).Msg("got new batches")
 	var result []types.Batch[appTx]
 
 	for _, eventBatch := range eventBatches {
@@ -63,6 +67,7 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(limit int) ([]ty
 				})
 			}
 		}
+		ews.logger.Debug().Int("expected batches", len(expectedTxBatches)).Int("txBatches", len(txBatches)).Msg("got batches")
 
 		for numOfFound := 0; numOfFound < len(txBatches); {
 			if numOfFound != 0 {
@@ -100,6 +105,7 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(limit int) ([]ty
 				return nil, err
 			}
 		}
+		ews.logger.Debug().Msg("got tx batches from mdbx")
 
 		// Теперь собираем результат
 		for _, ref := range expectedTxBatches {

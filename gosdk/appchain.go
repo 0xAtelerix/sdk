@@ -129,6 +129,7 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
 		uint32(a.config.ChainID),
 		startEventPos,
 		a.TxBatchDB,
+		logger,
 	)
 	//eventStream, err := NewEventStreamWrapper[appTx](filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
 	//	filepath.Join(a.config.TxStreamDir, "epoch_0_"+fmt.Sprintf("%d", a.config.ChainID)+"_tx.data"),
@@ -163,7 +164,7 @@ runFor:
 			break runFor
 		default:
 		}
-
+		logger.Info().Msg("getting batches")
 		batches, err := eventStream.GetNewBatchesBlocking(10)
 		if err != nil {
 			return fmt.Errorf("Failed to get new batch: %w", err)
