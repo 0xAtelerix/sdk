@@ -105,7 +105,7 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(limit int) ([]ty
 				return nil, err
 			}
 		}
-		ews.logger.Debug().Msg("got tx batches from mdbx")
+		ews.logger.Debug().Int("expectedTxBatches", len(expectedTxBatches)).Msg("got tx batches from mdbx")
 
 		// Теперь собираем результат
 		for _, ref := range expectedTxBatches {
