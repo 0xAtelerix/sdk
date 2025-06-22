@@ -162,7 +162,7 @@ func (er *EventReader) GetNewBatchesNonBlocking(ctx context.Context, limit int) 
 func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]ReadBatch, error) {
 	logger := log.Ctx(ctx)
 
-	timer := time.After(time.Millisecond * 100)
+	ticker := time.NewTicker(time.Millisecond * 100)
 	for {
 		// 1) Активное чтение
 		batches, err := er.readNewBatches(ctx, limit)
@@ -174,6 +174,7 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 		}
 
 		// 2) Ничего не нашли – конец файла, дальше ждём событий fsnotify
+		ticker.Reset(time.Millisecond * 100)
 		select {
 		case ev := <-er.watcher.Events:
 			logger.Debug().Str("watcher", ev.String()).Msg("watcher event")
@@ -182,7 +183,7 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 				// сразу возвращаемся в начало for и снова пробуем читать
 				continue
 			}
-		case _ = <-timer:
+		case _ = <-ticker.C:
 			continue
 
 		case err := <-er.watcher.Errors: // обязательно вычитываем, иначе канал забьётся
