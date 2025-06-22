@@ -8,6 +8,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"io"
 	"os"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 
@@ -160,33 +161,35 @@ func (er *EventReader) GetNewBatchesNonBlocking(ctx context.Context, limit int) 
 // GetNewBatchesBlocking ждёт, пока появятся новые батчи.
 func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]ReadBatch, error) {
 	logger := log.Ctx(ctx)
+
+	timer := time.After(time.Millisecond * 100)
 	for {
-		// 1. Если мы не достигли конца файла, пытаемся читать
-		if !er.reachedEOF {
-			logger.Debug().Msg("not reached reachedEOF")
-			batches, err := er.readNewBatches(ctx, limit)
-			if err != nil {
-				return nil, err
-			}
-			if len(batches) > 0 {
-				return batches, nil // Если есть новые данные, сразу возвращаем их
-			}
+		// 1) Активное чтение
+		batches, err := er.readNewBatches(ctx, limit)
+		if err != nil {
+			return nil, err
+		}
+		if len(batches) > 0 { // что-то нашли – сразу отдаём вызывающему
+			return batches, nil
 		}
 
-		// 2. Если достигли конца файла, ждём изменений
+		// 2) Ничего не нашли – конец файла, дальше ждём событий fsnotify
 		select {
-		case event := <-er.watcher.Events:
-			logger.Debug().Str("watcher", event.String()).Msg("watcher event")
-			if event.Op&fsnotify.Write == fsnotify.Write {
-				// Файл изменился — читаем новые данные
-				batches, err := er.readNewBatches(ctx, limit)
-				if err != nil {
-					return nil, err
-				}
-				if len(batches) > 0 {
-					return batches, nil
-				}
+		case ev := <-er.watcher.Events:
+			logger.Debug().Str("watcher", ev.String()).Msg("watcher event")
+			// интересны только «дописали/создали/переименовали»
+			if ev.Op&(fsnotify.Write) != 0 {
+				// сразу возвращаемся в начало for и снова пробуем читать
+				continue
 			}
+		case _ = <-timer:
+			continue
+
+		case err := <-er.watcher.Errors: // обязательно вычитываем, иначе канал забьётся
+			logger.Warn().Err(err).Msg("fsnotify error")
+
+		case <-ctx.Done(): // отмена извне
+			return nil, ctx.Err()
 		}
 	}
 }
