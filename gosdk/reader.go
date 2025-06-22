@@ -162,34 +162,56 @@ func (er *EventReader) GetNewBatchesNonBlocking(ctx context.Context, limit int) 
 func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]ReadBatch, error) {
 	logger := log.Ctx(ctx)
 
-	ticker := time.NewTicker(time.Millisecond * 100)
+	var (
+		timer   *time.Timer // nil, пока EOF не достигнут
+		timerCh <-chan time.Time
+	)
+
 	for {
-		// 1) Активное чтение
+		// 1. Пытаемся читать
 		batches, err := er.readNewBatches(ctx, limit)
 		if err != nil {
 			return nil, err
 		}
-		if len(batches) > 0 { // что-то нашли – сразу отдаём вызывающему
+		if len(batches) > 0 {
+			// Нашли новые батчи: выключаем таймер (если был) и отдаём caller'у
+			if timer != nil {
+				if !timer.Stop() && timerCh != nil {
+					<-timerCh // вычищаем, чтобы не словить старый тик позже
+				}
+				timer, timerCh = nil, nil
+			}
 			return batches, nil
 		}
 
-		// 2) Ничего не нашли – конец файла, дальше ждём событий fsnotify
-		ticker.Reset(time.Millisecond * 100)
+		// 2. EOF: включаем/перезапускаем таймер ровно ОДИН раз
+		if timer == nil {
+			timer = time.NewTimer(100 * time.Millisecond)
+			timerCh = timer.C
+		} else {
+			if !timer.Stop() && timerCh != nil {
+				<-timerCh // дренация, если уже успел тикнуть
+			}
+			timer.Reset(100 * time.Millisecond)
+		}
+
+		// 3. Ждём либо fsnotify-событие, либо истечение тайм-аутa
 		select {
 		case ev := <-er.watcher.Events:
 			logger.Debug().Str("watcher", ev.String()).Msg("watcher event")
-			// интересны только «дописали/создали/переименовали»
-			if ev.Op&(fsnotify.Write) != 0 {
-				// сразу возвращаемся в начало for и снова пробуем читать
+			if ev.Op&(fsnotify.Write|fsnotify.Rename|fsnotify.Create) != 0 {
+				// При любом «интересном» событии снова идём в начало for
 				continue
 			}
-		case _ = <-ticker.C:
+
+		case <-timerCh:
+			// Таймаут прошёл — снова в начало for (polling)
 			continue
 
-		case err := <-er.watcher.Errors: // обязательно вычитываем, иначе канал забьётся
+		case err := <-er.watcher.Errors:
 			logger.Warn().Err(err).Msg("fsnotify error")
 
-		case <-ctx.Done(): // отмена извне
+		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
 	}
