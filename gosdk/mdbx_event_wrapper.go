@@ -43,6 +43,8 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 	var result []types.Batch[appTx]
 
 	for _, eventBatch := range eventBatches {
+		ews.logger.Debug().Hex("atropos", eventBatch.Atropos[:]).Int("events", len(eventBatch.Events)).Msg("Processing event batch")
+
 		txBatches := map[[32]byte][][]byte{}
 		// Список нужных транзакционных батчей
 		type txRef struct {
