@@ -191,7 +191,11 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 		} else {
 			if !timer.Stop() && timerCh != nil {
 				logger.Trace().Msg("drain channel")
-				<-timerCh // дренация, если уже успел тикнуть
+				select {
+				case <-timerCh:
+				default:
+
+				} // дренация, если уже успел тикнуть
 				logger.Trace().Msg("drained channel")
 			}
 			timer.Reset(100 * time.Millisecond)
