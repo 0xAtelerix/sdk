@@ -72,6 +72,7 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 		for numOfFound := 0; numOfFound < len(txBatches); {
 			if numOfFound != 0 {
 				time.Sleep(time.Millisecond * 50)
+				ews.logger.Debug().Int("numOfFound", numOfFound).Msg("timed out waiting for batches")
 			}
 			err := func() error {
 				tx, err := ews.txReader.BeginRo(context.TODO())
@@ -102,6 +103,7 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 				return nil
 			}()
 			if err != nil {
+				ews.logger.Error().Err(err).Msg("got tx batches from mdbx")
 				return nil, err
 			}
 		}
