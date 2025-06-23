@@ -262,7 +262,7 @@ runFor:
 					return fmt.Errorf("Failed to commit: %w", err)
 				}
 
-				logger.Info().Uint64("block_number", blockNumber).Msg("Block processed and committed")
+				logger.Info().Uint64("block_number", blockNumber).Hex("atropos", batch.Atropos[:]).Msg("Block processed and committed")
 
 				previousBlockNumber = blockNumber
 				previousBlockHash = block.Hash()
