@@ -190,7 +190,9 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 			timerCh = timer.C
 		} else {
 			if !timer.Stop() && timerCh != nil {
+				logger.Trace().Msg("drain channel")
 				<-timerCh // дренация, если уже успел тикнуть
+				logger.Trace().Msg("drained channel")
 			}
 			timer.Reset(100 * time.Millisecond)
 		}
@@ -205,6 +207,7 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 			}
 
 		case <-timerCh:
+			logger.Debug().Msg("timer expired")
 			// Таймаут прошёл — снова в начало for (polling)
 			continue
 
@@ -212,6 +215,7 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 			logger.Warn().Err(err).Msg("fsnotify error")
 
 		case <-ctx.Done():
+			logger.Debug().Msg("Read blocking context done")
 			return nil, ctx.Err()
 		}
 	}
