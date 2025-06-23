@@ -118,30 +118,28 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 		}
 		ews.logger.Debug().Int("expectedTxBatches", len(expectedTxBatches)).Msg("got tx batches from mdbx")
 
-		// Теперь собираем результат
+		var allParsedTxs []appTx
 		for _, ref := range expectedTxBatches {
 			txsRaw, ok := txBatches[ref.batchHash]
 			if !ok {
 				return nil, fmt.Errorf("missing tx batch for %x", ref.batchHash[:4])
 			}
 
-			var parsedTxs []appTx
 			for _, rawTx := range txsRaw {
 				var tx appTx
 				if err := json.Unmarshal(rawTx, &tx); err != nil {
-					ews.logger.Error().Err(err).Str("json", string(rawTx)).Type("tx", tx).Msg("failed to unmarshal tx")
+					ews.logger.Error().Err(err).Str("json", string(rawTx)).Msg("failed to unmarshal tx")
 					return nil, fmt.Errorf("failed to unmarshal tx: %w", err)
 				}
-				parsedTxs = append(parsedTxs, tx)
+				allParsedTxs = append(allParsedTxs, tx)
 			}
-
-			result = append(result, types.Batch[appTx]{
-				Atropos:      eventBatch.Atropos,
-				Transactions: parsedTxs,
-				// берем EndOffset из ивент батча — txBatch тоже можно пробрасывать
-				EndOffset: eventBatch.EndOffset,
-			})
 		}
+
+		result = append(result, types.Batch[appTx]{
+			Atropos:      eventBatch.Atropos,
+			Transactions: allParsedTxs,
+			EndOffset:    eventBatch.EndOffset,
+		})
 	}
 
 	return result, nil
