@@ -2,6 +2,7 @@ package gosdk
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/0xAtelerix/sdk/gosdk/types"
@@ -72,7 +73,12 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 		for numOfFound := 0; numOfFound < len(txBatches); {
 			if numOfFound != 0 {
 				time.Sleep(time.Millisecond * 50)
-				ews.logger.Debug().Int("numOfFound", numOfFound).Int("len(txBatches)", len(txBatches)).Msg("timed out waiting for batches")
+
+				s := []string{}
+				for i := range txBatches {
+					s = append(s, hex.EncodeToString(i[:]))
+				}
+				ews.logger.Debug().Int("numOfFound", numOfFound).Int("len(txBatches)", len(txBatches)).Strs("batches", s).Msg("timed out waiting for batches")
 			}
 			err := func() error {
 				tx, err := ews.txReader.BeginRo(context.TODO())
@@ -98,6 +104,7 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 						return err
 					}
 					txBatches[hsh] = txs
+					ews.logger.Debug().Str("hash", hex.EncodeToString(hsh[:])).Msg("found tx batch")
 					numOfFound++
 				}
 				return nil
