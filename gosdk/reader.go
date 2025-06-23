@@ -171,6 +171,7 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 		// 1. Пытаемся читать
 		batches, err := er.readNewBatches(ctx, limit)
 		if err != nil {
+			logger.Error().Err(err).Msg("readNewBatches err")
 			return nil, err
 		}
 		if len(batches) > 0 {
@@ -183,7 +184,6 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 			}
 			return batches, nil
 		}
-
 		// 2. EOF: включаем/перезапускаем таймер ровно ОДИН раз
 		if timer == nil {
 			timer = time.NewTimer(100 * time.Millisecond)
@@ -200,7 +200,7 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 			}
 			timer.Reset(100 * time.Millisecond)
 		}
-
+		logger.Trace().Msg("Locking: readNewBatches return 0 batches")
 		// 3. Ждём либо fsnotify-событие, либо истечение тайм-аутa
 		select {
 		case ev := <-er.watcher.Events:
