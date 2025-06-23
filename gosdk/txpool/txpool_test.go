@@ -1,6 +1,7 @@
 package txpool
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
@@ -8,12 +9,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"os"
 	"pgregory.net/rapid"
+	"strconv"
 	"testing"
 )
 
 // CustomTransaction - тестовая структура транзакции
 type CustomTransaction struct {
-	Hash  string `json:"hash"`
 	From  string `json:"from"`
 	To    string `json:"to"`
 	Value int    `json:"value"`
@@ -25,11 +26,14 @@ func (c *CustomTransaction) Unmarshal(b []byte) error {
 func (c *CustomTransaction) Marshal() ([]byte, error) {
 	return json.Marshal(c)
 }
+func (c CustomTransaction) Hash() [32]byte {
+	s := c.From + c.To + strconv.Itoa(c.Value)
+	return sha256.Sum256([]byte(s))
+}
 
 // randomTransaction генерирует случайную транзакцию
 func randomTransaction(t *rapid.T) CustomTransaction {
 	return CustomTransaction{
-		Hash:  rapid.StringN(1, 32, 32).Draw(t, "hash"), // Генерируем строку длиной 1-32 символа
 		From:  rapid.StringN(1, 32, 32).Draw(t, "from"),
 		To:    rapid.StringN(1, 32, 32).Draw(t, "to"),
 		Value: rapid.IntRange(1, 10000).Draw(t, "value"),
@@ -57,29 +61,29 @@ func TestTxPool_PropertyBased(t *testing.T) {
 
 		// Генерируем случайное количество транзакций (1-100)
 		numTxs := rapid.IntRange(1, 100).Draw(t, "num_txs")
-		txs := make(map[string]CustomTransaction)
-		txHashes := make([]string, 0, numTxs)
+		txs := make(map[[32]byte]CustomTransaction)
+		txHashes := make([][32]byte, 0, numTxs)
 
 		// Добавляем транзакции
 		for i := 0; i < numTxs; i++ {
 			tx := randomTransaction(t)
 
 			// Убеждаемся, что `Hash` уникален
-			if _, exists := txs[tx.Hash]; exists {
+			if _, exists := txs[tx.Hash()]; exists {
 				continue
 			}
 
-			txs[tx.Hash] = tx
-			txHashes = append(txHashes, tx.Hash)
+			txs[tx.Hash()] = tx
+			txHashes = append(txHashes, tx.Hash())
 
-			if err := txPool.AddTransaction(tx.Hash, tx); err != nil {
+			if err := txPool.AddTransaction(tx); err != nil {
 				t.Fatalf("Ошибка добавления транзакции: %v", err)
 			}
 		}
 
 		// Проверяем, что все добавленные транзакции можно извлечь
 		for hash, expectedTx := range txs {
-			retrievedTx, err := txPool.GetTransaction(hash)
+			retrievedTx, err := txPool.GetTransaction(hash[:])
 			if err != nil {
 				t.Fatalf("Ошибка получения транзакции: %v", err)
 			}
@@ -102,14 +106,14 @@ func TestTxPool_PropertyBased(t *testing.T) {
 
 		// Удаляем случайное количество транзакций (до половины)
 		numDeletes := rapid.IntRange(1, len(txs)/2+1).Draw(t, "num_deletes")
-		keysToDelete := make(map[string]struct{})
+		keysToDelete := make(map[[32]byte]struct{})
 		for i := 0; i < numDeletes; i++ {
 			key := rapid.SampledFrom(txHashes).Draw(t, "delete_key")
 			keysToDelete[key] = struct{}{}
 		}
 
 		for hash := range keysToDelete {
-			if err := txPool.RemoveTransaction(hash); err != nil {
+			if err := txPool.RemoveTransaction(hash[:]); err != nil {
 				t.Fatalf("Ошибка удаления транзакции: %v", err)
 			}
 			delete(txs, hash)
@@ -117,7 +121,7 @@ func TestTxPool_PropertyBased(t *testing.T) {
 
 		// Проверяем, что удаленные транзакции отсутствуют
 		for hash := range keysToDelete {
-			_, err := txPool.GetTransaction(hash)
+			_, err := txPool.GetTransaction(hash[:])
 			if err == nil {
 				t.Fatalf("Ожидалась ошибка при получении удаленной транзакции %s", hash)
 			}
@@ -125,7 +129,7 @@ func TestTxPool_PropertyBased(t *testing.T) {
 
 		// Проверяем, что оставшиеся транзакции присутствуют
 		for hash, expectedTx := range txs {
-			retrievedTx, err := txPool.GetTransaction(hash)
+			retrievedTx, err := txPool.GetTransaction(hash[:])
 			if err != nil {
 				t.Fatalf("Ошибка получения транзакции: %v", err)
 			}

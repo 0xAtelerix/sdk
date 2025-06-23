@@ -3,6 +3,8 @@ package gosdk
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
@@ -47,7 +49,7 @@ func TestEmitterCall(t *testing.T) {
 		Open()
 
 	// Создаем сервер с MDBX
-	srv := NewServer[any](db, 1, nil)
+	srv := NewServer[CustomTransaction](db, 1, nil)
 	if err != nil {
 		t.Fatalf("Ошибка создания сервера: %v", err)
 	}
@@ -158,7 +160,7 @@ func randomCheckpoint(t *rapid.T, chainID uint64, blockNumber uint64) types.Chec
 }
 
 // Запускаем gRPC сервер в отдельной горутине
-func startGRPCServer[apptx any](t *rapid.T, srv *AppchainEmitterServer[apptx]) (string, func()) {
+func startGRPCServer[apptx types.AppTransaction](t *rapid.T, srv *AppchainEmitterServer[apptx]) (string, func()) {
 	listener, err := net.Listen("tcp", ":0") // Используем ":0", чтобы ОС выделила свободный порт
 	if err != nil {
 		t.Fatalf("Ошибка запуска сервера: %v", err)
@@ -208,7 +210,7 @@ func TestEmitterCall_PropertyBased(t *testing.T) {
 		}
 		defer tx.Rollback()
 		// Создаем сервер с MDBX
-		srv := NewServer[any](db, 1, nil)
+		srv := NewServer[CustomTransaction](db, 1, nil)
 		defer srv.appchainDB.Close()
 
 		// Запускаем gRPC сервер и получаем динамический адрес
@@ -329,7 +331,7 @@ func TestGetExternalTransactions_PropertyBased(t *testing.T) {
 			}).
 			Open()
 
-		srv := NewServer[any](db, 1, nil)
+		srv := NewServer[CustomTransaction](db, 1, nil)
 		defer srv.appchainDB.Close()
 
 		tx, err := db.BeginRw(context.TODO())
@@ -398,4 +400,22 @@ func TestGetExternalTransactions_PropertyBased(t *testing.T) {
 			}
 		}
 	})
+}
+
+// CustomTransaction - тестовая структура транзакции
+type CustomTransaction struct {
+	From  string `json:"from"`
+	To    string `json:"to"`
+	Value int    `json:"value"`
+}
+
+func (c *CustomTransaction) Unmarshal(b []byte) error {
+	return json.Unmarshal(b, c)
+}
+func (c *CustomTransaction) Marshal() ([]byte, error) {
+	return json.Marshal(c)
+}
+func (c CustomTransaction) Hash() [32]byte {
+	s := c.From + c.To + strconv.Itoa(c.Value)
+	return sha256.Sum256([]byte(s))
 }

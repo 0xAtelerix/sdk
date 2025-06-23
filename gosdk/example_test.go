@@ -2,6 +2,7 @@ package gosdk
 
 import (
 	"context"
+	"crypto/sha256"
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
 	"github.com/0xAtelerix/sdk/gosdk/types"
 	"github.com/ledgerwatch/erigon-lib/kv"
@@ -10,12 +11,18 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"os"
+	"strconv"
 	"time"
 )
 
 type ExampleTransaction struct {
 	Sender string
 	Value  int
+}
+
+func (c ExampleTransaction) Hash() [32]byte {
+	s := c.Sender + strconv.Itoa(c.Value)
+	return sha256.Sum256([]byte(s))
 }
 
 type ExapleBatchProcesser[appTx types.AppTransaction] struct{}

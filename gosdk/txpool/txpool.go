@@ -31,24 +31,24 @@ func NewTxPool[T types.AppTransaction](db kv.RwDB) *TxPool[T] {
 }
 
 // AddTransaction добавляет транзакцию (generic)
-func (p *TxPool[T]) AddTransaction(hash string, tx T) error {
+func (p *TxPool[T]) AddTransaction(tx T) error {
 	return p.db.Update(context.Background(), func(txn kv.RwTx) error {
 		// Кодируем транзакцию в JSON
 		data, err := json.Marshal(tx)
 		if err != nil {
 			return err
 		}
-
-		return txn.Put(txPoolBucket, []byte(hash), data)
+		hash := tx.Hash()
+		return txn.Put(txPoolBucket, hash[:], data)
 	})
 }
 
 // GetTransaction возвращает транзакцию по хэшу
-func (p *TxPool[T]) GetTransaction(hash string) (*T, error) {
+func (p *TxPool[T]) GetTransaction(hash []byte) (*T, error) {
 	var txData []byte
 	err := p.db.View(context.Background(), func(txn kv.Tx) error {
 		var err error
-		txData, err = txn.GetOne(txPoolBucket, []byte(hash))
+		txData, err = txn.GetOne(txPoolBucket, hash)
 		return err
 	})
 	if err != nil {
@@ -66,9 +66,9 @@ func (p *TxPool[T]) GetTransaction(hash string) (*T, error) {
 }
 
 // RemoveTransaction удаляет транзакцию из пула
-func (p *TxPool[T]) RemoveTransaction(hash string) error {
+func (p *TxPool[T]) RemoveTransaction(hash []byte) error {
 	return p.db.Update(context.TODO(), func(txn kv.RwTx) error {
-		return txn.Delete(txPoolBucket, []byte(hash))
+		return txn.Delete(txPoolBucket, hash)
 	})
 }
 

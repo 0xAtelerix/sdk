@@ -6,7 +6,11 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 )
 
-type AppTransaction any
+type AppTransaction Hasher
+
+type Hasher interface {
+	Hash() [32]byte
+}
 
 // How to work with encoding with appchain transactions
 type Serializible interface {
@@ -78,13 +82,13 @@ type DB interface {
 // TxPoolInterface определяет методы для работы с пулом транзакций
 type TxPoolInterface[T AppTransaction] interface {
 	// AddTransaction добавляет транзакцию в пул
-	AddTransaction(hash string, tx T) error
+	AddTransaction(tx T) error
 
 	// GetTransaction получает транзакцию по хэшу
-	GetTransaction(hash string) (*T, error)
+	GetTransaction(hash []byte) (*T, error)
 
 	// RemoveTransaction удаляет транзакцию из пула
-	RemoveTransaction(hash string) error
+	RemoveTransaction(hash []byte) error
 
 	// GetPendingTransactions возвращает все транзакции
 	GetPendingTransactions() ([]T, error)
