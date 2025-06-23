@@ -20,6 +20,7 @@ type Serializible interface {
 
 // AppTransaction should be serializible
 type Batch[appTx AppTransaction] struct {
+	Atropos        [32]byte
 	Transactions   []appTx
 	ExternalBlocks []ExternalBlock
 	//todo add crossappchain tx

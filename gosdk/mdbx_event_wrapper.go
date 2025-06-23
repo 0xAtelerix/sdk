@@ -68,7 +68,7 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 				})
 			}
 		}
-		ews.logger.Debug().Int("expected batches", len(expectedTxBatches)).Int("txBatches", len(txBatches)).Msg("expectedTxBatches")
+		ews.logger.Debug().Hex("atropos", eventBatch.Atropos[:]).Int("expected batches", len(expectedTxBatches)).Int("txBatches", len(txBatches)).Msg("expectedTxBatches")
 
 		for numOfFound := 0; numOfFound < len(txBatches); {
 			if numOfFound != 0 {
@@ -134,6 +134,7 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 			}
 
 			result = append(result, types.Batch[appTx]{
+				Atropos:      eventBatch.Atropos,
 				Transactions: parsedTxs,
 				// берем EndOffset из ивент батча — txBatch тоже можно пробрасывать
 				EndOffset: eventBatch.EndOffset,

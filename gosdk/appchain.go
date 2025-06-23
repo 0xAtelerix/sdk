@@ -165,7 +165,7 @@ runFor:
 			break runFor
 		default:
 		}
-		logger.Info().Msg("getting batches")
+		logger.Debug().Msg("getting batches")
 		batches, err := eventStream.GetNewBatchesBlocking(ctx, 10)
 		if err != nil {
 			logger.Error().Err(err).Msg("Failed to get new batches blocking")
@@ -175,14 +175,12 @@ runFor:
 		if len(batches) == 0 {
 			logger.Debug().Msg("No new batches")
 			continue
-		} else {
-			logger.Debug().Int("batches num", len(batches)).Msg("received new batch")
-			for i := range batches {
-				logger.Debug().Int("batch", i).Int("tx", len(batches[i].Transactions)).Int("blocks", len(batches[i].ExternalBlocks)).Msg("received new batch")
-			}
 		}
+		logger.Debug().Int("batches num", len(batches)).Msg("received new batches")
 
-		for _, batch := range batches {
+		for i, batch := range batches {
+			logger.Debug().Int("batch", i).Int("tx", len(batches[i].Transactions)).Int("blocks", len(batches[i].ExternalBlocks)).Msg("received new batch")
+
 			err = func() error {
 				rwtx, err := a.AppchainDB.BeginRw(context.TODO())
 				if err != nil {
