@@ -155,6 +155,7 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
 		logger.Error().Err(err).Msg("Failed to get last block")
 		return fmt.Errorf("Failed to get last block: %w", err)
 	}
+	logger.Info().Uint64("previous block number", previousBlockNumber).Hex("hash", previousBlockHash[:]).Msg("load bn")
 
 runFor:
 	for {
@@ -265,7 +266,7 @@ runFor:
 
 				logger.Info().Uint64("block_number", blockNumber).Msg("Block processed and committed")
 
-				previousBlockNumber = block.Number()
+				previousBlockNumber = blockNumber
 				previousBlockHash = block.Hash()
 
 				return nil
