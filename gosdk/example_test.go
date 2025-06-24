@@ -3,16 +3,18 @@ package gosdk
 import (
 	"context"
 	"crypto/sha256"
-	"github.com/0xAtelerix/sdk/gosdk/txpool"
-	"github.com/0xAtelerix/sdk/gosdk/types"
+	"os"
+	"strconv"
+	"time"
+
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"os"
-	"strconv"
-	"time"
+
+	"github.com/0xAtelerix/sdk/gosdk/txpool"
+	"github.com/0xAtelerix/sdk/gosdk/types"
 )
 
 type ExampleTransaction struct {
@@ -99,7 +101,7 @@ func ExampleAppchain() {
 	// Run appchain in goroutine
 	runErr := make(chan error, 1)
 	go func() {
-		runErr <- appchainExample.Run(ctx)
+		runErr <- appchainExample.Run(ctx, nil)
 	}()
 
 	err = <-runErr

@@ -86,6 +86,7 @@ impl AppchainConfig {
     }
 }
 
+// TODO: remove
 type BlockBuilderFn<Tx, Block> = dyn Fn(u64, [u8; 32], [u8; 32], &Batch<Tx>) -> Block + Send + Sync;
 
 /// The Appchain struct.
