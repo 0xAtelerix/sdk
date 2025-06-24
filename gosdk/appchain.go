@@ -127,16 +127,23 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context, streamConstruc
 		break
 	}
 
-	if streamConstructor == nil {
-		streamConstructor = NewMdbxEventStreamWrapper[appTx]
-	}
+	var eventStream Streamer[appTx]
 
-	eventStream, err := streamConstructor(filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
-		uint32(a.config.ChainID),
-		startEventPos,
-		a.TxBatchDB,
-		logger,
-	)
+	if streamConstructor == nil {
+		eventStream, err = NewMdbxEventStreamWrapper[appTx](filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
+			uint32(a.config.ChainID),
+			startEventPos,
+			a.TxBatchDB,
+			logger,
+		)
+	} else {
+		eventStream, err = streamConstructor(filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
+			uint32(a.config.ChainID),
+			startEventPos,
+			a.TxBatchDB,
+			logger,
+		)
+	}
 
 	//eventStream, err := NewEventStreamWrapper[appTx](filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
 	//	filepath.Join(a.config.TxStreamDir, "epoch_0_"+fmt.Sprintf("%d", a.config.ChainID)+"_tx.data"),

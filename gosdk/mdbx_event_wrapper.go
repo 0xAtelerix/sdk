@@ -21,7 +21,7 @@ type MdbxEventStreamWrapper[appTx types.AppTransaction] struct {
 	logger      *zerolog.Logger
 }
 
-type EventStreamWrapperConstructor[appTx types.AppTransaction] func(eventsPath string, chainID uint32, eventStartPos int64, txBatchDB kv.RoDB, logger *zerolog.Logger) (*MdbxEventStreamWrapper[appTx], error)
+type EventStreamWrapperConstructor[appTx types.AppTransaction] func(eventsPath string, chainID uint32, eventStartPos int64, txBatchDB kv.RoDB, logger *zerolog.Logger) (Streamer[appTx], error)
 
 func NewMdbxEventStreamWrapper[appTx types.AppTransaction](eventsPath string, chainID uint32, eventStartPos int64, txBatchDB kv.RoDB, logger *zerolog.Logger) (*MdbxEventStreamWrapper[appTx], error) {
 	eventReader, err := NewEventReader(eventsPath, eventStartPos)
