@@ -6,19 +6,21 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
-	"github.com/0xAtelerix/sdk/gosdk/types"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"time"
+
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
-	"net"
-	"net/http"
-	"os"
-	"path/filepath"
-	"time"
+
+	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
+	"github.com/0xAtelerix/sdk/gosdk/types"
 )
 
 func NewAppchain[STI StateTransitionInterface[AppTx],
@@ -101,7 +103,7 @@ type Appchain[STI StateTransitionInterface[appTx], appTx types.AppTransaction, A
 	multichainDB *MultichainStateAccess
 }
 
-func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
+func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context, streamConstructor EventStreamWrapperConstructor[appTx]) error {
 	logger := log.Ctx(ctx)
 	logger.Info().Msg("Appchain run started")
 
@@ -137,12 +139,24 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
 		break
 	}
 
-	eventStream, err := NewMdbxEventStreamWrapper[appTx](filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
-		uint32(a.config.ChainID),
-		startEventPos,
-		a.TxBatchDB,
-		logger,
-	)
+	var eventStream Streamer[appTx]
+
+	if streamConstructor == nil {
+		eventStream, err = NewMdbxEventStreamWrapper[appTx](filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
+			uint32(a.config.ChainID),
+			startEventPos,
+			a.TxBatchDB,
+			logger,
+		)
+	} else {
+		eventStream, err = streamConstructor(filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
+			uint32(a.config.ChainID),
+			startEventPos,
+			a.TxBatchDB,
+			logger,
+		)
+	}
+
 	//eventStream, err := NewEventStreamWrapper[appTx](filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
 	//	filepath.Join(a.config.TxStreamDir, "epoch_0_"+fmt.Sprintf("%d", a.config.ChainID)+"_tx.data"),
 	//	uint32(a.config.ChainID),

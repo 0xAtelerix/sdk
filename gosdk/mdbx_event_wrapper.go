@@ -5,11 +5,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/0xAtelerix/sdk/gosdk/types"
-	"github.com/0xAtelerix/sdk/gosdk/utility"
+	"time"
+
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/rs/zerolog"
-	"time"
+
+	"github.com/0xAtelerix/sdk/gosdk/types"
+	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
 type MdbxEventStreamWrapper[appTx types.AppTransaction] struct {
@@ -18,6 +20,8 @@ type MdbxEventStreamWrapper[appTx types.AppTransaction] struct {
 	chainID     uint32
 	logger      *zerolog.Logger
 }
+
+type EventStreamWrapperConstructor[appTx types.AppTransaction] func(eventsPath string, chainID uint32, eventStartPos int64, txBatchDB kv.RoDB, logger *zerolog.Logger) (Streamer[appTx], error)
 
 func NewMdbxEventStreamWrapper[appTx types.AppTransaction](eventsPath string, chainID uint32, eventStartPos int64, txBatchDB kv.RoDB, logger *zerolog.Logger) (*MdbxEventStreamWrapper[appTx], error) {
 	eventReader, err := NewEventReader(eventsPath, eventStartPos)
@@ -31,6 +35,11 @@ func NewMdbxEventStreamWrapper[appTx types.AppTransaction](eventsPath string, ch
 		chainID:     chainID,
 		logger:      logger,
 	}, nil
+}
+
+type Streamer[appTx types.AppTransaction] interface {
+	GetNewBatchesBlocking(ctx context.Context, limit int) ([]types.Batch[appTx], error)
+	Close()
 }
 
 func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Context, limit int) ([]types.Batch[appTx], error) {
