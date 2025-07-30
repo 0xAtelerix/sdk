@@ -2,7 +2,9 @@ package utility
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
+	"hash"
 	"io"
 )
 
@@ -43,4 +45,13 @@ func Unflatten(data []byte) ([][]byte, error) {
 	}
 
 	return result, nil
+}
+
+func CheckHash(flat []byte, want []byte) bool {
+	if len(want) != sha256.Size {
+		return false
+	}
+	var h hash.Hash = sha256.New()
+	h.Write(flat)
+	return bytes.Equal(h.Sum(nil), want)
 }
