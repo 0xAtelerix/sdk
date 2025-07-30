@@ -9,19 +9,21 @@ import (
 	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
 	"github.com/0xAtelerix/sdk/gosdk/types"
 	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 )
 
 func NewAppchain[STI StateTransitionInterface[AppTx],
-	AppTx types.AppTransaction,
-	AppBlock types.AppchainBlock](sti STI,
+AppTx types.AppTransaction,
+AppBlock types.AppchainBlock](sti STI,
 	blockBuilder types.AppchainBlockConstructor[AppTx, AppBlock],
 	txpool types.TxPoolInterface[AppTx],
 	config AppchainConfig, appchainDB kv.RwDB, options ...func(a *Appchain[STI, AppTx, AppBlock])) (Appchain[STI, AppTx, AppBlock], error) {
@@ -56,8 +58,8 @@ func NewAppchain[STI StateTransitionInterface[AppTx],
 }
 
 func WithRootCalculator[STI StateTransitionInterface[AppTx],
-	AppTx types.AppTransaction,
-	AppBlock types.AppchainBlock](rc types.RootCalculator) func(a *Appchain[STI, AppTx, AppBlock]) {
+AppTx types.AppTransaction,
+AppBlock types.AppchainBlock](rc types.RootCalculator) func(a *Appchain[STI, AppTx, AppBlock]) {
 	return func(a *Appchain[STI, AppTx, AppBlock]) {
 		a.rootCalculator = rc
 	}
@@ -66,11 +68,13 @@ func WithRootCalculator[STI StateTransitionInterface[AppTx],
 type AppchainConfig struct {
 	ChainID           uint64
 	EmitterPort       string
+	PrometheusPort    string
 	AppchainDBPath    string
 	EventStreamDir    string
 	TxStreamDir       string
 	MultichainStateDB map[uint32]string
 	Logger            *zerolog.Logger
+	ValidatorID       string
 }
 
 // todo: it should be stored at the first run and checked on next
@@ -78,6 +82,7 @@ func MakeAppchainConfig(chainID uint64) AppchainConfig {
 	return AppchainConfig{
 		ChainID:        chainID,
 		EmitterPort:    ":50051",
+		PrometheusPort: ":2112",
 		AppchainDBPath: "chaindb",
 		EventStreamDir: "epochs",
 		TxStreamDir:    fmt.Sprintf("%d", chainID),
@@ -101,6 +106,13 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context) error {
 	logger.Info().Msg("Appchain run started")
 
 	go a.RunEmitterAPI(ctx)
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		err := http.ListenAndServe(a.config.PrometheusPort, nil)
+		if err != nil {
+			logger.Fatal().Err(err).Msg("Failed to start metrics server")
+		}
+	}()
 
 	startEventPos, startTxPos, err := GetLastStreamPositions(a.AppchainDB)
 	if err != nil {
@@ -166,7 +178,9 @@ runFor:
 		default:
 		}
 		logger.Debug().Msg("getting batches")
+		timer := time.Now()
 		batches, err := eventStream.GetNewBatchesBlocking(ctx, 10)
+		EventStreamBlockingDuration.WithLabelValues(a.config.ValidatorID).Observe(time.Since(timer).Seconds())
 		if err != nil {
 			logger.Error().Err(err).Msg("Failed to get new batches blocking")
 			return fmt.Errorf("Failed to get new batch: %w", err)
@@ -181,6 +195,7 @@ runFor:
 		for i, batch := range batches {
 			logger.Debug().Int("batch", i).Int("tx", len(batches[i].Transactions)).Int("blocks", len(batches[i].ExternalBlocks)).Msg("received new batch")
 
+			start := time.Now() // метка начала
 			err = func() error {
 				rwtx, err := a.AppchainDB.BeginRw(context.TODO())
 				if err != nil {
@@ -264,6 +279,10 @@ runFor:
 
 				logger.Info().Uint64("block_number", blockNumber).Hex("atropos", batch.Atropos[:]).Msg("Block processed and committed")
 
+				BlockProcessingDuration.WithLabelValues(a.config.ValidatorID).Observe(time.Since(start).Seconds())
+				ProcessedBlocks.WithLabelValues(a.config.ValidatorID).Inc()
+				ProcessedTransactions.WithLabelValues(a.config.ValidatorID).Add(float64(len(batch.Transactions)))
+
 				previousBlockNumber = blockNumber
 				previousBlockHash = block.Hash()
 
@@ -275,6 +294,8 @@ runFor:
 				return err
 			}
 		}
+		BatchProcessingDuration.WithLabelValues(a.config.ValidatorID).Observe(time.Since(timer).Seconds())
+
 	}
 	return nil
 }
