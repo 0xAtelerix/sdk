@@ -24,8 +24,8 @@ import (
 )
 
 func NewAppchain[STI StateTransitionInterface[AppTx],
-AppTx types.AppTransaction,
-AppBlock types.AppchainBlock](sti STI,
+	AppTx types.AppTransaction,
+	AppBlock types.AppchainBlock](sti STI,
 	blockBuilder types.AppchainBlockConstructor[AppTx, AppBlock],
 	txpool types.TxPoolInterface[AppTx],
 	config AppchainConfig, appchainDB kv.RwDB, options ...func(a *Appchain[STI, AppTx, AppBlock])) (Appchain[STI, AppTx, AppBlock], error) {
@@ -60,8 +60,8 @@ AppBlock types.AppchainBlock](sti STI,
 }
 
 func WithRootCalculator[STI StateTransitionInterface[AppTx],
-AppTx types.AppTransaction,
-AppBlock types.AppchainBlock](rc types.RootCalculator) func(a *Appchain[STI, AppTx, AppBlock]) {
+	AppTx types.AppTransaction,
+	AppBlock types.AppchainBlock](rc types.RootCalculator) func(a *Appchain[STI, AppTx, AppBlock]) {
 	return func(a *Appchain[STI, AppTx, AppBlock]) {
 		a.rootCalculator = rc
 	}
@@ -84,7 +84,7 @@ func MakeAppchainConfig(chainID uint64) AppchainConfig {
 	return AppchainConfig{
 		ChainID:        chainID,
 		EmitterPort:    ":50051",
-		PrometheusPort: ":2112",
+		PrometheusPort: "",
 		AppchainDBPath: "chaindb",
 		EventStreamDir: "epochs",
 		TxStreamDir:    fmt.Sprintf("%d", chainID),
@@ -108,13 +108,9 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context, streamConstruc
 	logger.Info().Msg("Appchain run started")
 
 	go a.RunEmitterAPI(ctx)
-	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		err := http.ListenAndServe(a.config.PrometheusPort, nil)
-		if err != nil {
-			logger.Fatal().Err(err).Msg("Failed to start metrics server")
-		}
-	}()
+	if a.config.PrometheusPort != "" {
+		go startPrometheusServer(ctx, a.config.PrometheusPort)
+	}
 
 	startEventPos, startTxPos, err := GetLastStreamPositions(a.AppchainDB)
 	if err != nil {
@@ -411,6 +407,22 @@ func CheckpointToProto(cp types.Checkpoint) *emitterproto.CheckpointResponse_Che
 // todo: merklize transactions
 func Merklize(txs []types.ExternalTransaction) [32]byte {
 	return [32]byte{}
+}
+func startPrometheusServer(ctx context.Context, addr string) {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+
+	srv := &http.Server{Addr: addr, Handler: mux}
+
+	go func() {
+		<-ctx.Done()
+		// корректно останавливаем при отмене контекста
+		_ = srv.Shutdown(context.Background())
+	}()
+
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Ctx(ctx).Fatal().Err(err).Msg("metrics server crashed")
+	}
 }
 
 // fixme надо писать чекпоинт в staged sync
