@@ -81,15 +81,20 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 		}
 		ews.logger.Debug().Hex("atropos", eventBatch.Atropos[:]).Int("expected batches", len(expectedTxBatches)).Int("txBatches", len(txBatches)).Msg("expectedTxBatches")
 
+		var notFoundCycle uint64
 		for numOfFound := 0; numOfFound < len(txBatches); {
 			if numOfFound != 0 {
 				time.Sleep(time.Millisecond * 50)
+				notFoundCycle++
 
 				s := []string{}
 				for i := range txBatches {
 					s = append(s, hex.EncodeToString(i[:]))
 				}
 				ews.logger.Debug().Int("numOfFound", numOfFound).Int("len(txBatches)", len(txBatches)).Strs("batches", s).Msg("timed out waiting for batches")
+				if notFoundCycle%(1000/50) == 0 {
+					ews.logger.Warn().Int("numOfFound", numOfFound).Int("len(txBatches)", len(txBatches)).Strs("batches", s).Msg("timed out waiting for batches")
+				}
 			}
 			err := func() error {
 				tx, err := ews.txReader.BeginRo(context.TODO())
