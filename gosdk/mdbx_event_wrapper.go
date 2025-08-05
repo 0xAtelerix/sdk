@@ -43,6 +43,7 @@ type Streamer[appTx types.AppTransaction] interface {
 }
 
 func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Context, limit int) ([]types.Batch[appTx], error) {
+	ews.logger.Debug().Int("len", limit).Msg("get new batches")
 	eventBatches, err := ews.eventReader.GetNewBatchesBlocking(ctx, limit)
 	if err != nil {
 		return nil, err
@@ -79,6 +80,7 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 				})
 			}
 		}
+
 		ews.logger.Debug().Hex("atropos", eventBatch.Atropos[:]).Int("expected batches", len(expectedTxBatches)).Int("txBatches", len(txBatches)).Msg("expectedTxBatches")
 
 		var notFoundCycle uint64

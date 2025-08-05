@@ -138,6 +138,7 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context, streamConstruc
 	var eventStream Streamer[appTx]
 
 	if streamConstructor == nil {
+		logger.Info().Msg("NewMdbxEventStreamWrapper")
 		eventStream, err = NewMdbxEventStreamWrapper[appTx](filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
 			uint32(a.config.ChainID),
 			startEventPos,

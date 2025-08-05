@@ -178,7 +178,11 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 			// Нашли новые батчи: выключаем таймер (если был) и отдаём caller'у
 			if timer != nil {
 				if !timer.Stop() && timerCh != nil {
-					<-timerCh // вычищаем, чтобы не словить старый тик позже
+					select {
+					case <-timerCh:
+					default:
+
+					} // вычищаем, чтобы не словить старый тик позже
 				}
 				timer, timerCh = nil, nil
 			}
@@ -190,17 +194,17 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 			timerCh = timer.C
 		} else {
 			if !timer.Stop() && timerCh != nil {
-				logger.Trace().Msg("drain channel")
+				logger.Debug().Msg("drain channel")
 				select {
 				case <-timerCh:
 				default:
 
 				} // дренация, если уже успел тикнуть
-				logger.Trace().Msg("drained channel")
+				logger.Debug().Msg("drained channel")
 			}
 			timer.Reset(100 * time.Millisecond)
 		}
-		logger.Trace().Msg("Locking: readNewBatches return 0 batches")
+		logger.Debug().Msg("Locking: readNewBatches return 0 batches")
 		// 3. Ждём либо fsnotify-событие, либо истечение тайм-аутa
 		select {
 		case ev := <-er.watcher.Events:
