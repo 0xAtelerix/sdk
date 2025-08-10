@@ -44,6 +44,9 @@ type Streamer[appTx types.AppTransaction] interface {
 
 func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Context, limit int) ([]types.Batch[appTx], error) {
 	ews.logger.Debug().Int("len", limit).Msg("get new batches")
+	vid := utility.ValidatorIDFromCtx(ctx)
+	cid := utility.ChainIDFromCtx(ctx)
+
 	eventBatches, err := ews.eventReader.GetNewBatchesBlocking(ctx, limit)
 	if err != nil {
 		return nil, err
@@ -63,12 +66,12 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 		}
 		var expectedTxBatches []txRef
 
+		tParseEvt := time.Now()
 		for _, rawEvent := range eventBatch.Events {
 			var evt types.Event
 			if err := json.Unmarshal(rawEvent, &evt); err != nil {
 				return nil, fmt.Errorf("failed to decode event: %w", err)
 			}
-
 			for _, batch := range evt.TxPool {
 				if batch.ChainID != uint64(ews.chainID) {
 					continue
@@ -80,9 +83,11 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 				})
 			}
 		}
+		MdbxEventParseDuration.WithLabelValues(vid, cid).Observe(time.Since(tParseEvt).Seconds())
+		MdbxTxBatchesExpectedTotal.WithLabelValues(vid, cid).Add(float64(len(expectedTxBatches)))
 
 		ews.logger.Debug().Hex("atropos", eventBatch.Atropos[:]).Int("expected batches", len(expectedTxBatches)).Int("txBatches", len(txBatches)).Msg("expectedTxBatches")
-
+		waitStart := time.Now()
 		var notFoundCycle uint64
 		for numOfFound := 0; numOfFound < len(txBatches); {
 			if numOfFound != 0 {
@@ -99,6 +104,7 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 				}
 			}
 			err := func() error {
+				tLookup := time.Now()
 				tx, err := ews.txReader.BeginRo(context.TODO())
 				if err != nil {
 					return err
@@ -125,6 +131,7 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 					ews.logger.Debug().Str("hash", hex.EncodeToString(hsh[:])).Msg("found tx batch")
 					numOfFound++
 				}
+				MdbxTxLookupDuration.WithLabelValues(vid, cid).Observe(time.Since(tLookup).Seconds())
 				return nil
 			}()
 			if err != nil {
@@ -133,6 +140,11 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 			}
 		}
 		ews.logger.Debug().Int("expectedTxBatches", len(expectedTxBatches)).Msg("got tx batches from mdbx")
+		if notFoundCycle > 0 {
+			MdbxWaitCyclesTotal.WithLabelValues(vid, cid).Add(float64(notFoundCycle))
+			MdbxWaitTimeSeconds.WithLabelValues(vid, cid).Observe(time.Since(waitStart).Seconds())
+		}
+		MdbxTxBatchesFoundTotal.WithLabelValues(vid, cid).Add(float64(len(txBatches)))
 
 		var allParsedTxs []appTx
 		for _, ref := range expectedTxBatches {

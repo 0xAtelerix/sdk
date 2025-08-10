@@ -2,10 +2,12 @@ package utility
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"hash"
 	"io"
+	"strconv"
 )
 
 func Flatten(chunks [][]byte) []byte {
@@ -54,4 +56,40 @@ func CheckHash(flat []byte, want []byte) bool {
 	var h hash.Hash = sha256.New()
 	h.Write(flat)
 	return bytes.Equal(h.Sum(nil), want)
+}
+
+type ctxValidatorKey struct{}
+
+func CtxWithValidatorID(ctx context.Context, id string) context.Context {
+	if id == "" {
+		id = "unknown"
+	}
+	return context.WithValue(ctx, ctxValidatorKey{}, id)
+}
+
+func ValidatorIDFromCtx(ctx context.Context) string {
+	if v := ctx.Value(ctxValidatorKey{}); v != nil {
+		if s, ok := v.(string); ok && s != "" {
+			return s
+		}
+	}
+	return "unknown"
+}
+
+type ctxChainIDKey struct{}
+
+func CtxWithChainID(ctx context.Context, id uint64) context.Context {
+	val := "unknown"
+	if id != 0 {
+		val = strconv.FormatUint(id, 10)
+	}
+	return context.WithValue(ctx, ctxChainIDKey{}, val)
+}
+func ChainIDFromCtx(ctx context.Context) string {
+	if v := ctx.Value(ctxChainIDKey{}); v != nil {
+		if u, ok := v.(string); ok {
+			return u
+		}
+	}
+	return "unknown"
 }

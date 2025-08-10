@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/0xAtelerix/sdk/gosdk/utility"
 	"github.com/rs/zerolog/log"
 	"io"
 	"os"
@@ -74,11 +75,15 @@ type ReadBatch struct {
 func (er *EventReader) readNewBatches(ctx context.Context, limit int) ([]ReadBatch, error) {
 	var batches []ReadBatch
 	logger := log.Ctx(ctx)
+	vid := utility.ValidatorIDFromCtx(ctx)
+	cid := utility.ChainIDFromCtx(ctx)
 	// Перемещаем курсор в нужное место
 	_, err := er.dataFile.Seek(er.position, 0)
 	if err != nil {
 		return nil, err
 	}
+
+	tRead := time.Now()
 
 	// Начинаем читать батчи
 	for i := 0; i < limit; i++ {
@@ -146,10 +151,12 @@ func (er *EventReader) readNewBatches(ctx context.Context, limit int) ([]ReadBat
 			Offset:    batchStartPos,
 			EndOffset: batchEndPos,
 		})
-
+		EventBatchEvents.WithLabelValues(vid, cid).Observe(float64(len(events)))
 		// Если успешно прочитали весь батч, сдвигаем позицию
 		er.position += int64(batchSize) + 4
 	}
+	StreamReadDuration.WithLabelValues(vid, cid).Observe(time.Since(tRead).Seconds())
+
 	logger.Trace().Int("batches", len(batches)).Msg("readNewBatches return")
 	return batches, nil
 }

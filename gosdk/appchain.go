@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/0xAtelerix/sdk/gosdk/utility"
 	"net"
 	"net/http"
 	"os"
@@ -106,6 +107,10 @@ type Appchain[STI StateTransitionInterface[appTx], appTx types.AppTransaction, A
 func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context, streamConstructor EventStreamWrapperConstructor[appTx]) error {
 	logger := log.Ctx(ctx)
 	logger.Info().Msg("Appchain run started")
+	ctx = utility.CtxWithValidatorID(ctx, a.config.ValidatorID)
+	ctx = utility.CtxWithChainID(ctx, a.config.ChainID)
+	vid := utility.ValidatorIDFromCtx(ctx)
+	cid := utility.ChainIDFromCtx(ctx)
 
 	go a.RunEmitterAPI(ctx)
 	if a.config.PrometheusPort != "" {
@@ -154,11 +159,6 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(ctx context.Context, streamConstruc
 		)
 	}
 
-	//eventStream, err := NewEventStreamWrapper[appTx](filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
-	//	filepath.Join(a.config.TxStreamDir, "epoch_0_"+fmt.Sprintf("%d", a.config.ChainID)+"_tx.data"),
-	//	uint32(a.config.ChainID),
-	//	startEventPos, startTxPos,
-	//)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to create event stream")
 		return fmt.Errorf("Failed to create event stream: %w", err)
@@ -191,7 +191,7 @@ runFor:
 		logger.Debug().Msg("getting batches")
 		timer := time.Now()
 		batches, err := eventStream.GetNewBatchesBlocking(ctx, 10)
-		EventStreamBlockingDuration.WithLabelValues(a.config.ValidatorID).Observe(time.Since(timer).Seconds())
+		EventStreamBlockingDuration.WithLabelValues(vid, cid).Observe(time.Since(timer).Seconds())
 		if err != nil {
 			logger.Error().Err(err).Msg("Failed to get new batches blocking")
 			return fmt.Errorf("Failed to get new batch: %w", err)
@@ -290,9 +290,17 @@ runFor:
 
 				logger.Info().Uint64("block_number", blockNumber).Hex("atropos", batch.Atropos[:]).Msg("Block processed and committed")
 
-				BlockProcessingDuration.WithLabelValues(a.config.ValidatorID).Observe(time.Since(start).Seconds())
-				ProcessedBlocks.WithLabelValues(a.config.ValidatorID).Inc()
-				ProcessedTransactions.WithLabelValues(a.config.ValidatorID).Add(float64(len(batch.Transactions)))
+				BlockProcessingDuration.WithLabelValues(vid, cid).Observe(time.Since(start).Seconds())
+				ProcessedBlocks.WithLabelValues(vid, cid).Inc()
+				ProcessedTransactions.WithLabelValues(vid, cid).Add(float64(len(batch.Transactions)))
+
+				HeadBlockNumber.WithLabelValues(vid, cid).Set(float64(blockNumber))
+				EventStreamPosition.
+					WithLabelValues(vid, cid, fmt.Sprint(currentEpoch)).
+					Set(float64(batch.EndOffset))
+				BlockExternalTxs.WithLabelValues(vid, cid).Observe(float64(len(extTxs)))
+				BlockInternalTxs.WithLabelValues(vid, cid).Observe(float64(len(batch.Transactions)))
+				BlockBytes.WithLabelValues(vid, cid).Observe(float64(len(block.Bytes())))
 
 				previousBlockNumber = blockNumber
 				previousBlockHash = block.Hash()
@@ -305,7 +313,7 @@ runFor:
 				return err
 			}
 		}
-		BatchProcessingDuration.WithLabelValues(a.config.ValidatorID).Observe(time.Since(timer).Seconds())
+		BatchProcessingDuration.WithLabelValues(vid, cid).Observe(time.Since(timer).Seconds())
 
 	}
 	return nil
