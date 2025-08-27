@@ -4,21 +4,21 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"fmt"
-	"github.com/0xAtelerix/sdk/gosdk/utility"
-	"github.com/rs/zerolog/log"
+	"errors"
 	"io"
 	"os"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/rs/zerolog/log"
 
-	"github.com/0xAtelerix/sdk/gosdk/types"
+	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
 // Что должен дергать апчейн, чтобы получить транзакции
-type BatchReader[appTx types.AppTransaction] interface {
-	GetNewBatchesBlocking(limit int) ([]types.Batch[appTx], error)
+type BatchReader[appTx apptypes.AppTransaction] interface {
+	GetNewBatchesBlocking(limit int) ([]apptypes.Batch[appTx], error)
 }
 
 // EventReader with fsnotify
@@ -31,7 +31,7 @@ type EventReader struct {
 
 // NewEventReader инициализирует reader с возможностью задать начальную позицию.
 func NewEventReader(dataFilePath string, startPosition int64) (*EventReader, error) {
-	f, err := os.OpenFile(dataFilePath, os.O_RDONLY, 0644)
+	f, err := os.OpenFile(dataFilePath, os.O_RDONLY, 0o644)
 	if err != nil {
 		return nil, err
 	}
@@ -58,9 +58,13 @@ func NewEventReader(dataFilePath string, startPosition int64) (*EventReader, err
 	}, nil
 }
 
-func (er *EventReader) Close() {
-	er.dataFile.Close()
-	er.watcher.Close()
+func (er *EventReader) Close() error {
+	err := er.dataFile.Close()
+	if err != nil {
+		return err
+	}
+
+	return er.watcher.Close()
 }
 
 // Batch содержит атропос и события
@@ -71,12 +75,103 @@ type ReadBatch struct {
 	EndOffset int64 // позиция сразу после батча
 }
 
+func (er *EventReader) GetNewBatchesNonBlocking(
+	ctx context.Context,
+	limit int,
+) ([]ReadBatch, error) {
+	return er.readNewBatches(ctx, limit)
+}
+
+// GetNewBatchesBlocking ждёт, пока появятся новые батчи.
+func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]ReadBatch, error) {
+	logger := log.Ctx(ctx)
+
+	var (
+		// nil, пока EOF не достигнут
+		timer   *time.Timer
+		timerCh <-chan time.Time
+	)
+
+	for {
+		// 1. Пытаемся читать
+		batches, err := er.readNewBatches(ctx, limit)
+		if err != nil {
+			logger.Error().Err(err).Msg("readNewBatches err")
+
+			return nil, err
+		}
+
+		if len(batches) > 0 {
+			// Нашли новые батчи: выключаем таймер (если был) и отдаём caller'у
+			if timer != nil {
+				if !timer.Stop() && timerCh != nil {
+					select {
+					case <-timerCh:
+					default:
+					} // вычищаем, чтобы не словить старый тик позже
+				}
+
+				timer, timerCh = nil, nil //nolint:wastedassign,ineffassign // used, false-positive
+			}
+
+			return batches, nil
+		}
+
+		// 2. EOF: включаем/перезапускаем таймер ровно ОДИН раз
+		if timer == nil {
+			timer = time.NewTimer(100 * time.Millisecond)
+			timerCh = timer.C
+		} else {
+			if !timer.Stop() && timerCh != nil {
+				logger.Debug().Msg("drain channel")
+
+				select {
+				case <-timerCh:
+				default:
+				} // дренация, если уже успел тикнуть
+
+				logger.Debug().Msg("drained channel")
+			}
+
+			timer.Reset(100 * time.Millisecond)
+		}
+
+		logger.Debug().Msg("Locking: readNewBatches return 0 batches")
+
+		// 3. Ждём либо fsnotify-событие, либо истечение тайм-аутa
+		select {
+		case ev := <-er.watcher.Events:
+			logger.Debug().Str("watcher", ev.String()).Msg("watcher event")
+
+			if ev.Op&(fsnotify.Write|fsnotify.Rename|fsnotify.Create) != 0 {
+				// При любом «интересном» событии снова идём в начало for
+				continue
+			}
+
+		case <-timerCh:
+			logger.Debug().Msg("timer expired")
+			// Таймаут прошёл — снова в начало for (polling)
+			continue
+
+		case err := <-er.watcher.Errors:
+			logger.Warn().Err(err).Msg("fsnotify error")
+
+		case <-ctx.Done():
+			logger.Debug().Msg("Read blocking context done")
+
+			return nil, ctx.Err()
+		}
+	}
+}
+
 // readNewBatches читает новые батчи, но не более `limit` за один вызов.
 func (er *EventReader) readNewBatches(ctx context.Context, limit int) ([]ReadBatch, error) {
-	var batches []ReadBatch
+	var batches []ReadBatch //nolint:prealloc // hard to predict also many cases will be with empty batches
+
 	logger := log.Ctx(ctx)
 	vid := utility.ValidatorIDFromCtx(ctx)
 	cid := utility.ChainIDFromCtx(ctx)
+
 	// Перемещаем курсор в нужное место
 	_, err := er.dataFile.Seek(er.position, 0)
 	if err != nil {
@@ -86,15 +181,18 @@ func (er *EventReader) readNewBatches(ctx context.Context, limit int) ([]ReadBat
 	tRead := time.Now()
 
 	// Начинаем читать батчи
-	for i := 0; i < limit; i++ {
+	for range limit {
 		batchStartPos := er.position // Запоминаем начало батча
 
 		// Читаем размер батча (4 байта)
 		var batchSize uint32
+
 		err := binary.Read(er.dataFile, binary.BigEndian, &batchSize)
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 			er.reachedEOF = true
+
 			logger.Trace().Msg("reached eof in reading batch size")
+
 			break
 		} else if err != nil {
 			return nil, err
@@ -102,11 +200,14 @@ func (er *EventReader) readNewBatches(ctx context.Context, limit int) ([]ReadBat
 
 		// Читаем атропос (32 байта)
 		var atropos [32]byte
+
 		err = binary.Read(er.dataFile, binary.BigEndian, &atropos)
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 			_, _ = er.dataFile.Seek(batchStartPos, 0) // Откат на начало
 			er.reachedEOF = true
+
 			logger.Trace().Msg("reached eof in reading atropos")
+
 			break
 		} else if err != nil {
 			return nil, err
@@ -114,26 +215,36 @@ func (er *EventReader) readNewBatches(ctx context.Context, limit int) ([]ReadBat
 
 		// Читаем весь оставшийся батч в один буфер
 		remainingData := make([]byte, batchSize-32)
+
 		n, err := io.ReadFull(er.dataFile, remainingData)
-		if err == io.EOF || err == io.ErrUnexpectedEOF || n == 0 {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || n == 0 {
 			_, _ = er.dataFile.Seek(batchStartPos, 0) // Откат на начало
 			er.reachedEOF = true
+
 			logger.Trace().Msg("reached eof in reading remainingData")
+
 			break
 		} else if err != nil {
 			return nil, err
 		}
 
 		// Разбираем события внутри батча
-		events := [][]byte{}
+		var events [][]byte
+
 		offset := 0
 		for offset < len(remainingData) {
 			// Читаем размер события (4 байта)
 			var valueSize uint32
-			err = binary.Read(bytes.NewReader(remainingData[offset:offset+4]), binary.BigEndian, &valueSize)
+
+			err = binary.Read(
+				bytes.NewReader(remainingData[offset:offset+4]),
+				binary.BigEndian,
+				&valueSize,
+			)
 			if err != nil {
-				return nil, fmt.Errorf("corrupted file")
+				return nil, ErrCorruptedFile
 			}
+
 			offset += 4
 
 			// Читаем само событие
@@ -155,83 +266,10 @@ func (er *EventReader) readNewBatches(ctx context.Context, limit int) ([]ReadBat
 		// Если успешно прочитали весь батч, сдвигаем позицию
 		er.position += int64(batchSize) + 4
 	}
+
 	StreamReadDuration.WithLabelValues(vid, cid).Observe(time.Since(tRead).Seconds())
 
 	logger.Trace().Int("batches", len(batches)).Msg("readNewBatches return")
+
 	return batches, nil
-}
-
-func (er *EventReader) GetNewBatchesNonBlocking(ctx context.Context, limit int) ([]ReadBatch, error) {
-	return er.readNewBatches(ctx, limit)
-}
-
-// GetNewBatchesBlocking ждёт, пока появятся новые батчи.
-func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]ReadBatch, error) {
-	logger := log.Ctx(ctx)
-
-	var (
-		timer   *time.Timer // nil, пока EOF не достигнут
-		timerCh <-chan time.Time
-	)
-
-	for {
-		// 1. Пытаемся читать
-		batches, err := er.readNewBatches(ctx, limit)
-		if err != nil {
-			logger.Error().Err(err).Msg("readNewBatches err")
-			return nil, err
-		}
-		if len(batches) > 0 {
-			// Нашли новые батчи: выключаем таймер (если был) и отдаём caller'у
-			if timer != nil {
-				if !timer.Stop() && timerCh != nil {
-					select {
-					case <-timerCh:
-					default:
-
-					} // вычищаем, чтобы не словить старый тик позже
-				}
-				timer, timerCh = nil, nil
-			}
-			return batches, nil
-		}
-		// 2. EOF: включаем/перезапускаем таймер ровно ОДИН раз
-		if timer == nil {
-			timer = time.NewTimer(100 * time.Millisecond)
-			timerCh = timer.C
-		} else {
-			if !timer.Stop() && timerCh != nil {
-				logger.Debug().Msg("drain channel")
-				select {
-				case <-timerCh:
-				default:
-
-				} // дренация, если уже успел тикнуть
-				logger.Debug().Msg("drained channel")
-			}
-			timer.Reset(100 * time.Millisecond)
-		}
-		logger.Debug().Msg("Locking: readNewBatches return 0 batches")
-		// 3. Ждём либо fsnotify-событие, либо истечение тайм-аутa
-		select {
-		case ev := <-er.watcher.Events:
-			logger.Debug().Str("watcher", ev.String()).Msg("watcher event")
-			if ev.Op&(fsnotify.Write|fsnotify.Rename|fsnotify.Create) != 0 {
-				// При любом «интересном» событии снова идём в начало for
-				continue
-			}
-
-		case <-timerCh:
-			logger.Debug().Msg("timer expired")
-			// Таймаут прошёл — снова в начало for (polling)
-			continue
-
-		case err := <-er.watcher.Errors:
-			logger.Warn().Err(err).Msg("fsnotify error")
-
-		case <-ctx.Done():
-			logger.Debug().Msg("Read blocking context done")
-			return nil, ctx.Err()
-		}
-	}
 }

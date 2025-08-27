@@ -1,3 +1,4 @@
+//nolint:testableexamples // an example app
 package gosdk
 
 import (
@@ -13,8 +14,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
+	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
-	"github.com/0xAtelerix/sdk/gosdk/types"
 )
 
 type ExampleTransaction struct {
@@ -24,33 +25,48 @@ type ExampleTransaction struct {
 
 func (c ExampleTransaction) Hash() [32]byte {
 	s := c.Sender + strconv.Itoa(c.Value)
+
 	return sha256.Sum256([]byte(s))
 }
 
-type ExapleBatchProcesser[appTx types.AppTransaction] struct{}
+type ExampleTransactionBuilder struct{}
 
-func (b ExapleBatchProcesser[appTx]) ProcessBatch(batch types.Batch[appTx], dbtx kv.RwTx) ([]types.ExternalTransaction, error) {
+func (ExampleTransactionBuilder) Make() ExampleTransaction {
+	return ExampleTransaction{}
+}
+
+type ExampleBatchProcesser[appTx apptypes.AppTransaction] struct{}
+
+func (ExampleBatchProcesser[appTx]) ProcessBatch(
+	_ apptypes.Batch[appTx],
+	_ kv.RwTx,
+) ([]apptypes.ExternalTransaction, error) {
 	return nil, nil
 }
 
 type ExampleBlock struct{}
 
-func (e *ExampleBlock) Number() uint64 {
+func (*ExampleBlock) Number() uint64 {
 	return 0
 }
-func (e *ExampleBlock) Hash() [32]byte {
+
+func (*ExampleBlock) Hash() [32]byte {
 	return [32]byte{}
 }
-func (e *ExampleBlock) StateRoot() [32]byte {
+
+func (*ExampleBlock) StateRoot() [32]byte {
 	return [32]byte{}
 }
-func (e *ExampleBlock) Bytes() []byte {
+
+func (*ExampleBlock) Bytes() []byte {
 	return []byte{}
 }
-func (e *ExampleBlock) Marshal() ([]byte, error) {
+
+func (*ExampleBlock) Marshal() ([]byte, error) {
 	return nil, nil
 }
-func (e *ExampleBlock) Unmarshal([]byte) error {
+
+func (*ExampleBlock) Unmarshal([]byte) error {
 	return nil
 }
 
@@ -59,24 +75,34 @@ func ExampleAppchain() {
 
 	config := MakeAppchainConfig(42)
 
-	stateTransition := BatchProcesser[*ExampleTransaction]{}
+	stateTransition := BatchProcesser[ExampleTransaction]{}
 
 	tmp := os.TempDir() + "/txpool_test"
-	defer os.RemoveAll(tmp)
-	localDB, err := mdbx.NewMDBX(mdbxlog.New()).InMem(tmp).WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
-		return txpool.TxPoolTables
-	}).
+
+	defer func() {
+		dirErr := os.RemoveAll(tmp)
+		if dirErr != nil {
+			log.Warn().Err(dirErr).Msgf("Failed to remove: %q", tmp)
+		}
+	}()
+
+	localDB, err := mdbx.NewMDBX(mdbxlog.New()).
+		InMem(tmp).
+		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
+			return txpool.Tables()
+		}).
 		Open()
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to local mdbx database")
 	}
-	txPool := txpool.NewTxPool[*ExampleTransaction](localDB)
+
+	txPool := txpool.NewTxPool[ExampleTransaction](localDB, ExampleTransactionBuilder{})
 
 	// инициализируем базу на нашей стороне
 	appchainDB, err := mdbx.NewMDBX(mdbxlog.New()).
 		Path(config.AppchainDBPath).
-		WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
-			return DefaultTables
+		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
+			return DefaultTables()
 		}).
 		Open()
 	if err != nil {
@@ -84,22 +110,25 @@ func ExampleAppchain() {
 	}
 
 	log.Info().Msg("Starting appchain...")
+
 	appchainExample, err := NewAppchain(
 		stateTransition,
-		func(blockNumber uint64, stateRoot [32]byte, previousBlockHash [32]byte, txsBatch types.Batch[*ExampleTransaction]) *ExampleBlock {
+		func(_ uint64, _ [32]byte, _ [32]byte, _ apptypes.Batch[ExampleTransaction]) *ExampleBlock {
 			return &ExampleBlock{}
 		},
 		txPool,
 		config,
-		appchainDB)
+		appchainDB,
+	)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to start appchain")
 	}
 
-	ctx, cancel := context.WithTimeout(context.TODO(), time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	// Run appchain in goroutine
 	runErr := make(chan error, 1)
+
 	go func() {
 		runErr <- appchainExample.Run(ctx, nil)
 	}()
@@ -107,5 +136,4 @@ func ExampleAppchain() {
 	err = <-runErr
 
 	log.Info().Err(err).Msg("Appchain exited")
-
 }

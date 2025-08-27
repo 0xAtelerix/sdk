@@ -1,0 +1,438 @@
+version: "2"
+
+linters:
+  # See the dedicated "linters" documentation section.
+  default: all
+  disable:
+    - unused # disabled till testnet
+    - zerologlint # disabled till testnet
+    - dupl # disabled till testnet
+    - depguard # enable if had organization policies on 3rd party deps
+    - godox # disabled till testnet
+    - noinlineerr # forbids `if err := smth; err != nil {}`
+    - gocritic
+    - ireturn # unstable - https://github.com/golangci/golangci-lint/issues/3228
+    - wsl # deprecated
+    - tagliatelle # we use different format
+    - gochecknoinits # we use inits for metrics
+    - forcetypeassert # doesn't work
+    # unnecessary linters below
+    - nonamedreturns # conflicts with revive:confusing-results
+    - exhaustruct # not usefull for big structs partly initialization
+    #- depguard # https://tracker.yandex.ru/CORE-53
+    - wrapcheck # we don't want to wrap all errors
+    - testpackage # we use unit tests in the same package
+    - mnd # this linter requires too many constants
+    - funlen # we don't want to limit function length
+    - gocognit # we don't want to limit function length
+    - nestif # we don't want to limit function length
+    - cyclop # we don't want to limit function length
+    - gocyclo # we don't want to limit function length
+    - godot # We do not consider dots in function comments mandatory
+    #- gochecknoglobals # we allow global variables
+    - maintidx # we don't want to limit function complexity in tests files
+    #- gomoddirectives # doesn't support nolint directives, replace directive is needed for erigon-lib
+    - varnamelen # too many `ignore-name` cases have appeared
+    # deprecated linters below
+    - paralleltest
+    - tparallel
+    - tagalign
+  settings:
+    # See the dedicated "linters.settings" documentation section.
+    wsl_v5:
+      allow-first-in-block: true
+      allow-whole-block: false
+      branch-max-lines: 2
+    forbidigo:
+      forbid:
+        - pattern: ^(fmt\.Print.*|print|println)$ # Default value for this linter
+          msg: "use logs instead of fmt.Print*"
+        - pattern: ^panic$
+          msg: "use errors instead of panic"
+    exhaustive:
+      check: # Default: [switch]
+        - switch
+        - map
+    goconst:
+      min-len: 2 # Default: 3
+      min-occurrences: 2 # Default: 3
+    gocritic:
+      enabled-checks:
+        - ruleguard
+      disable-all: true
+      settings:
+        ruleguard:
+          rules: './gorules/rules.go'
+    gosec:
+      excludes:
+        - G115 # https://github.com/securego/gosec/issues/1187
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+    lll:
+      line-length: 180 # Default: 120
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    promlinter:
+      strict: true
+    revive:
+      enable-all-rules: true
+      rules:
+        - name: comment-spacings # contradicts with compile and linter instructions
+          disabled: true
+        - name: confusing-naming # can't handle cases when one has a public and a private methods with the same name, but different visability
+          disabled: true
+        - name: deep-exit
+          disabled: true
+        - name: datarace
+          severity: error
+          disabled: false
+        - name: bare-return
+          disabled: true
+        - name: max-control-nesting
+          arguments: [6]
+        - name: function-result-limit
+          arguments: [4]
+        # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#add-constant
+        - name: add-constant
+          severity: warning
+          disabled: true
+          arguments:
+            - maxLitCount: "3"
+              allowStrs: '""'
+              allowInts: "0,1,2"
+              allowFloats: "0.0,0.,1.0,1.,2.0,2."
+        # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#argument-limit
+        - name: argument-limit
+          severity: warning
+          disabled: false
+          exclude: [ "" ]
+          arguments: [ 10 ]
+        # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#line-length-limit
+        - name: line-length-limit
+          severity: warning
+          disabled: false
+          arguments: [ 160 ] # the same as lll
+        # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#cognitive-complexity
+        - name: cognitive-complexity
+          severity: warning
+          disabled: true # do it later
+          arguments: [ 7 ]
+        # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#function-length
+        - name: function-length
+          severity: warning
+          disabled: true # do it later
+          arguments: [ 10, 0 ] # should be the same as in funlen
+        # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#cyclomatic
+        - name: cyclomatic
+          severity: warning
+          disabled: true # do it later
+          arguments: [ 3 ] # should be the same as cyclop, gocyclo
+        - name: argument-limit
+          severity: warning
+          disabled: true # do it later
+          arguments: [ 9 ] # should be the same as cyclop, gocyclo
+        # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#max-public-structs
+        - name: max-public-structs
+          severity: warning
+          disabled: true # why do we need that
+          exclude: [ "" ]
+          arguments: [ 3 ]
+    spancheck:
+      checks: # Default: ["end"]
+        - end
+        - record-error
+        - set-status
+    testifylint:
+      enable-all: true
+    unparam:
+      check-exported: true
+
+  # Defines a set of rules to ignore issues.
+  # It does not skip the analysis, and so does not ignore "typecheck" errors.
+  exclusions:
+    # Mode of the generated files analysis.
+    #
+    # - `strict`: sources are excluded by strictly following the Go generated file convention.
+    #    Source files that have lines matching only the following regular expression will be excluded: `^// Code generated .* DO NOT EDIT\.$`
+    #    This line must appear before the first non-comment, non-blank text in the file.
+    #    https://go.dev/s/generatedcode
+    # - `lax`: sources are excluded if they contain lines like `autogenerated file`, `code generated`, `do not edit`, etc.
+    # - `disable`: disable the generated files exclusion.
+    #
+    # Default: strict
+    generated: lax
+    # Log a warning if an exclusion rule is unused.
+    # Default: false
+    warn-unused: true
+    # Predefined exclusion rules.
+    # Default: []
+    presets:
+      - comments
+      - std-error-handling
+      - common-false-positives
+      - legacy
+    # Excluding configuration per-path, per-linter, per-text and per-source.
+    rules:
+      # Exclude some linters from running on tests files.
+      - path: _test\.go
+        linters:
+          - gocyclo
+          - dupl
+          - gosec
+      # Run some linter only for test files by excluding its issues for everything else.
+      - path-except: _test\.go
+        linters:
+          - forbidigo
+      # Exclude some `staticcheck` messages.
+      - linters:
+          - staticcheck
+        text: "SA9003:"
+      # Exclude `lll` issues for long lines with `go:generate`.
+      - linters:
+          - lll
+        source: "^//go:generate "
+formatters:
+  # Enable specific formatter.
+  # Default: [] (uses standard Go formatting)
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+    - golines
+    - swaggo
+  # Formatters settings.
+  settings:
+    # See the dedicated "formatters.settings" documentation section.
+    gofumpt:
+      module-path: github.com/0xAtelerix/sdk/gosdk
+    goimports:
+      local-prefixes: [ "github.com/0xAtelerix/sdk/gosdk" ]
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/0xAtelerix/sdk/gosdk)
+  exclusions:
+    # Log a warning if an exclusion path is unused.
+    # Default: false
+    warn-unused: true
+    # Mode of the generated files analysis.
+    #
+    # - `strict`: sources are excluded by strictly following the Go generated file convention.
+    #    Source files that have lines matching only the following regular expression will be excluded: `^// Code generated .* DO NOT EDIT\.$`
+    #    This line must appear before the first non-comment, non-blank text in the file.
+    #    https://go.dev/s/generatedcode
+    # - `lax`: sources are excluded if they contain lines like `autogenerated file`, `code generated`, `do not edit`, etc.
+    # - `disable`: disable the generated files exclusion.
+    #
+    # Default: lax
+    generated: lax
+issues:
+  # Maximum issues count per one linter.
+  # Set to 0 to disable.
+  # Default: 50
+  max-issues-per-linter: 0
+  # Maximum count of issues with the same text.
+  # Set to 0 to disable.
+  # Default: 3
+  max-same-issues: 0
+  # Make issues output unique by line.
+  # Default: true
+  uniq-by-line: false
+  # Show only new issues: if there are unstaged changes or untracked files,
+  # only those changes are analyzed, else only changes in HEAD~ are analyzed.
+  # It's a super-useful option for integration of golangci-lint into existing large codebase.
+  # It's not practical to fix all existing issues at the moment of integration:
+  # much better don't allow issues in new code.
+  #
+  # Default: false
+  new: false
+  # Show only new issues created after the best common ancestor (merge-base against HEAD).
+  # Default: ""
+  new-from-merge-base: "main"
+  # Show only new issues created after git revision `REV`.
+  # Default: ""
+  new-from-rev: ""
+  # Show issues in any part of update files (requires new-from-rev or new-from-patch).
+  # Default: false
+  whole-files: true
+  # Fix found issues (if it's supported by the linter).
+  # Default: false
+  fix: false
+# Output configuration options.
+output:
+  # The formats used to render issues.
+  formats:
+    # Prints issues in a text format with colors, line number, and linter name.
+    # This format is the default format.
+    text:
+      # Output path can be either `stdout`, `stderr` or path to the file to write to.
+      # Default: stdout
+      path: stdout
+      # Print linter name in the end of issue text.
+      # Default: true
+      print-linter-name: true
+      # Print lines of code with issue.
+      # Default: true
+      print-issued-lines: true
+      # Use colors.
+      # Default: true
+      colors: true
+    # Prints issues in a JSON representation.
+    json:
+      # Output path can be either `stdout`, `stderr` or path to the file to write to.
+      # Default: stdout
+      path: /dev/null
+    # Prints issues in columns representation separated by tabulations.
+    tab:
+      # Output path can be either `stdout`, `stderr` or path to the file to write to.
+      # Default: stdout
+      path: /dev/null
+      # Print linter name in the end of issue text.
+      # Default: true
+      print-linter-name: true
+      # Use colors.
+      # Default: true
+      colors: true
+    # Prints issues in an HTML page.
+    # It uses the Cloudflare CDN (cdnjs) and React.
+    html:
+      # Output path can be either `stdout`, `stderr` or path to the file to write to.
+      # Default: stdout
+      path: /dev/null
+    # Prints issues in the Checkstyle format.
+    checkstyle:
+      # Output path can be either `stdout`, `stderr` or path to the file to write to.
+      # Default: stdout
+      path: /dev/null
+    # Prints issues in the Code Climate format.
+    code-climate:
+      # Output path can be either `stdout`, `stderr` or path to the file to write to.
+      # Default: stdout
+      path: /dev/null
+    # Prints issues in the JUnit XML format.
+    junit-xml:
+      # Output path can be either `stdout`, `stderr` or path to the file to write to.
+      # Default: stdout
+      path: /dev/null
+      # Support extra JUnit XML fields.
+      # Default: false
+      extended: false
+    # Prints issues in the TeamCity format.
+    teamcity:
+      # Output path can be either `stdout`, `stderr` or path to the file to write to.
+      # Default: stdout
+      path: /dev/null
+    # Prints issues in the SARIF format.
+    sarif:
+      # Output path can be either `stdout`, `stderr` or path to the file to write to.
+      # Default: stdout
+      path: /dev/null
+  # Add a prefix to the output file references.
+  # This option is ignored when using `output.path-mode: abs` mode.
+  # Default: ""
+  path-prefix: ""
+  # By default, the report are related to the path obtained by `run.relative-path-mode`.
+  # The mode `abs` allows to show absolute file paths instead of relative file paths.
+  # The option `output.path-prefix` is ignored when using `abs` mode.
+  # Default: ""
+  path-mode: "abs"
+  # Order to use when sorting results.
+  # Possible values: `file`, `linter`, and `severity`.
+  #
+  # If the severity values are inside the following list, they are ordered in this order:
+  #   1. error
+  #   2. warning
+  #   3. high
+  #   4. medium
+  #   5. low
+  # Either they are sorted alphabetically.
+  #
+  # Default: ["linter", "file"]
+  sort-order:
+    - linter
+    - severity
+    - file # filepath, line, and column.
+  # Show statistics per linter.
+  # Default: true
+  show-stats: true
+# Options for analysis running.
+run:
+  # Timeout for total work, e.g. 30s, 5m, 5m30s.
+  # If the value is lower or equal to 0, the timeout is disabled.
+  # Default: 0 (disabled)
+  timeout: 5m
+  # The mode used to evaluate relative paths.
+  # It's used by exclusions, Go plugins, and some linters.
+  # The value can be:
+  # - `gomod`: the paths will be relative to the directory of the `go.mod` file.
+  # - `gitroot`: the paths will be relative to the git root (the parent directory of `.git`).
+  # - `cfg`: the paths will be relative to the configuration file.
+  # - `wd` (NOT recommended): the paths will be relative to the place where golangci-lint is run.
+  # Default: cfg
+  relative-path-mode: gomod
+  # Exit code when at least one issue was found.
+  # Default: 1
+  issues-exit-code: 1
+  # Include test files or not.
+  # Default: true
+  tests: true
+  # If set, we pass it to "go list -mod={option}". From "go help modules":
+  # If invoked with -mod=readonly, the go command is disallowed from the implicit
+  # automatic updating of go.mod described above. Instead, it fails when any changes
+  # to go.mod are needed. This setting is most useful to check that go.mod does
+  # not need updates, such as in a continuous integration and testing system.
+  # If invoked with -mod=vendor, the go command assumes that the vendor
+  # directory holds the correct copies of dependencies and ignores
+  # the dependency descriptions in go.mod.
+  #
+  # Allowed values: readonly|vendor|mod
+  # Default: ""
+  modules-download-mode: readonly
+  # Allow multiple parallel golangci-lint instances running.
+  # If false, golangci-lint acquires file lock on start.
+  # Default: false
+  allow-parallel-runners: true
+  # Allow multiple golangci-lint instances running, but serialize them around a lock.
+  # If false, golangci-lint exits with an error if it fails to acquire file lock on start.
+  # Default: false
+  allow-serial-runners: true
+  # Define the Go version limit.
+  # Default: use Go version from the go.mod file, fallback on the env var `GOVERSION`, fallback on 1.22.
+  go: '1.24'
+  # Number of operating system threads (`GOMAXPROCS`) that can execute golangci-lint simultaneously.
+  # Default: 0 (automatically set to match Linux container CPU quota and
+  # fall back to the number of logical CPUs in the machine)
+  concurrency: 0
+severity:
+  # Set the default severity for issues.
+  #
+  # If severity rules are defined and the issues do not match or no severity is provided to the rule
+  # this will be the default severity applied.
+  # Severities should match the supported severity names of the selected out format.
+  # - Code climate: https://docs.codeclimate.com/docs/issues#issue-severity
+  # - Checkstyle: https://checkstyle.sourceforge.io/property_types.html#SeverityLevel
+  # - GitHub: https://help.github.com/en/actions/reference/workflow-commands-for-github-actions#setting-an-error-message
+  # - TeamCity: https://www.jetbrains.com/help/teamcity/service-messages.html#Inspection+Instance
+  #
+  # `@linter` can be used as severity value to keep the severity from linters (e.g. revive, gosec, ...)
+  #
+  # Default: ""
+  default: error
+  # When a list of severity rules are provided, severity information will be added to lint issues.
+  # Severity rules have the same filtering capability as exclude rules
+  # except you are allowed to specify one matcher per severity rule.
+  #
+  # `@linter` can be used as severity value to keep the severity from linters (e.g. revive, gosec, ...)
+  #
+  # Only affects out formats that support setting severity information.
+  #
+  # Default: []
+  rules:
+    - linters:
+        - dupl
+      severity: info

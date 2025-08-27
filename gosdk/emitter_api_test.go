@@ -5,15 +5,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
-
-	"github.com/stretchr/testify/require"
-	"math/rand"
 	"net"
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -21,25 +17,25 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"pgregory.net/rapid"
 
+	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
-	"github.com/0xAtelerix/sdk/gosdk/types"
-
-	"google.golang.org/grpc"
 )
 
 func TestEmitterCall(t *testing.T) {
-	dbPath := "./testdb"
-	_ = os.RemoveAll(dbPath)   // Очищаем базу перед тестом
-	defer os.RemoveAll(dbPath) // Очищаем базу после теста
+	dbPath := t.TempDir()
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	db, err := mdbx.NewMDBX(mdbxlog.New()).
 		Path(dbPath).
-		WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
+		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return kv.TableCfg{
 				CheckpointBucket: {},
 				ExternalTxBucket: {},
@@ -49,16 +45,16 @@ func TestEmitterCall(t *testing.T) {
 		Open()
 
 	// Создаем сервер с MDBX
-	srv := NewServer[CustomTransaction](db, 1, nil)
+	srv := NewServer[*CustomTransaction](db, 1, nil)
 	if err != nil {
 		t.Fatalf("Ошибка создания сервера: %v", err)
 	}
 	defer srv.appchainDB.Close()
 
 	// Записываем тестовые чекпоинты через WriteCheckpoint
-	ctx := context.Background()
+	ctx := t.Context()
 
-	checkpoints := []types.Checkpoint{
+	checkpoints := []apptypes.Checkpoint{
 		{
 			ChainID:                  1,
 			BlockNumber:              100,
@@ -75,35 +71,47 @@ func TestEmitterCall(t *testing.T) {
 		},
 	}
 
-	tx, err := db.BeginRw(context.TODO())
+	var tx kv.RwTx
+
+	tx, err = db.BeginRw(t.Context())
 	if err != nil {
 		t.Fatalf("Ошибка запуска сервера: %v", err)
 	}
 
 	for _, chk := range checkpoints {
-		if err := WriteCheckpoint(ctx, tx, chk); err != nil {
+		if err = WriteCheckpoint(ctx, tx, chk); err != nil {
 			t.Fatalf("Ошибка записи чекпоинта: %v", err)
 		}
 	}
 
 	err = tx.Commit()
 	require.NoError(t, err)
+
 	// Запускаем gRPC сервер
 	wg := sync.WaitGroup{}
 	wg.Add(1)
+
 	go func() {
-		listener, err := net.Listen("tcp", ":50051")
+		var listener net.Listener
+
+		listener, err = (&net.ListenConfig{}).Listen(t.Context(), "tcp", ":50051")
 		if err != nil {
-			t.Fatalf("Ошибка запуска сервера: %v", err)
+			t.Errorf("Ошибка запуска сервера: %v", err)
+
+			return
 		}
 
 		grpcServer := grpc.NewServer()
 		emitterproto.RegisterEmitterServer(grpcServer, srv)
 
 		log.Info().Msg("Сервер слушает на порту 50051...")
+
 		wg.Done()
-		if err := grpcServer.Serve(listener); err != nil {
-			t.Fatalf("Ошибка gRPC сервера: %v", err)
+
+		if err = grpcServer.Serve(listener); err != nil {
+			t.Errorf("Ошибка gRPC сервера: %v", err)
+
+			return
 		}
 	}()
 
@@ -111,16 +119,23 @@ func TestEmitterCall(t *testing.T) {
 	time.Sleep(time.Millisecond * 500)
 
 	// Подключение к серверу
-	conn, err := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(
+		"localhost:50051",
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
 	if err != nil {
 		t.Fatalf("Не удалось подключиться: %v", err)
 	}
-	defer conn.Close()
+
+	defer func() {
+		connErr := conn.Close()
+		require.NoError(t, connErr)
+	}()
 
 	client := emitterproto.NewEmitterClient(conn)
 
 	// Отправка запроса
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 
 	limit := uint32(5)
@@ -129,39 +144,60 @@ func TestEmitterCall(t *testing.T) {
 		Limit:                               &limit,
 	}
 
-	res, err := client.GetCheckpoints(ctx, req)
+	var res *emitterproto.CheckpointResponse
+
+	res, err = client.GetCheckpoints(ctx, req)
 	if err != nil {
 		t.Fatalf("Ошибка вызова GetCheckpoints: %v", err)
 	}
 
 	// Проверяем чекпоинты
-	if len(res.Checkpoints) != len(checkpoints) {
-		t.Fatalf("Ожидалось %d чекпоинтов, получено %d", len(checkpoints), len(res.Checkpoints))
+	if len(res.GetCheckpoints()) != len(checkpoints) {
+		t.Fatalf(
+			"Ожидалось %d чекпоинтов, получено %d",
+			len(checkpoints),
+			len(res.GetCheckpoints()),
+		)
 	}
 
-	for _, checkpoint := range res.Checkpoints {
+	for _, checkpoint := range res.GetCheckpoints() {
 		log.Printf("Блок: %d, StateRoot: %x, BlockHash: %x, ExternalTxRoot: %x",
-			checkpoint.LatestBlockNumber,
-			checkpoint.StateRoot,
-			checkpoint.BlockHash,
-			checkpoint.ExternalTxRootHash)
+			checkpoint.GetLatestBlockNumber(),
+			checkpoint.GetStateRoot(),
+			checkpoint.GetBlockHash(),
+			checkpoint.GetExternalTxRootHash())
 	}
 }
 
 // Генерация случайного чекпоинта
-func randomCheckpoint(t *rapid.T, chainID uint64, blockNumber uint64) types.Checkpoint {
-	return types.Checkpoint{
-		ChainID:                  chainID,
-		BlockNumber:              blockNumber,
-		StateRoot:                [32]byte(rapid.SliceOfN(rapid.Byte(), 32, 32).Draw(t, "StateRoot")),
-		BlockHash:                [32]byte(rapid.SliceOfN(rapid.Byte(), 32, 32).Draw(t, "BlockHash")),
-		ExternalTransactionsRoot: [32]byte(rapid.SliceOfN(rapid.Byte(), 32, 32).Draw(t, "ExternalTxRoot")),
+func randomCheckpoint(t *rapid.T, chainID uint64, blockNumber uint64) apptypes.Checkpoint {
+	return apptypes.Checkpoint{
+		ChainID:     chainID,
+		BlockNumber: blockNumber,
+		StateRoot: [32]byte(
+			rapid.SliceOfN(rapid.Byte(), 32, 32).Draw(t, "StateRoot"),
+		),
+		BlockHash: [32]byte(
+			rapid.SliceOfN(rapid.Byte(), 32, 32).Draw(t, "BlockHash"),
+		),
+		ExternalTransactionsRoot: [32]byte(
+			rapid.SliceOfN(rapid.Byte(), 32, 32).Draw(t, "ExternalTxRoot"),
+		),
 	}
 }
 
 // Запускаем gRPC сервер в отдельной горутине
-func startGRPCServer[apptx types.AppTransaction](t *rapid.T, srv *AppchainEmitterServer[apptx]) (string, func()) {
-	listener, err := net.Listen("tcp", ":0") // Используем ":0", чтобы ОС выделила свободный порт
+func startGRPCServer[apptx apptypes.AppTransaction](
+	t *rapid.T,
+	srv *AppchainEmitterServer[apptx],
+) (string, func()) {
+	t.Helper()
+
+	listener, err := (&net.ListenConfig{}).Listen(
+		t.Context(),
+		"tcp",
+		":0",
+	) // Используем ":0", чтобы ОС выделила свободный порт
 	if err != nil {
 		t.Fatalf("Ошибка запуска сервера: %v", err)
 	}
@@ -170,235 +206,284 @@ func startGRPCServer[apptx types.AppTransaction](t *rapid.T, srv *AppchainEmitte
 	emitterproto.RegisterEmitterServer(grpcServer, srv)
 
 	addr := listener.Addr().String()
-	//log.Printf("Сервер слушает на %s...", addr)
+	// log.Printf("Сервер слушает на %s...", addr)
 
 	stop := func() {
 		grpcServer.Stop()
-		listener.Close()
+
+		lisErr := listener.Close()
+		if lisErr != nil && !strings.Contains(lisErr.Error(), "use of closed network connection") {
+			t.Error(lisErr)
+		}
 	}
 
 	go func() {
 		if err := grpcServer.Serve(listener); err != nil {
-			log.Fatal().Err(err).Msg("Ошибка gRPC сервера")
+			log.Error().Err(err).Msg("Ошибка gRPC сервера")
+			t.Error(err)
 		}
 	}()
 
 	time.Sleep(time.Millisecond * 100) // Даем серверу время запуститься
+
 	return addr, stop
 }
 
 func TestEmitterCall_PropertyBased(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
-		dbPath := os.TempDir() + "/TestEmitterCall_PropertyBased" + strconv.Itoa(rand.Int())
-		_ = os.RemoveAll(dbPath)   // Очищаем базу перед тестом
-		defer os.RemoveAll(dbPath) // Удаляем базу после теста
+	rapid.Check(t, func(tr *rapid.T) {
+		t.Run(tr.Name(), func(t *testing.T) {
+			dbPath := t.TempDir()
 
-		db, err := mdbx.NewMDBX(mdbxlog.New()).
-			Path(dbPath).
-			WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
-				return kv.TableCfg{
-					CheckpointBucket: {},
-					ExternalTxBucket: {},
-					BlocksBucket:     {},
-				}
-			}).
-			Open()
+			db, err := mdbx.NewMDBX(mdbxlog.New()).
+				Path(dbPath).
+				WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
+					return kv.TableCfg{
+						CheckpointBucket: {},
+						ExternalTxBucket: {},
+						BlocksBucket:     {},
+					}
+				}).
+				Open()
+			require.NoError(tr, err)
 
-		tx, err := db.BeginRw(context.TODO())
-		if err != nil {
-			t.Fatalf("DB: %v", err)
-		}
-		defer tx.Rollback()
-		// Создаем сервер с MDBX
-		srv := NewServer[CustomTransaction](db, 1, nil)
-		defer srv.appchainDB.Close()
-
-		// Запускаем gRPC сервер и получаем динамический адрес
-		addr, stopServer := startGRPCServer(t, srv)
-		defer stopServer() // Гарантируем закрытие сервера после теста
-
-		// Генерируем случайное количество чекпоинтов (до 100)
-		numCheckpoints := rapid.IntRange(1, 100).Draw(t, "numCheckpoints")
-		checkpointMap := make(map[uint64]types.Checkpoint)
-
-		// Заполняем уникальные LatestBlockNumber
-		for len(checkpointMap) < numCheckpoints {
-			blockNumber := rapid.Uint64().Draw(t, "LatestBlockNumber")
-			checkpointMap[blockNumber] = randomCheckpoint(t, 1, blockNumber)
-		}
-
-		// Преобразуем map в список и записываем в MDBX
-		checkpoints := make([]types.Checkpoint, 0, len(checkpointMap))
-		for _, chk := range checkpointMap {
-			checkpoints = append(checkpoints, chk)
-			if err := WriteCheckpoint(context.Background(), tx, chk); err != nil {
-				t.Fatalf("Ошибка записи чекпоинта: %v", err)
+			tx, err := db.BeginRw(t.Context())
+			if err != nil {
+				t.Fatalf("DB: %v", err)
 			}
-		}
-		err = tx.Commit()
-		require.NoError(t, err)
-		// Сортируем чекпоинты по LatestBlockNumber
-		sort.Slice(checkpoints, func(i, j int) bool {
-			return checkpoints[i].BlockNumber < checkpoints[j].BlockNumber
+			defer tx.Rollback()
+
+			// Создаем сервер с MDBX
+			srv := NewServer[*CustomTransaction](db, 1, nil)
+			defer srv.appchainDB.Close()
+
+			// Запускаем gRPC сервер и получаем динамический адрес
+			addr, stopServer := startGRPCServer(tr, srv)
+			defer stopServer() // Гарантируем закрытие сервера после теста
+
+			// Генерируем случайное количество чекпоинтов (до 100)
+			numCheckpoints := rapid.IntRange(1, 100).Draw(tr, "numCheckpoints")
+			checkpointMap := make(map[uint64]apptypes.Checkpoint)
+
+			// Заполняем уникальные LatestBlockNumber
+			for len(checkpointMap) < numCheckpoints {
+				blockNumber := rapid.Uint64().Draw(tr, "LatestBlockNumber")
+				checkpointMap[blockNumber] = randomCheckpoint(tr, 1, blockNumber)
+			}
+
+			// Преобразуем map в список и записываем в MDBX
+			checkpoints := make([]apptypes.Checkpoint, 0, len(checkpointMap))
+			for _, chk := range checkpointMap {
+				checkpoints = append(checkpoints, chk)
+				if err = WriteCheckpoint(t.Context(), tx, chk); err != nil {
+					tr.Fatalf("Ошибка записи чекпоинта: %v", err)
+				}
+			}
+
+			err = tx.Commit()
+			require.NoError(tr, err)
+
+			// Сортируем чекпоинты по LatestBlockNumber
+			sort.Slice(checkpoints, func(i, j int) bool {
+				return checkpoints[i].BlockNumber < checkpoints[j].BlockNumber
+			})
+
+			// Подключение к серверу
+			conn, err := grpc.NewClient(
+				addr,
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+			) // Используем динамический адрес
+			if err != nil {
+				t.Fatalf("Не удалось подключиться: %v", err)
+			}
+
+			defer func() {
+				connErr := conn.Close()
+				require.NoError(t, connErr)
+			}()
+
+			client := emitterproto.NewEmitterClient(conn)
+
+			// Генерируем случайный запрос
+			startBlock := rapid.Uint64().Draw(tr, "startBlock")
+			limit := rapid.Uint32Range(1, uint32(len(checkpoints))).Draw(tr, "limit")
+
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+
+			req := &emitterproto.GetCheckpointsRequest{
+				ChainId:                             1,
+				LatestPreviousCheckpointBlockNumber: startBlock,
+				Limit:                               &limit,
+			}
+
+			res, err := client.GetCheckpoints(ctx, req)
+			if err != nil {
+				t.Fatalf("Ошибка вызова GetCheckpoints: %v", err)
+			}
+
+			chainIDRes, err := client.GetChainID(ctx, &emptypb.Empty{})
+			if err != nil {
+				t.Fatalf("GetChainID: %v", err)
+			}
+
+			// ✅ Проверяем, что чекпоинты в ответе соответствуют условиям запроса
+			expectedCheckpoints := make([]apptypes.Checkpoint, 0)
+
+			for _, chk := range checkpoints {
+				if chk.BlockNumber >= startBlock {
+					expectedCheckpoints = append(expectedCheckpoints, chk)
+					if len(expectedCheckpoints) >= int(limit) {
+						break
+					}
+				}
+			}
+
+			// ✅ Проверяем, что количество чекпоинтов соответствует лимиту
+			if len(res.GetCheckpoints()) != len(expectedCheckpoints) {
+				t.Fatalf(
+					"Ошибка: ожидалось %d чекпоинтов, получено %d",
+					len(expectedCheckpoints),
+					len(res.GetCheckpoints()),
+				)
+			}
+
+			// ✅ Проверяем, что чекпоинты отсортированы по LatestBlockNumber
+			prevBlockNumber := uint64(0)
+
+			for i, chk := range res.GetCheckpoints() {
+				if chk.GetLatestBlockNumber() < startBlock {
+					t.Fatalf(
+						"Ошибка: чекпоинт %d меньше стартового блока %d",
+						chk.GetLatestBlockNumber(),
+						startBlock,
+					)
+				}
+
+				if chk.GetLatestBlockNumber() < prevBlockNumber {
+					t.Fatal("Ошибка: чекпоинты не отсортированы по LatestBlockNumber")
+				}
+
+				prevBlockNumber = chk.GetLatestBlockNumber()
+
+				// ✅ Проверяем, что данные чекпоинта совпадают с ожидаемыми
+				expected := expectedCheckpoints[i]
+				if chainIDRes.GetChainId() != expected.ChainID ||
+					!bytes.Equal(chk.GetStateRoot(), expected.StateRoot[:]) ||
+					!bytes.Equal(chk.GetBlockHash(), expected.BlockHash[:]) ||
+					!bytes.Equal(
+						chk.GetExternalTxRootHash(),
+						expected.ExternalTransactionsRoot[:],
+					) {
+					t.Fatal("Ошибка: данные чекпоинта не совпадают с записанными")
+				}
+			}
 		})
-
-		// Подключение к серверу
-		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials())) // Используем динамический адрес
-		if err != nil {
-			t.Fatalf("Не удалось подключиться: %v", err)
-		}
-		defer conn.Close()
-
-		client := emitterproto.NewEmitterClient(conn)
-
-		// Генерируем случайный запрос
-		startBlock := rapid.Uint64().Draw(t, "startBlock")
-		limit := rapid.Uint32Range(1, uint32(len(checkpoints))).Draw(t, "limit")
-
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-
-		req := &emitterproto.GetCheckpointsRequest{
-			ChainId:                             1,
-			LatestPreviousCheckpointBlockNumber: startBlock,
-			Limit:                               &limit,
-		}
-
-		res, err := client.GetCheckpoints(ctx, req)
-		if err != nil {
-			t.Fatalf("Ошибка вызова GetCheckpoints: %v", err)
-		}
-
-		chainIDRes, err := client.GetChainId(ctx, &emptypb.Empty{})
-		if err != nil {
-			t.Fatalf("GetChainId: %v", err)
-		}
-
-		// ✅ Проверяем, что чекпоинты в ответе соответствуют условиям запроса
-		expectedCheckpoints := make([]types.Checkpoint, 0)
-		for _, chk := range checkpoints {
-			if chk.BlockNumber >= startBlock {
-				expectedCheckpoints = append(expectedCheckpoints, chk)
-				if len(expectedCheckpoints) >= int(limit) {
-					break
-				}
-			}
-		}
-
-		// ✅ Проверяем, что количество чекпоинтов соответствует лимиту
-		if len(res.Checkpoints) != len(expectedCheckpoints) {
-			t.Fatalf("Ошибка: ожидалось %d чекпоинтов, получено %d", len(expectedCheckpoints), len(res.Checkpoints))
-		}
-
-		// ✅ Проверяем, что чекпоинты отсортированы по LatestBlockNumber
-		prevBlockNumber := uint64(0)
-		for i, chk := range res.Checkpoints {
-			if chk.LatestBlockNumber < startBlock {
-				t.Fatalf("Ошибка: чекпоинт %d меньше стартового блока %d", chk.LatestBlockNumber, startBlock)
-			}
-			if chk.LatestBlockNumber < prevBlockNumber {
-				t.Fatalf("Ошибка: чекпоинты не отсортированы по LatestBlockNumber")
-			}
-			prevBlockNumber = chk.LatestBlockNumber
-
-			// ✅ Проверяем, что данные чекпоинта совпадают с ожидаемыми
-			expected := expectedCheckpoints[i]
-			if chainIDRes.ChainId != expected.ChainID ||
-				!bytes.Equal(chk.StateRoot, expected.StateRoot[:]) ||
-				!bytes.Equal(chk.BlockHash, expected.BlockHash[:]) ||
-				!bytes.Equal(chk.ExternalTxRootHash, expected.ExternalTransactionsRoot[:]) {
-				t.Fatalf("Ошибка: данные чекпоинта не совпадают с записанными")
-			}
-		}
 	})
 }
 
 func TestGetExternalTransactions_PropertyBased(t *testing.T) {
 	t.Skip()
-	rapid.Check(t, func(t *rapid.T) {
-		dbPath := os.TempDir() + "/TestGetExternalTransactions_PropertyBased" + strconv.Itoa(rand.Int())
-		_ = os.RemoveAll(dbPath)
-		defer os.RemoveAll(dbPath)
 
-		db, err := mdbx.NewMDBX(mdbxlog.New()).
-			Path(dbPath).
-			WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
-				return kv.TableCfg{
-					CheckpointBucket: {},
-					ExternalTxBucket: {},
-					BlocksBucket:     {},
+	rapid.Check(t, func(tr *rapid.T) {
+		t.Run(tr.Name(), func(t *testing.T) {
+			dbPath := t.TempDir()
+
+			db, err := mdbx.NewMDBX(mdbxlog.New()).
+				Path(dbPath).
+				WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
+					return kv.TableCfg{
+						CheckpointBucket: {},
+						ExternalTxBucket: {},
+						BlocksBucket:     {},
+					}
+				}).
+				Open()
+
+			require.NoError(tr, err)
+
+			srv := NewServer[*CustomTransaction](db, 1, nil)
+			defer srv.appchainDB.Close()
+
+			tx, err := db.BeginRw(t.Context())
+			if err != nil {
+				tr.Fatalf("DB: %v", err)
+			}
+
+			addr, stopServer := startGRPCServer(tr, srv)
+			defer stopServer()
+
+			numBlocks := rapid.IntRange(1, 50).Draw(tr, "numBlocks")
+			transactionMap := make(map[uint64][]apptypes.ExternalTransaction)
+
+			for range numBlocks {
+				blockNumber := rapid.Uint64().Draw(tr, "BlockNumber")
+				numTx := rapid.IntRange(1, 20).Draw(tr, "numTxInBlock")
+
+				for range numTx {
+					tx := apptypes.ExternalTransaction{
+						ChainID: rapid.Uint64().Draw(tr, "ChainId"),
+						Tx:      rapid.SliceOfN(rapid.Byte(), 64, 64).Draw(tr, "Tx"),
+					}
+					transactionMap[blockNumber] = append(transactionMap[blockNumber], tx)
 				}
-			}).
-			Open()
 
-		srv := NewServer[CustomTransaction](db, 1, nil)
-		defer srv.appchainDB.Close()
-
-		tx, err := db.BeginRw(context.TODO())
-		if err != nil {
-			t.Fatalf("DB: %v", err)
-		}
-
-		addr, stopServer := startGRPCServer(t, srv)
-		defer stopServer()
-
-		numBlocks := rapid.IntRange(1, 50).Draw(t, "numBlocks")
-		transactionMap := make(map[uint64][]types.ExternalTransaction)
-
-		for i := 0; i < numBlocks; i++ {
-			blockNumber := rapid.Uint64().Draw(t, "BlockNumber")
-			numTx := rapid.IntRange(1, 20).Draw(t, "numTxInBlock")
-
-			for j := 0; j < numTx; j++ {
-				tx := types.ExternalTransaction{
-					ChainID: rapid.Uint64().Draw(t, "ChainId"),
-					Tx:      rapid.SliceOfN(rapid.Byte(), 64, 64).Draw(t, "Tx"),
+				if _, err = WriteExternalTransactions(tx, blockNumber, transactionMap[blockNumber]); err != nil {
+					tr.Fatalf("Ошибка записи транзакции: %v", err)
 				}
-				transactionMap[blockNumber] = append(transactionMap[blockNumber], tx)
 			}
 
-			if _, err := WriteExternalTransactions(context.Background(), tx, blockNumber, transactionMap[blockNumber]); err != nil {
-				t.Fatalf("Ошибка записи транзакции: %v", err)
-			}
-		}
+			err = tx.Commit()
+			require.NoError(tr, err)
 
-		err = tx.Commit()
-		require.NoError(t, err)
-
-		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		if err != nil {
-			t.Fatalf("Не удалось подключиться: %v", err)
-		}
-		defer conn.Close()
-
-		client := emitterproto.NewEmitterClient(conn)
-
-		startBlock := rapid.Uint64().Draw(t, "startBlock")
-		limit := rapid.Uint32Range(1, 100).Draw(t, "limit")
-
-		req := &emitterproto.GetExternalTransactionsRequest{
-			LatestPreviousBlockNumber: startBlock,
-			Limit:                     &limit,
-		}
-
-		res, err := client.GetExternalTransactions(context.Background(), req)
-		if err != nil {
-			t.Fatalf("Ошибка вызова GetExternalTransactions: %v", err)
-		}
-
-		for _, blk := range res.Blocks {
-			if blk.BlockNumber < startBlock {
-				t.Fatalf("Ошибка: блок %d меньше startBlock %d", blk.BlockNumber, startBlock)
+			conn, err := grpc.NewClient(
+				addr,
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+			)
+			if err != nil {
+				tr.Fatalf("Не удалось подключиться: %v", err)
 			}
 
-			if txs, exists := transactionMap[blk.BlockNumber]; exists {
-				if len(blk.ExternalTransactions) != len(txs) {
-					t.Fatalf("Ошибка: несоответствие количества транзакций для блока %d", blk.BlockNumber)
+			defer func() {
+				connErr := conn.Close()
+				require.NoError(tr, connErr)
+			}()
+
+			client := emitterproto.NewEmitterClient(conn)
+
+			startBlock := rapid.Uint64().Draw(tr, "startBlock")
+			limit := rapid.Uint32Range(1, 100).Draw(tr, "limit")
+
+			req := &emitterproto.GetExternalTransactionsRequest{
+				LatestPreviousBlockNumber: startBlock,
+				Limit:                     &limit,
+			}
+
+			res, err := client.GetExternalTransactions(t.Context(), req)
+			if err != nil {
+				tr.Fatalf("Ошибка вызова GetExternalTransactions: %v", err)
+			}
+
+			for _, blk := range res.GetBlocks() {
+				if blk.GetBlockNumber() < startBlock {
+					tr.Fatalf(
+						"Ошибка: блок %d меньше startBlock %d",
+						blk.GetBlockNumber(),
+						startBlock,
+					)
 				}
-			} else {
-				t.Fatalf("Ошибка: блок %d не найден в ожидаемых данных", blk.BlockNumber)
+
+				if txs, exists := transactionMap[blk.GetBlockNumber()]; exists {
+					if len(blk.GetExternalTransactions()) != len(txs) {
+						tr.Fatalf(
+							"Ошибка: несоответствие количества транзакций для блока %d",
+							blk.GetBlockNumber(),
+						)
+					}
+				} else {
+					tr.Fatalf("Ошибка: блок %d не найден в ожидаемых данных", blk.GetBlockNumber())
+				}
 			}
-		}
+		})
 	})
 }
 
@@ -412,10 +497,13 @@ type CustomTransaction struct {
 func (c *CustomTransaction) Unmarshal(b []byte) error {
 	return json.Unmarshal(b, c)
 }
+
 func (c *CustomTransaction) Marshal() ([]byte, error) {
 	return json.Marshal(c)
 }
-func (c CustomTransaction) Hash() [32]byte {
+
+func (c *CustomTransaction) Hash() [32]byte {
 	s := c.From + c.To + strconv.Itoa(c.Value)
+
 	return sha256.Sum256([]byte(s))
 }

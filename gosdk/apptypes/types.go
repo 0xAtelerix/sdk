@@ -1,8 +1,10 @@
-package types
+package apptypes
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+
 	"github.com/ledgerwatch/erigon-lib/kv"
 )
 
@@ -14,8 +16,12 @@ type Hasher interface {
 
 // How to work with encoding with appchain transactions
 type Serializible interface {
-	Unmarshal([]byte) error
-	Marshal() ([]byte, error)
+	Unmarshal(data []byte) error
+	Marshal() (data []byte, err error)
+}
+
+type AppTransactionBuilder[appTx AppTransaction] interface {
+	Make() appTx
 }
 
 // AppTransaction should be serializible
@@ -23,8 +29,8 @@ type Batch[appTx AppTransaction] struct {
 	Atropos        [32]byte
 	Transactions   []appTx
 	ExternalBlocks []ExternalBlock
-	//todo add crossappchain tx
-	//ExternalTransactions [][]byte
+	// todo add crossappchain tx
+	// ExternalTransactions [][]byte
 	EndOffset   int64
 	TxEndOffset int64 // txReader.position после чтения
 }
@@ -49,7 +55,11 @@ type StoredAppchainBlock[appBlock AppchainBlock] struct {
 	Block appBlock
 }
 
-type AppchainBlockConstructor[appTx AppTransaction, block AppchainBlock] func(blockNumber uint64, stateRoot [32]byte, previousBlockHash [32]byte, txsBatch Batch[appTx]) block
+type AppchainBlockConstructor[appTx AppTransaction, block AppchainBlock] func(
+	blockNumber uint64,
+	stateRoot [32]byte,
+	previousBlockHash [32]byte,
+	txsBatch Batch[appTx]) block
 
 // Для подключенных L1/L2 мы должны  уметь анмаршалить поле tx.
 // Для межапчейновых - вставляем, как есть.
@@ -75,26 +85,26 @@ type AppchainTxPoolBatch struct {
 }
 
 type DB interface {
-	Write() //some changes
-	Read()  //some read actions
+	Write() // some changes
+	Read()  // some read actions
 	Commit(checkpoint Checkpoint) error
 }
 
 // TxPoolInterface определяет методы для работы с пулом транзакций
 type TxPoolInterface[T AppTransaction] interface {
 	// AddTransaction добавляет транзакцию в пул
-	AddTransaction(tx T) error
+	AddTransaction(ctx context.Context, tx T) error
 
 	// GetTransaction получает транзакцию по хэшу
-	GetTransaction(hash []byte) (*T, error)
+	GetTransaction(ctx context.Context, hash []byte) (T, error)
 
 	// RemoveTransaction удаляет транзакцию из пула
-	RemoveTransaction(hash []byte) error
+	RemoveTransaction(ctx context.Context, hash []byte) error
 
 	// GetPendingTransactions возвращает все транзакции
-	GetPendingTransactions() ([]T, error)
+	GetPendingTransactions(ctx context.Context) ([]T, error)
 
-	CreateTransactionBatch() ([]byte, [][]byte, error)
+	CreateTransactionBatch(ctx context.Context) ([]byte, [][]byte, error)
 
 	// Close закрывает хранилище транзакций
 	Close() error
@@ -102,37 +112,40 @@ type TxPoolInterface[T AppTransaction] interface {
 
 // финализация перезода состояния аппчейна
 type Checkpoint struct {
-	ChainID                  uint64
-	BlockNumber              uint64
-	BlockHash                [32]byte
-	StateRoot                [32]byte
-	ExternalTransactionsRoot [32]byte
+	ChainID                  uint64   `json:"chainId"`
+	BlockNumber              uint64   `json:"blockNumber"`
+	BlockHash                [32]byte `json:"blockHash"`
+	StateRoot                [32]byte `json:"stateRoot"`
+	ExternalTransactionsRoot [32]byte `json:"externalTransactionsRoot"`
 }
 
 type Event struct {
-	Base         BaseEvent
-	CreationTime uint64
-	//todo возможно тут должно быть MedianTime
-	PrevEpochHash *[32]byte
+	// todo возможно тут должно быть MedianTime
+	Base          BaseEvent `json:"base"`
+	CreationTime  uint64    `json:"creationTime"`
+	PrevEpochHash *[32]byte `json:"prevEpochHash"`
 
-	//батчи транзакций, которые были уже переданы другим валидаторам и у нас есть подпись, что они получены
-	TxPool []AppchainTxPoolBatch
-	//обновления состояния аппчейна, какой новый стейт рут, блок и внешние транзакции
-	Appchains []Checkpoint
+	// батчи транзакций, которые были уже переданы другим валидаторам и у нас есть подпись, что они получены
+	TxPool []AppchainTxPoolBatch `json:"txPool"`
+	// обновления состояния аппчейна, какой новый стейт рут, блок и внешние транзакции
+	Appchains []Checkpoint `json:"appchains"`
 	// внешние блоки
-	BlockVotes []ExternalBlock
+	BlockVotes []ExternalBlock `json:"blockVotes"`
 
-	Signature [64]byte
+	Signature [64]byte `json:"signature"`
 }
 
 func (e Event) Bytes() ([]byte, error) {
 	var buf bytes.Buffer
+
 	enc := json.NewEncoder(&buf)
+
+	//nolint:musttag // false-positive
 	if err := enc.Encode(e); err != nil {
 		return nil, err
 	}
-	return buf.Bytes(), nil
 
+	return buf.Bytes(), nil
 }
 
 type BaseEvent struct {
