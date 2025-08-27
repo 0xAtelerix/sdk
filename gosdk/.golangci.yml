@@ -403,7 +403,7 @@ run:
   allow-serial-runners: true
   # Define the Go version limit.
   # Default: use Go version from the go.mod file, fallback on the env var `GOVERSION`, fallback on 1.22.
-  go: '1.24'
+  go: '1.25'
   # Number of operating system threads (`GOMAXPROCS`) that can execute golangci-lint simultaneously.
   # Default: 0 (automatically set to match Linux container CPU quota and
   # fall back to the number of logical CPUs in the machine)
