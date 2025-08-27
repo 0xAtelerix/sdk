@@ -30,7 +30,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           # Reads desired Go version from your go.mod
-          go-version-file: go.mod
+          go-version-file: ./gosdk/go.mod
           cache: true  # caches GOMODCACHE automatically
 
       - name: Capture Go cache paths
