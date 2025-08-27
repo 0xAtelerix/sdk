@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOPRIVATE: github.com/0xAtelerix/*
+  # Optional: keep module behavior consistent in CI
+  GOFLAGS: -mod=mod
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Set up Go
+        id: setup-go
+        uses: actions/setup-go@v5
+        with:
+          # Reads desired Go version from your go.mod
+          go-version-file: go.mod
+          cache: true  # caches GOMODCACHE automatically
+
+      - name: Capture Go cache paths
+        run: |
+          echo "GOMODCACHE=$(go env GOMODCACHE)" >> $GITHUB_ENV
+          echo "GOBIN=$(go env GOPATH)/bin" >> $GITHUB_ENV
+
+      - name: Auth for private modules
+        # Requires a classic PAT in repo secrets as GH_PAT
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -z "$GH_PAT" ]; then
+            echo "::error::Missing GH_PAT secret. Create a classic token with 'repo' scope."
+            exit 1
+          fi
+          git config --global url."https://${GH_PAT}@github.com/".insteadOf "https://github.com/"
+
+      - name: Cache build cache + tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ${{ env.GOMODCACHE }}
+            ${{ env.GOBIN }}
+          key: ${{ runner.os }}-go${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('**/go.sum') }}-v1
+          restore-keys: |
+            ${{ runner.os }}-go${{ steps.setup-go.outputs.go-version }}-
+
+      - name: Deps (modules + golangci-lint)
+        run: make deps
+
+      - name: Lint
+        run: make lints
+
+      - name: Test (no-race)
+        run: make tests
