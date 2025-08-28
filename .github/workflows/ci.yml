@@ -61,7 +61,7 @@ jobs:
         with:
           version: v2.4.0
           working-directory: gosdk
-          args: -v --timeout=10m ./...
+          args: -v --timeout=10m --path-mode=rel
 
       - name: Test (no-race)
         run: make tests
