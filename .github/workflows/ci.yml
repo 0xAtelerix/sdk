@@ -86,10 +86,10 @@ jobs:
             echo "::warning::gosdk/ directory is missing"
           fi
           
-          if [ -f gosdk/.gitlab-ci.yml ]; then
-            echo "Found gosdk/.gitlab-ci.yml"
+          if [ -f gosdk/..golangci.yml ]; then
+            echo "Found gosdk/..golangci.yml"
           else
-            echo "::warning::gosdk/.gitlab-ci.yml is missing"
+            echo "::warning::gosdk/..golangci.yml is missing"
           fi
 
 
