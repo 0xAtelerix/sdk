@@ -16,8 +16,7 @@ tests:
 race-tests:
 	cd ./gosdk && go test -race -short -timeout 30m -failfast -shuffle=on -v ./... $(params)
 
-VERSION_TAG_SCRIPT=sed -n 's/.*golangci-lint@\(v[0-9.]*\).*/\1/p' ./.gitlab-ci.yml
-VERSION=$(shell $(VERSION_TAG_SCRIPT))
+VERSION=v2.4.0
 
 lints-docker: # 'sed' matches version in this string 'golangci-lint@xx.yy.zzz'
 	echo "⚙️ Used lints version: " $(VERSION)
