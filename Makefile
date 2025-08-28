@@ -30,4 +30,4 @@ deps:
 	cd ./gosdk && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $$(go env GOPATH)/bin $(VERSION)
 
 lints:
-	cd ./gosdk && $$(go env GOPATH)/bin/golangci-lint run -v  --timeout 10m
+	cd ./gosdk && $$(go env GOPATH)/bin/golangci-lint run ./... -v --timeout 10m
