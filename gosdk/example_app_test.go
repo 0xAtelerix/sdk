@@ -29,12 +29,6 @@ func (c ExampleTransaction) Hash() [32]byte {
 	return sha256.Sum256([]byte(s))
 }
 
-type ExampleTransactionBuilder struct{}
-
-func (ExampleTransactionBuilder) Make() ExampleTransaction {
-	return ExampleTransaction{}
-}
-
 type ExampleBatchProcesser[appTx apptypes.AppTransaction] struct{}
 
 func (ExampleBatchProcesser[appTx]) ProcessBatch(
@@ -96,7 +90,7 @@ func ExampleAppchain() {
 		log.Fatal().Err(err).Msg("Failed to local mdbx database")
 	}
 
-	txPool := txpool.NewTxPool[ExampleTransaction](localDB, ExampleTransactionBuilder{})
+	txPool := txpool.NewTxPool[ExampleTransaction](localDB)
 
 	// инициализируем базу на нашей стороне
 	appchainDB, err := mdbx.NewMDBX(mdbxlog.New()).

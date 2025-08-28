@@ -68,7 +68,7 @@ func TestTxPool_PropertyBased(t *testing.T) {
 			require.NoError(tr, err)
 
 			// Создаем новый TxPool
-			txPool := NewTxPool[CustomTransaction](db, CustomTransactionBuilder{})
+			txPool := NewTxPool[CustomTransaction](db)
 
 			defer func() {
 				poolErr := txPool.Close()
