@@ -17,7 +17,6 @@ permissions:
 env:
   GOPRIVATE: github.com/0xAtelerix/*
   GOFLAGS: -mod=mod
-  HISTORY_DEPTH: 1
 
 jobs:
   lint-test:
@@ -29,7 +28,7 @@ jobs:
         with:
           # If it's a PR, use the PR's last commit (HEAD). Otherwise use the workflow commit.
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 1        # "last commits" depth for the current branch
+          fetch-depth: 1
           fetch-tags: false
 
       - name: Fetch main (shallow)
@@ -70,7 +69,7 @@ jobs:
         with:
           version: v2.4.0
           working-directory: gosdk
-          args: -v --timeout=10m --path-mode=rel
+          args: -v --timeout=10m
           github-token: ${{ github.token }}
 
       - name: Test (no-race)
