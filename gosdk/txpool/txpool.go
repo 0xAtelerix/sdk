@@ -31,7 +31,10 @@ type TxPool[T apptypes.AppTransaction, B apptypes.AppTransactionBuilder[T]] stru
 }
 
 // NewTxPool создает новый пул транзакций с MDBX-хранилищем
-func NewTxPool[T apptypes.AppTransaction, B apptypes.AppTransactionBuilder[T]](db kv.RwDB, txBuilder B) *TxPool[T, B] {
+func NewTxPool[T apptypes.AppTransaction, B apptypes.AppTransactionBuilder[T]](
+	db kv.RwDB,
+	txBuilder B,
+) *TxPool[T, B] {
 	return &TxPool[T, B]{
 		db:                    db,
 		appTransactionBuilder: txBuilder,

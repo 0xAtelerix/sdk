@@ -14,6 +14,8 @@ import (
 )
 
 // CustomTransaction - тестовая структура транзакции
+//
+//nolint:recvcheck // because of generics
 type CustomTransaction struct {
 	From  string `json:"from"`
 	To    string `json:"to"`
@@ -101,7 +103,6 @@ func TestTxPool_PropertyBased(t *testing.T) {
 					tr.Fatalf("Ошибка получения транзакции: %v", err)
 				}
 
-				//nolint:govet // it's a test
 				if retrievedTx != *expectedTx {
 					tr.Fatalf("Ожидалась %v, получена %v", *expectedTx, retrievedTx)
 				}
