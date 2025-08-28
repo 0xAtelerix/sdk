@@ -26,7 +26,7 @@ deps:
 	go mod download
 	go install github.com/bufbuild/buf/cmd/buf@latest
 	go get google.golang.org/grpc@v1.75.0
-	&& curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $$(go env GOPATH)/bin $(VERSION)
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $$(go env GOPATH)/bin $(VERSION)
 
 lints:
 	$$(go env GOPATH)/bin/golangci-lint run ./gosdk/... -v --timeout 10m
