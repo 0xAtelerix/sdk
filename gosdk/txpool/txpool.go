@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 
 	"github.com/ledgerwatch/erigon-lib/kv"
 
@@ -76,7 +77,12 @@ func (p *TxPool[T, B]) GetTransaction(ctx context.Context, hash []byte) (T, erro
 
 	err = json.Unmarshal(txData, &tx)
 	if err != nil {
-		return p.appTransactionBuilder.Make(), err
+		return p.appTransactionBuilder.Make(), fmt.Errorf(
+			"error while unmarshal getTx result: %w, %q, %T",
+			err,
+			string(txData),
+			&tx,
+		)
 	}
 
 	return tx, nil
