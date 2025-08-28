@@ -27,7 +27,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          # If it's a PR, use the PR's last commit (HEAD). Otherwise use the workflow commit.
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1        # "last commits" depth for the current branch
+          fetch-tags: false
+
+      - name: Fetch main (shallow)
+        run: |
+          git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
 
       - name: Set up Go
         id: setup-go
