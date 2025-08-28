@@ -9,7 +9,7 @@ const (
 	FantomChainID    = 250   // Fantom Opera
 	BaseChainID      = 8453  // Base Mainnet
 
-	//testnets
+	// testnets
 	EthereumSepoliaChainID = 11155111 // Ethereum Sepolia Testnet
 	PolygonMumbaiChainID   = 80001    // Polygon Mumbai Testnet
 	BNBTestnetChainID      = 97       // BNB Smart Chain Testnet
@@ -22,34 +22,40 @@ const (
 	SolanaChainID        = 1232342
 )
 
-var EvmChains = map[uint32]struct{}{
-	EthereumChainID:        {},
-	PolygonChainID:         {},
-	BNBChainID:             {},
-	AvalancheChainID:       {},
-	GnosisChainID:          {},
-	FantomChainID:          {},
-	BaseChainID:            {},
-	EthereumSepoliaChainID: {},
-	PolygonMumbaiChainID:   {},
-	BNBTestnetChainID:      {},
-	AvalancheFujiChainID:   {},
-	GnosisChiadoChainID:    {},
-	FantomTestnetChainID:   {},
+func EVMChains() map[uint32]struct{} {
+	return map[uint32]struct{}{
+		EthereumChainID:        {},
+		PolygonChainID:         {},
+		BNBChainID:             {},
+		AvalancheChainID:       {},
+		GnosisChainID:          {},
+		FantomChainID:          {},
+		BaseChainID:            {},
+		EthereumSepoliaChainID: {},
+		PolygonMumbaiChainID:   {},
+		BNBTestnetChainID:      {},
+		AvalancheFujiChainID:   {},
+		GnosisChiadoChainID:    {},
+		FantomTestnetChainID:   {},
+	}
 }
 
-var SolanaChains = map[uint32]struct{}{
-	SolanaTestnetChainID: {},
-	SolanaDevnetChainID:  {},
-	SolanaChainID:        {},
+func SolanaChains() map[uint32]struct{} {
+	return map[uint32]struct{}{
+		SolanaTestnetChainID: {},
+		SolanaDevnetChainID:  {},
+		SolanaChainID:        {},
+	}
 }
 
 func IsEvmChain(chainID uint32) bool {
-	_, ok := EvmChains[chainID]
+	_, ok := EVMChains()[chainID]
+
 	return ok
 }
 
 func IsSolanaChain(chainID uint32) bool {
-	_, ok := SolanaChains[chainID]
+	_, ok := SolanaChains()[chainID]
+
 	return ok
 }

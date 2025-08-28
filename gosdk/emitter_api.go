@@ -211,7 +211,11 @@ func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(
 		}
 
 		// Генерация корректного хеша
-		txsFlat := utility.Flatten(rawTxs)
+		txsFlat, err := utility.Flatten(rawTxs)
+		if err != nil {
+			return nil, fmt.Errorf("transaction flatten failed: %w", err)
+		}
+
 		hash := sha256.Sum256(txsFlat)
 
 		blocks = append(blocks, &emitterproto.GetExternalTransactionsResponse_BlockTransactions{

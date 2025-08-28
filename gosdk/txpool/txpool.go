@@ -143,7 +143,11 @@ func (p *TxPool[T, B]) CreateTransactionBatch(ctx context.Context) ([]byte, [][]
 			}
 		}
 
-		txs := utility.Flatten(transactions)
+		txs, err := utility.Flatten(transactions)
+		if err != nil {
+			return err
+		}
+
 		hash := sha256.New()
 
 		_, err = hash.Write(txs)

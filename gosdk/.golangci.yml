@@ -253,7 +253,7 @@ issues:
   new: false
   # Show only new issues created after the best common ancestor (merge-base against HEAD).
   # Default: ""
-  new-from-merge-base: "main"
+  new-from-merge-base: ""
   # Show only new issues created after git revision `REV`.
   # Default: ""
   new-from-rev: ""

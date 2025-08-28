@@ -16,7 +16,10 @@ func TestFlattenUnflattenIdentity(t *testing.T) {
 			).Draw(tr, "data")
 
 			// Сериализуем и десериализуем
-			flat := Flatten(b)
+			flat, err := Flatten(b)
+			if err != nil {
+				tr.Fatalf("flatten returned error: %v", err)
+			}
 
 			restored, err := Unflatten(flat)
 			if err != nil {
