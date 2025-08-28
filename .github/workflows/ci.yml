@@ -39,7 +39,7 @@ jobs:
         id: setup-go
         uses: actions/setup-go@v5
         with:
-          go-version-file: ./gosdk/go.mod
+          go-version-file: ./go.mod
           cache: true
 
       - name: Capture Go cache paths
@@ -60,38 +60,6 @@ jobs:
           key: ${{ runner.os }}-go${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('**/go.sum') }}-v1
           restore-keys: |
             ${{ runner.os }}-go${{ steps.setup-go.outputs.go-version }}-
-
-      - name: Debug workspace after checkout
-        run: |
-          set -euxo pipefail
-          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
-          echo "pwd=$(pwd)"
-          echo "event=$GITHUB_EVENT_NAME ref=$GITHUB_REF ref_name=$GITHUB_REF_NAME head_ref=$GITHUB_HEAD_REF base_ref=$GITHUB_BASE_REF"
-          
-          echo "== git status =="
-          git status --porcelain=v1 -b || true
-          echo "== last commit =="
-          git log -1 --oneline --decorate || true
-          echo "== top-level =="
-          ls -la
-          echo "== tree (depth 2) =="
-          find . -maxdepth 2 -print | sort
-          
-          echo "== gosdk dir check =="
-          if [ -d gosdk ]; then
-            ls -la gosdk
-            echo "== gosdk tree (depth 2) =="
-            find gosdk -maxdepth 2 -print | sort
-          else
-            echo "::warning::gosdk/ directory is missing"
-          fi
-          
-          if [ -f gosdk/..golangci.yml ]; then
-            echo "Found gosdk/..golangci.yml"
-          else
-            echo "::warning::gosdk/..golangci.yml is missing"
-          fi
-
 
       - name: Deps (modules + golangci-lint)
         run: make deps
