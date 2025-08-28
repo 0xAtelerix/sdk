@@ -56,8 +56,12 @@ jobs:
       - name: Deps (modules + golangci-lint)
         run: make deps
 
-      - name: Lint
-        run: make lints
+      - name: Lint (golangci-lint-action)
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.4.0
+          working-directory: gosdk
+          args: -v --timeout=10m ./...
 
       - name: Test (no-race)
         run: make tests
