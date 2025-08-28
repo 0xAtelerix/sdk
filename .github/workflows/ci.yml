@@ -57,7 +57,7 @@ jobs:
         run: make deps
 
       - name: Lint (golangci-lint-action)
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v8
         with:
           version: v2.4.0
           working-directory: gosdk
