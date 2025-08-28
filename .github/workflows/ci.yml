@@ -10,12 +10,14 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read  # lets GITHUB_TOKEN read this repo
+  contents: read
+  checks: write
+  pull-requests: write
 
 env:
   GOPRIVATE: github.com/0xAtelerix/*
-  # Optional: keep module behavior consistent in CI
   GOFLAGS: -mod=mod
+  HISTORY_DEPTH: 1
 
 jobs:
   lint-test:
@@ -62,6 +64,7 @@ jobs:
           version: v2.4.0
           working-directory: gosdk
           args: -v --timeout=10m --path-mode=rel
+          github-token: ${{ github.token }}
 
       - name: Test (no-race)
         run: make tests
