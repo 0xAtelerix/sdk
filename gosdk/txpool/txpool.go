@@ -15,13 +15,13 @@ import (
 // Определяем таблицы для хранения транзакций
 const (
 	txPoolBucket    = "txpool"
-	txBatchesBucket = "txBatches"
+	txBatchedBucket = "txBatched" // txHash -> batch_hash
 )
 
 func Tables() kv.TableCfg {
 	return kv.TableCfg{
 		txPoolBucket:    {},
-		txBatchesBucket: {},
+		txBatchedBucket: {},
 	}
 }
 
@@ -90,7 +90,7 @@ func (p *TxPool[T]) RemoveTransaction(ctx context.Context, hash []byte) error {
 	})
 }
 
-// GetAllTransactions получает все транзакции (generic)
+// GetAllTransactions получает все транзакции
 func (p *TxPool[T]) GetPendingTransactions(ctx context.Context) ([]T, error) {
 	var transactions []T
 
@@ -138,6 +138,7 @@ func (p *TxPool[T]) CreateTransactionBatch(ctx context.Context) ([]byte, [][]byt
 		for k, v, curErr := it.First(); k != nil && curErr == nil; k, v, curErr = it.Next() {
 			transactions = append(transactions, v)
 
+			// TODO: for data consistency we need to get a fetcher response on successful tx save first and only then delete from txpool
 			curErr = txn.Delete(txPoolBucket, k)
 			if curErr != nil {
 				return curErr
@@ -158,13 +159,58 @@ func (p *TxPool[T]) CreateTransactionBatch(ctx context.Context) ([]byte, [][]byt
 
 		batchHash = hash.Sum(nil)
 
-		return txn.Put(txBatchesBucket, batchHash, txs)
+		for _, tx := range transactions {
+			var typedTx T
+			err = json.Unmarshal(tx, &typedTx)
+			if err != nil {
+				return fmt.Errorf("can't serialize tx from txpool: %w", err)
+			}
+
+			txHash := typedTx.Hash()
+
+			err = txn.Put(txBatchedBucket, txHash[:], batchHash)
+			if err != nil {
+				return fmt.Errorf("can't put a batched tx to txpool: %w", err)
+			}
+		}
+
+		return nil
 	})
 	if err != nil {
 		return nil, nil, err
 	}
 
 	return batchHash, transactions, nil
+}
+
+// GetTransaction возвращает транзакцию по хэшу
+func (p *TxPool[T]) GetTransactionStatus(ctx context.Context, hash []byte) (status TxStatus, err error) {
+	var (
+		txData []byte
+		dbErr  error
+	)
+
+	err = p.db.View(ctx, func(txn kv.Tx) error {
+		txData, dbErr = txn.GetOne(txPoolBucket, hash)
+
+		return dbErr
+	})
+	if err == nil && len(txData) != 0 {
+		return Pending, nil
+	}
+
+	err = p.db.View(ctx, func(txn kv.Tx) error {
+		txData, dbErr = txn.GetOne(txBatchedBucket, hash)
+
+		return dbErr
+	})
+	if err == nil && len(txData) != 0 {
+		return Batched, nil
+	}
+
+	// TODO: handle: ReadyToProcess and Processed
+
+	return status, nil
 }
 
 // Close закрывает MDBX
