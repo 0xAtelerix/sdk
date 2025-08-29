@@ -1,0 +1,10 @@
+profile: cover.out
+
+threshold:
+  file: 10
+  total: 5
+
+exclude:
+  paths:
+    - \.pb\.go$        # protobufs
+    - /mocks?/         # mock packages

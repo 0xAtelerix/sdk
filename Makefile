@@ -22,11 +22,16 @@ lints-docker: # 'sed' matches version in this string 'golangci-lint@xx.yy.zzz'
 	echo "⚙️ Used lints version: " $(VERSION)
 	docker run --rm -v $$(pwd):/app -w /app golangci/golangci-lint:$(VERSION) golangci-lint run -v  --timeout 10m
 
-deps:
-	go mod download
-	go install github.com/bufbuild/buf/cmd/buf@latest
-	go get google.golang.org/grpc@v1.75.0
+deps-local:
+	GOPRIVATE=github.com/0xAtelerix/* go mod download
+	GOPRIVATE=github.com/0xAtelerix/* go install github.com/bufbuild/buf/cmd/buf@latest
+	GOPRIVATE=github.com/0xAtelerix/* go get google.golang.org/grpc@v1.75.0
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $$(go env GOPATH)/bin $(VERSION)
+
+deps-ci:
+	GOPRIVATE=github.com/0xAtelerix/* go mod download
+	GOPRIVATE=github.com/0xAtelerix/* go install github.com/bufbuild/buf/cmd/buf@latest
+	GOPRIVATE=github.com/0xAtelerix/* go get google.golang.org/grpc@v1.75.0
 
 lints:
 	$$(go env GOPATH)/bin/golangci-lint run ./gosdk/... -v --timeout 10m

@@ -4,6 +4,7 @@ on:
   push:
     branches: [ main, master ]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -17,9 +18,10 @@ permissions:
 env:
   GOPRIVATE: github.com/0xAtelerix/*
   GOFLAGS: -mod=mod
+  TEST_SHUFFLE_SEED: ${{ github.run_id }}
 
 jobs:
-  lint-test:
+  CI:
     runs-on: ubuntu-latest
 
     steps:
@@ -50,19 +52,24 @@ jobs:
       - name: Add GOBIN to PATH
         run: echo "$GOBIN" >> $GITHUB_PATH
 
-      - name: Cache build cache + tools
+      - name: Cache GOBIN (tools only)
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.cache/go-build
-            ${{ env.GOMODCACHE }}
-            ${{ env.GOBIN }}
-          key: ${{ runner.os }}-go${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('**/go.sum') }}-v1
-          restore-keys: |
-            ${{ runner.os }}-go${{ steps.setup-go.outputs.go-version }}-
+          path: ${{ env.GOBIN }}
+          key: ${{ runner.os }}-gobin-${{ hashFiles('**/go.sum') }}-v1
+          restore-keys: ${{ runner.os }}-gobin-
+
+      - name: Git auth for private sdk (read-only)
+        env:
+          GH_SDK_TOKEN: ${{ secrets.GH_SDK_TOKEN }}
+        run: |
+          test -n "$GH_SDK_TOKEN" || { echo "GH_SDK_TOKEN missing"; exit 1; }
+          git config --global url."https://x-access-token:${GH_SDK_TOKEN}@github.com/0xAtelerix/sdk".insteadOf "https://github.com/0xAtelerix/sdk"
+          git config --global url."https://x-access-token:${GH_SDK_TOKEN}@github.com/0xAtelerix/sdk/".insteadOf "https://github.com/0xAtelerix/sdk/"
+          go env -w GOPRIVATE=github.com/0xAtelerix/*
 
       - name: Deps (modules + golangci-lint)
-        run: make deps
+        run: make deps-ci
 
       - name: Lint (golangci-lint-action)
         uses: golangci/golangci-lint-action@v8
@@ -72,5 +79,23 @@ jobs:
           args: -v --timeout=10m
           github-token: ${{ github.token }}
 
-      - name: Test (no-race)
-        run: make tests
+      - name: Test (no-race) with coverage
+        run: |
+          go test -short -timeout 20m -failfast -shuffle=${{ env.TEST_SHUFFLE_SEED }} -v ./... -coverprofile=cover.out -covermode=atomic -coverpkg=./... $(params)
+          go tool cover -html=cover.out -o coverage.html
+
+      - name: PR coverage comment
+        uses: k1LoW/octocov-action@v1
+
+      - name: Enforce coverage thresholds
+        uses: vladopajic/go-test-coverage@v2
+        with:
+          config: ./.testcoverage.yml
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            cover.out
+            coverage.html
