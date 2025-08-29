@@ -161,6 +161,7 @@ func (p *TxPool[T]) CreateTransactionBatch(ctx context.Context) ([]byte, [][]byt
 
 		for _, tx := range transactions {
 			var typedTx T
+
 			err = json.Unmarshal(tx, &typedTx)
 			if err != nil {
 				return fmt.Errorf("can't serialize tx from txpool: %w", err)
@@ -184,7 +185,10 @@ func (p *TxPool[T]) CreateTransactionBatch(ctx context.Context) ([]byte, [][]byt
 }
 
 // GetTransaction возвращает транзакцию по хэшу
-func (p *TxPool[T]) GetTransactionStatus(ctx context.Context, hash []byte) (status TxStatus, err error) {
+func (p *TxPool[T]) GetTransactionStatus(
+	ctx context.Context,
+	hash []byte,
+) (status apptypes.TxStatus, err error) {
 	var (
 		txData []byte
 		dbErr  error
@@ -196,7 +200,7 @@ func (p *TxPool[T]) GetTransactionStatus(ctx context.Context, hash []byte) (stat
 		return dbErr
 	})
 	if err == nil && len(txData) != 0 {
-		return Pending, nil
+		return apptypes.Pending, nil
 	}
 
 	err = p.db.View(ctx, func(txn kv.Tx) error {
@@ -205,7 +209,7 @@ func (p *TxPool[T]) GetTransactionStatus(ctx context.Context, hash []byte) (stat
 		return dbErr
 	})
 	if err == nil && len(txData) != 0 {
-		return Batched, nil
+		return apptypes.Batched, nil
 	}
 
 	// TODO: handle: ReadyToProcess and Processed

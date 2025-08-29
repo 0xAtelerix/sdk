@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 
 	"github.com/ledgerwatch/erigon-lib/kv"
-
-	"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
 
 type AppTransaction Hasher
@@ -108,7 +106,7 @@ type TxPoolInterface[T AppTransaction] interface {
 
 	CreateTransactionBatch(ctx context.Context) ([]byte, [][]byte, error)
 
-	GetTransactionStatus(ctx context.Context, hash []byte) (txpool.TxStatus, error)
+	GetTransactionStatus(ctx context.Context, hash []byte) (TxStatus, error)
 
 	// Close закрывает хранилище транзакций
 	Close() error

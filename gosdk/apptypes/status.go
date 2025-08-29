@@ -1,4 +1,4 @@
-package txpool
+package apptypes
 
 type TxStatus int
 
@@ -11,6 +11,8 @@ const (
 )
 
 func (s TxStatus) String() string {
+	const unknown = "Unknown"
+
 	switch s {
 	case Pending:
 		return "Pending"
@@ -20,7 +22,9 @@ func (s TxStatus) String() string {
 		return "ReadyToProcess"
 	case Processed:
 		return "Processed"
+	case Unknown:
+		return unknown
 	default:
-		return "Unknown"
+		return unknown
 	}
 }
