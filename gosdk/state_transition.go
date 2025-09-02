@@ -11,7 +11,7 @@ type StateTransitionInterface[appTx apptypes.AppTransaction] interface {
 }
 
 type BatchProcesser[appTx apptypes.AppTransaction] struct {
-	StateTransitionSimplified[appTx]
+	StateTransitionSimplified
 }
 
 func (b BatchProcesser[appTx]) ProcessBatch(
@@ -31,7 +31,7 @@ func (b BatchProcesser[appTx]) ProcessBatch(
 	}
 
 	for _, tx := range batch.Transactions {
-		ext, err := b.ProcessTX(tx, dbtx)
+		ext, err := tx.Process(dbtx)
 		if err != nil {
 			return nil, err
 		}
@@ -42,10 +42,9 @@ func (b BatchProcesser[appTx]) ProcessBatch(
 	return extTxs, nil
 }
 
-type StateTransitionSimplified[appTx apptypes.AppTransaction] interface {
-	ProcessTX(tx appTx, dbtx kv.RwTx) ([]apptypes.ExternalTransaction, error)
+type StateTransitionSimplified interface {
 	ProcessBlock(
 		block apptypes.ExternalBlock,
 		tx kv.RwTx,
-	) ([]apptypes.ExternalTransaction, error) // тут внешние блоки
+	) ([]apptypes.ExternalTransaction, error) // external blocks
 }
