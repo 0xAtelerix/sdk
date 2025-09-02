@@ -29,6 +29,10 @@ func (c ExampleTransaction) Hash() [32]byte {
 	return sha256.Sum256([]byte(s))
 }
 
+func (ExampleTransaction) Process(_ kv.RwTx) error {
+	return nil
+}
+
 type ExampleBatchProcesser[appTx apptypes.AppTransaction] struct{}
 
 func (ExampleBatchProcesser[appTx]) ProcessBatch(

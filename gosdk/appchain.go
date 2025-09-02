@@ -142,6 +142,12 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(
 		Msg("Initializing event readers")
 
 	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		_, err = os.Stat(a.config.EventStreamDir)
 		if err != nil {
 			logger.Warn().Err(err).Msg("waiting event stream file")
@@ -398,8 +404,47 @@ func (a *Appchain[STI, appTx, AppBlock]) RunEmitterAPI(ctx context.Context) {
 	emitterproto.RegisterEmitterServer(grpcServer, a.emiterAPI)
 	emitterproto.RegisterHealthServer(grpcServer, &HealthServer{})
 
-	if err := grpcServer.Serve(lis); err != nil {
-		logger.Fatal().Err(err).Msg("gRPC server crashed")
+	serveErr := make(chan error, 1)
+
+	go func() {
+		serveErr <- grpcServer.Serve(lis)
+	}()
+
+	// Optional: make the grace period configurable.
+	const gracePeriod = 10 * time.Second
+
+	select {
+	case <-ctx.Done():
+		logger.Info().Err(ctx.Err()).Msg("Context canceled, shutting down gRPC server")
+
+		// Try graceful stop first (drains existing RPCs).
+		done := make(chan struct{})
+
+		go func() {
+			grpcServer.GracefulStop()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			logger.Info().Msg("gRPC server stopped gracefully")
+		case <-time.After(gracePeriod):
+			logger.Warn().Dur("timeout", gracePeriod).Msg("Graceful stop timed out; forcing stop")
+
+			// Immediately close listeners and cancel in-flight RPCs
+			grpcServer.Stop()
+		}
+
+		// Drain Serve() error; it's expected to be nil or an internal "server stopped" error.
+		<-serveErr
+
+	case err = <-serveErr:
+		// Serve exited on its own (listener error, etc.)
+		if err != nil {
+			logger.Fatal().Err(err).Msg("gRPC server crashed")
+		}
+
+		logger.Info().Msg("gRPC server exited")
 	}
 }
 

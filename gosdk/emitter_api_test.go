@@ -507,3 +507,7 @@ func (c *CustomTransaction) Hash() [32]byte {
 
 	return sha256.Sum256([]byte(s))
 }
+
+func (*CustomTransaction) Process(_ kv.RwTx) error {
+	return nil
+}

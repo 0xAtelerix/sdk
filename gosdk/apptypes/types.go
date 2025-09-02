@@ -8,20 +8,15 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 )
 
-type AppTransaction Hasher
-
-type Hasher interface {
+type AppTransaction interface {
 	Hash() [32]byte
+	Process(dbTx kv.RwTx) error
 }
 
 // How to work with encoding with appchain transactions
 type Serializible interface {
 	Unmarshal(data []byte) error
 	Marshal() (data []byte, err error)
-}
-
-type AppTransactionBuilder[appTx AppTransaction] interface {
-	Make() appTx
 }
 
 // AppTransaction should be serializible
