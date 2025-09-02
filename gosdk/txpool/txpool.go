@@ -26,19 +26,19 @@ func Tables() kv.TableCfg {
 }
 
 // TxPool - generic пул транзакций с MDBX-хранилищем
-type TxPool[T apptypes.AppTransaction] struct {
+type TxPool[T apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	db kv.RwDB
 }
 
 // NewTxPool создает новый пул транзакций с MDBX-хранилищем
-func NewTxPool[T apptypes.AppTransaction](db kv.RwDB) *TxPool[T] {
-	return &TxPool[T]{
+func NewTxPool[T apptypes.AppTransaction[R], R apptypes.Receipt](db kv.RwDB) *TxPool[T, R] {
+	return &TxPool[T, R]{
 		db: db,
 	}
 }
 
 // AddTransaction добавляет транзакцию (generic)
-func (p *TxPool[T]) AddTransaction(ctx context.Context, tx T) error {
+func (p *TxPool[T, R]) AddTransaction(ctx context.Context, tx T) error {
 	return p.db.Update(ctx, func(txn kv.RwTx) error {
 		// Кодируем транзакцию в JSON
 		data, err := json.Marshal(tx)
@@ -53,7 +53,7 @@ func (p *TxPool[T]) AddTransaction(ctx context.Context, tx T) error {
 }
 
 // GetTransaction возвращает транзакцию по хэшу
-func (p *TxPool[T]) GetTransaction(ctx context.Context, hash []byte) (tx T, err error) {
+func (p *TxPool[T, R]) GetTransaction(ctx context.Context, hash []byte) (tx T, err error) {
 	var (
 		txData []byte
 		dbErr  error
@@ -84,14 +84,14 @@ func (p *TxPool[T]) GetTransaction(ctx context.Context, hash []byte) (tx T, err 
 }
 
 // RemoveTransaction удаляет транзакцию из пула
-func (p *TxPool[T]) RemoveTransaction(ctx context.Context, hash []byte) error {
+func (p *TxPool[T, R]) RemoveTransaction(ctx context.Context, hash []byte) error {
 	return p.db.Update(ctx, func(txn kv.RwTx) error {
 		return txn.Delete(txPoolBucket, hash)
 	})
 }
 
 // GetAllTransactions получает все транзакции
-func (p *TxPool[T]) GetPendingTransactions(ctx context.Context) ([]T, error) {
+func (p *TxPool[T, R]) GetPendingTransactions(ctx context.Context) ([]T, error) {
 	var transactions []T
 
 	err := p.db.View(ctx, func(txn kv.Tx) error {
@@ -122,7 +122,7 @@ func (p *TxPool[T]) GetPendingTransactions(ctx context.Context) ([]T, error) {
 }
 
 // GetAllTransactions получает все транзакции (generic)
-func (p *TxPool[T]) CreateTransactionBatch(ctx context.Context) ([]byte, [][]byte, error) {
+func (p *TxPool[T, R]) CreateTransactionBatch(ctx context.Context) ([]byte, [][]byte, error) {
 	var (
 		transactions [][]byte
 		batchHash    []byte
@@ -185,7 +185,7 @@ func (p *TxPool[T]) CreateTransactionBatch(ctx context.Context) ([]byte, [][]byt
 }
 
 // GetTransaction возвращает транзакцию по хэшу
-func (p *TxPool[T]) GetTransactionStatus(
+func (p *TxPool[T, R]) GetTransactionStatus(
 	ctx context.Context,
 	hash []byte,
 ) (status apptypes.TxStatus, err error) {
@@ -218,7 +218,7 @@ func (p *TxPool[T]) GetTransactionStatus(
 }
 
 // Close закрывает MDBX
-func (p *TxPool[T]) Close() error {
+func (p *TxPool[T, R]) Close() error {
 	p.db.Close()
 
 	return nil

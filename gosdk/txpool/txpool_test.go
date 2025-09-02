@@ -17,35 +17,39 @@ import (
 
 // CustomTransaction - тестовая структура транзакции
 //
-//nolint:recvcheck // because of generics
-type CustomTransaction struct {
+
+type CustomTransaction[R Receipt] struct {
 	From  string `json:"from"`
 	To    string `json:"to"`
 	Value int    `json:"value"`
 }
 
-func (c *CustomTransaction) Unmarshal(b []byte) error {
+func (c *CustomTransaction[R]) Unmarshal(b []byte) error {
 	return json.Unmarshal(b, c)
 }
 
-func (c CustomTransaction) Marshal() ([]byte, error) {
+func (c CustomTransaction[R]) Marshal() ([]byte, error) {
 	return json.Marshal(c)
 }
 
-func (c CustomTransaction) Hash() [32]byte {
+func (c CustomTransaction[R]) Hash() [32]byte {
 	s := c.From + c.To + strconv.Itoa(c.Value)
 
 	return sha256.Sum256([]byte(s))
 }
 
-func (CustomTransaction) Process(_ kv.RwTx) ([]apptypes.ExternalTransaction, error) {
-	return nil, nil
+func (CustomTransaction[R]) Process(
+	_ kv.RwTx,
+) (r Receipt, txs []apptypes.ExternalTransaction, err error) {
+	return
 }
 
+type Receipt struct{}
+
 // randomTransaction генерирует случайную транзакцию
-func randomTransaction() *rapid.Generator[CustomTransaction] {
-	return rapid.Custom(func(t *rapid.T) CustomTransaction {
-		return CustomTransaction{
+func randomTransaction[R Receipt]() *rapid.Generator[CustomTransaction[R]] {
+	return rapid.Custom(func(t *rapid.T) CustomTransaction[R] {
+		return CustomTransaction[R]{
 			From:  rapid.StringN(1, 32, 32).Draw(t, "from"),
 			To:    rapid.StringN(1, 32, 32).Draw(t, "to"),
 			Value: rapid.IntRange(1, 10_000).Draw(t, "value"),
@@ -70,7 +74,7 @@ func TestTxPool_PropertyBased(t *testing.T) {
 			require.NoError(tr, err)
 
 			// Создаем новый TxPool
-			txPool := NewTxPool[CustomTransaction](db)
+			txPool := NewTxPool[CustomTransaction[Receipt]](db)
 
 			defer func() {
 				poolErr := txPool.Close()
@@ -80,10 +84,10 @@ func TestTxPool_PropertyBased(t *testing.T) {
 			// Генерируем случайное количество транзакций (1-100)
 			txsSlice := rapid.SliceOfNDistinct(
 				randomTransaction(), 1, 100,
-				func(tx CustomTransaction) [32]byte { return tx.Hash() },
+				func(tx CustomTransaction[Receipt]) [32]byte { return tx.Hash() },
 			).Draw(tr, "txs_distinct")
 
-			txs := make(map[[32]byte]*CustomTransaction)
+			txs := make(map[[32]byte]*CustomTransaction[Receipt])
 			txHashes := make([][32]byte, 0, len(txsSlice))
 
 			// Добавляем транзакции
@@ -98,7 +102,7 @@ func TestTxPool_PropertyBased(t *testing.T) {
 
 			// Проверяем, что все добавленные транзакции можно извлечь
 			for hash, expectedTx := range txs {
-				var retrievedTx CustomTransaction
+				var retrievedTx CustomTransaction[Receipt]
 
 				retrievedTx, err = txPool.GetTransaction(t.Context(), hash[:])
 				if err != nil {
@@ -147,7 +151,7 @@ func TestTxPool_PropertyBased(t *testing.T) {
 
 			// Проверяем, что оставшиеся транзакции присутствуют
 			for hash, expectedTx := range txs {
-				var retrievedTx CustomTransaction
+				var retrievedTx CustomTransaction[Receipt]
 
 				retrievedTx, err = txPool.GetTransaction(t.Context(), hash[:])
 				if err != nil {

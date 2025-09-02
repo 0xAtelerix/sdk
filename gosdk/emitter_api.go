@@ -21,22 +21,22 @@ import (
 )
 
 // Server с поддержкой MDBX
-type AppchainEmitterServer[appTx apptypes.AppTransaction] struct {
+type AppchainEmitterServer[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	emitterproto.UnimplementedEmitterServer
 
 	appchainDB kv.RwDB
 	chainID    uint64
-	txpool     apptypes.TxPoolInterface[appTx]
+	txpool     apptypes.TxPoolInterface[appTx, R]
 	logger     *zerolog.Logger
 }
 
 // Создание нового сервера с MDBX
-func NewServer[appTx apptypes.AppTransaction](
+func NewServer[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	db kv.RwDB,
 	chainID uint64,
-	txpool apptypes.TxPoolInterface[appTx],
-) *AppchainEmitterServer[appTx] {
-	return &AppchainEmitterServer[appTx]{
+	txpool apptypes.TxPoolInterface[appTx, R],
+) *AppchainEmitterServer[appTx, R] {
+	return &AppchainEmitterServer[appTx, R]{
 		appchainDB: db,
 		chainID:    chainID,
 		txpool:     txpool,
@@ -45,7 +45,7 @@ func NewServer[appTx apptypes.AppTransaction](
 }
 
 // Метод GetCheckpoints: выбираем все чекпоинты >= LatestBlockNumber
-func (s *AppchainEmitterServer[appTx]) GetCheckpoints(
+func (s *AppchainEmitterServer[appTx, R]) GetCheckpoints(
 	ctx context.Context,
 	req *emitterproto.GetCheckpointsRequest,
 ) (*emitterproto.CheckpointResponse, error) {
@@ -122,7 +122,7 @@ func (s *AppchainEmitterServer[appTx]) GetCheckpoints(
 }
 
 // Метод GetExternalTransactions: выбираем все транзакции >= LatestPreviousBlockNumber
-func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(
+func (s *AppchainEmitterServer[appTx, R]) GetExternalTransactions(
 	ctx context.Context,
 	req *emitterproto.GetExternalTransactionsRequest,
 ) (*emitterproto.GetExternalTransactionsResponse, error) {
@@ -234,7 +234,7 @@ func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(
 	return &emitterproto.GetExternalTransactionsResponse{Blocks: blocks}, nil
 }
 
-func (s *AppchainEmitterServer[appTx]) GetChainID(
+func (s *AppchainEmitterServer[appTx, R]) GetChainID(
 	context.Context,
 	*emptypb.Empty,
 ) (*emitterproto.GetChainIDResponse, error) {
@@ -243,7 +243,7 @@ func (s *AppchainEmitterServer[appTx]) GetChainID(
 	}, nil
 }
 
-func (s *AppchainEmitterServer[appTx]) CreateInternalTransactionsBatch(
+func (s *AppchainEmitterServer[appTx, R]) CreateInternalTransactionsBatch(
 	ctx context.Context,
 	_ *emptypb.Empty,
 ) (*emitterproto.CreateInternalTransactionsBatchResponse, error) {

@@ -11,17 +11,17 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-type EventStreamWrapper[appTx apptypes.AppTransaction] struct {
+type EventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	eventReader *EventReader
 	txReader    *EventReader
 	chainID     uint32
 }
 
-func NewEventStreamWrapper[appTx apptypes.AppTransaction](
+func NewEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	eventsPath, txPath string,
 	chainID uint32,
 	eventStartPos, txStartPos int64,
-) (*EventStreamWrapper[appTx], error) {
+) (*EventStreamWrapper[appTx, R], error) {
 	eventReader, err := NewEventReader(eventsPath, eventStartPos)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create event reader: %w", err)
@@ -37,23 +37,23 @@ func NewEventStreamWrapper[appTx apptypes.AppTransaction](
 		return nil, fmt.Errorf("failed to create tx reader: %w", err)
 	}
 
-	return &EventStreamWrapper[appTx]{
+	return &EventStreamWrapper[appTx, R]{
 		eventReader: eventReader,
 		txReader:    txReader,
 		chainID:     chainID,
 	}, nil
 }
 
-func (ews *EventStreamWrapper[appTx]) GetNewBatchesBlocking(
+func (ews *EventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 	ctx context.Context,
 	limit int,
-) ([]apptypes.Batch[appTx], error) {
+) ([]apptypes.Batch[appTx, R], error) {
 	eventBatches, err := ews.eventReader.GetNewBatchesBlocking(ctx, limit)
 	if err != nil {
 		return nil, err
 	}
 
-	var result []apptypes.Batch[appTx]
+	var result []apptypes.Batch[appTx, R]
 
 	for _, eventBatch := range eventBatches {
 		// Список нужных транзакционных батчей
@@ -130,7 +130,7 @@ func (ews *EventStreamWrapper[appTx]) GetNewBatchesBlocking(
 				parsedTxs = append(parsedTxs, tx)
 			}
 
-			result = append(result, apptypes.Batch[appTx]{
+			result = append(result, apptypes.Batch[appTx, R]{
 				Transactions: parsedTxs,
 				// берем EndOffset из ивент батча — txBatch тоже можно пробрасывать
 				EndOffset:   eventBatch.EndOffset,
@@ -142,7 +142,7 @@ func (ews *EventStreamWrapper[appTx]) GetNewBatchesBlocking(
 	return result, nil
 }
 
-func (ews *EventStreamWrapper[appTx]) Close() error {
+func (ews *EventStreamWrapper[appTx, R]) Close() error {
 	err := ews.eventReader.Close()
 	if err != nil {
 		return fmt.Errorf("failed to close event reader: %w", err)

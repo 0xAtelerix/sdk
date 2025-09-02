@@ -26,13 +26,17 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
-func NewAppchain[STI StateTransitionInterface[AppTx],
-	AppTx apptypes.AppTransaction,
-	AppBlock apptypes.AppchainBlock](sti STI,
-	blockBuilder apptypes.AppchainBlockConstructor[AppTx, AppBlock],
-	txpool apptypes.TxPoolInterface[AppTx],
-	config AppchainConfig, appchainDB kv.RwDB, options ...func(a *Appchain[STI, AppTx, AppBlock]),
-) (Appchain[STI, AppTx, AppBlock], error) {
+func NewAppchain[STI StateTransitionInterface[AppTx, R],
+	AppTx apptypes.AppTransaction[R],
+	R apptypes.Receipt,
+	AppBlock apptypes.AppchainBlock](
+	sti STI,
+	blockBuilder apptypes.AppchainBlockConstructor[AppTx, R, AppBlock],
+	txpool apptypes.TxPoolInterface[AppTx, R],
+	config AppchainConfig,
+	appchainDB kv.RwDB,
+	options ...func(a *Appchain[STI, AppTx, R, AppBlock]),
+) (Appchain[STI, AppTx, R, AppBlock], error) {
 	log.Info().Str("db_path", config.AppchainDBPath).Msg("Initializing appchain database")
 
 	emiterAPI := NewServer[AppTx](appchainDB, config.ChainID, txpool)
@@ -48,10 +52,10 @@ func NewAppchain[STI StateTransitionInterface[AppTx],
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to initialize MultichainStateAccess")
 
-		return Appchain[STI, AppTx, AppBlock]{}, err
+		return Appchain[STI, AppTx, R, AppBlock]{}, err
 	}
 
-	appchain := Appchain[STI, AppTx, AppBlock]{
+	appchain := Appchain[STI, AppTx, R, AppBlock]{
 		appchainStateExecution: sti,
 		rootCalculator:         NewStubRootCalculator(),
 		blockBuilder:           blockBuilder,
@@ -67,10 +71,11 @@ func NewAppchain[STI StateTransitionInterface[AppTx],
 	return appchain, nil
 }
 
-func WithRootCalculator[STI StateTransitionInterface[AppTx],
-	AppTx apptypes.AppTransaction,
-	AppBlock apptypes.AppchainBlock](rc apptypes.RootCalculator) func(a *Appchain[STI, AppTx, AppBlock]) {
-	return func(a *Appchain[STI, AppTx, AppBlock]) {
+func WithRootCalculator[STI StateTransitionInterface[AppTx, R],
+	AppTx apptypes.AppTransaction[R],
+	R apptypes.Receipt,
+	AppBlock apptypes.AppchainBlock](rc apptypes.RootCalculator) func(a *Appchain[STI, AppTx, R, AppBlock]) {
+	return func(a *Appchain[STI, AppTx, R, AppBlock]) {
 		a.rootCalculator = rc
 	}
 }
@@ -99,10 +104,10 @@ func MakeAppchainConfig(chainID uint64) AppchainConfig {
 	}
 }
 
-type Appchain[STI StateTransitionInterface[appTx], appTx apptypes.AppTransaction, AppBlock apptypes.AppchainBlock] struct {
+type Appchain[STI StateTransitionInterface[appTx, R], appTx apptypes.AppTransaction[R], R apptypes.Receipt, AppBlock apptypes.AppchainBlock] struct {
 	appchainStateExecution STI
 	rootCalculator         apptypes.RootCalculator
-	blockBuilder           apptypes.AppchainBlockConstructor[appTx, AppBlock]
+	blockBuilder           apptypes.AppchainBlockConstructor[appTx, R, AppBlock]
 
 	emiterAPI    emitterproto.EmitterServer
 	AppchainDB   kv.RwDB
@@ -111,9 +116,9 @@ type Appchain[STI StateTransitionInterface[appTx], appTx apptypes.AppTransaction
 	multichainDB *MultichainStateAccess
 }
 
-func (a *Appchain[STI, appTx, AppBlock]) Run(
+func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 	ctx context.Context,
-	streamConstructor EventStreamWrapperConstructor[appTx],
+	streamConstructor EventStreamWrapperConstructor[appTx, R],
 ) error {
 	logger := log.Ctx(ctx)
 	logger.Info().Msg("Appchain run started")
@@ -167,11 +172,11 @@ func (a *Appchain[STI, appTx, AppBlock]) Run(
 		break
 	}
 
-	var eventStream Streamer[appTx]
+	var eventStream Streamer[appTx, R]
 
 	if streamConstructor == nil {
 		logger.Info().Msg("NewMdbxEventStreamWrapper")
-		eventStream, err = NewMdbxEventStreamWrapper[appTx](
+		eventStream, err = NewMdbxEventStreamWrapper[appTx, R](
 			filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
 			uint32(a.config.ChainID),
 			startEventPos,
@@ -264,9 +269,14 @@ runFor:
 				// 2) Process Batch. Execute transaction there.
 				logger.Debug().Int("tx", len(batch.Transactions)).Msg("Process batch")
 
-				var extTxs []apptypes.ExternalTransaction
+				var (
+					extTxs   []apptypes.ExternalTransaction
+					receipts []R
+				)
 
-				extTxs, err = a.appchainStateExecution.ProcessBatch(batch, rwtx)
+				_ = receipts // TODO: use receipts
+
+				_, extTxs, err = a.appchainStateExecution.ProcessBatch(batch, rwtx)
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to process batch")
 
@@ -389,7 +399,7 @@ runFor:
 	return nil
 }
 
-func (a *Appchain[STI, appTx, AppBlock]) RunEmitterAPI(ctx context.Context) {
+func (a *Appchain[STI, appTx, R, AppBlock]) RunEmitterAPI(ctx context.Context) {
 	logger := log.Ctx(ctx)
 
 	lis, err := (&net.ListenConfig{}).Listen(ctx, "tcp", a.config.EmitterPort)

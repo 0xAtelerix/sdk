@@ -18,28 +18,32 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
 
-type ExampleTransaction struct {
+type ExampleTransaction[R ExampleReceipt] struct {
 	Sender string
 	Value  int
 }
 
-func (c ExampleTransaction) Hash() [32]byte {
+func (c ExampleTransaction[R]) Hash() [32]byte {
 	s := c.Sender + strconv.Itoa(c.Value)
 
 	return sha256.Sum256([]byte(s))
 }
 
-func (ExampleTransaction) Process(_ kv.RwTx) ([]apptypes.ExternalTransaction, error) {
-	return nil, nil
+func (ExampleTransaction[R]) Process(
+	_ kv.RwTx,
+) (receipt R, txs []apptypes.ExternalTransaction, err error) {
+	return
 }
 
-type ExampleBatchProcesser[appTx apptypes.AppTransaction] struct{}
+type ExampleReceipt struct{}
 
-func (ExampleBatchProcesser[appTx]) ProcessBatch(
-	_ apptypes.Batch[appTx],
+type ExampleBatchProcesser[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct{}
+
+func (ExampleBatchProcesser[appTx, R]) ProcessBatch(
+	_ apptypes.Batch[appTx, R],
 	_ kv.RwTx,
-) ([]apptypes.ExternalTransaction, error) {
-	return nil, nil
+) ([]R, []apptypes.ExternalTransaction, error) {
+	return nil, nil, nil
 }
 
 type ExampleBlock struct{}
@@ -73,7 +77,7 @@ func ExampleAppchain() {
 
 	config := MakeAppchainConfig(42)
 
-	stateTransition := BatchProcesser[ExampleTransaction]{}
+	stateTransition := BatchProcesser[ExampleTransaction[ExampleReceipt], ExampleReceipt]{}
 
 	tmp := os.TempDir() + "/txpool_test"
 
@@ -94,7 +98,7 @@ func ExampleAppchain() {
 		log.Fatal().Err(err).Msg("Failed to local mdbx database")
 	}
 
-	txPool := txpool.NewTxPool[ExampleTransaction](localDB)
+	txPool := txpool.NewTxPool[ExampleTransaction[ExampleReceipt], ExampleReceipt](localDB)
 
 	// инициализируем базу на нашей стороне
 	appchainDB, err := mdbx.NewMDBX(mdbxlog.New()).
@@ -111,7 +115,7 @@ func ExampleAppchain() {
 
 	appchainExample, err := NewAppchain(
 		stateTransition,
-		func(_ uint64, _ [32]byte, _ [32]byte, _ apptypes.Batch[ExampleTransaction]) *ExampleBlock {
+		func(_ uint64, _ [32]byte, _ [32]byte, _ apptypes.Batch[ExampleTransaction[ExampleReceipt], ExampleReceipt]) *ExampleBlock {
 			return &ExampleBlock{}
 		},
 		txPool,

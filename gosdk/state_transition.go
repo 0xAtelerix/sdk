@@ -6,40 +6,46 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-type StateTransitionInterface[appTx apptypes.AppTransaction] interface {
-	ProcessBatch(batch apptypes.Batch[appTx], tx kv.RwTx) ([]apptypes.ExternalTransaction, error)
+type StateTransitionInterface[appTx apptypes.AppTransaction[R], R apptypes.Receipt] interface {
+	ProcessBatch(
+		batch apptypes.Batch[appTx, R],
+		tx kv.RwTx,
+	) ([]R, []apptypes.ExternalTransaction, error)
 }
 
-type BatchProcesser[appTx apptypes.AppTransaction] struct {
+type BatchProcesser[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	StateTransitionSimplified
 }
 
-func (b BatchProcesser[appTx]) ProcessBatch(
-	batch apptypes.Batch[appTx],
+func (b BatchProcesser[appTx, R]) ProcessBatch(
+	batch apptypes.Batch[appTx, R],
 	dbtx kv.RwTx,
-) ([]apptypes.ExternalTransaction, error) {
+) ([]R, []apptypes.ExternalTransaction, error) {
 	var extTxs []apptypes.ExternalTransaction
 
 	for _, externalBlock := range batch.ExternalBlocks {
 		// todo склоняестя ли наш вариант в сторону жесткого космос, где сильно ограничена модификация клиента?
 		ext, err := b.ProcessBlock(externalBlock, dbtx)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		extTxs = append(extTxs, ext...)
 	}
 
-	for _, tx := range batch.Transactions {
-		ext, err := tx.Process(dbtx)
+	receipts := make([]R, len(batch.Transactions))
+
+	for i, tx := range batch.Transactions {
+		res, ext, err := tx.Process(dbtx)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		extTxs = append(extTxs, ext...)
+		receipts[i] = res
 	}
 
-	return extTxs, nil
+	return receipts, extTxs, nil
 }
 
 type StateTransitionSimplified interface {

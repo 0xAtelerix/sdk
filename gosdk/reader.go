@@ -17,8 +17,8 @@ import (
 )
 
 // Что должен дергать апчейн, чтобы получить транзакции
-type BatchReader[appTx apptypes.AppTransaction] interface {
-	GetNewBatchesBlocking(limit int) ([]apptypes.Batch[appTx], error)
+type BatchReader[appTx apptypes.AppTransaction[R], R apptypes.Receipt] interface {
+	GetNewBatchesBlocking(limit int) ([]apptypes.Batch[appTx, R], error)
 }
 
 // EventReader with fsnotify

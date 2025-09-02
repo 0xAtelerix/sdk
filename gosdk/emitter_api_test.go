@@ -45,7 +45,7 @@ func TestEmitterCall(t *testing.T) {
 		Open()
 
 	// Создаем сервер с MDBX
-	srv := NewServer[*CustomTransaction](db, 1, nil)
+	srv := NewServer[*CustomTransaction[Receipt], Receipt](db, 1, nil)
 	if err != nil {
 		t.Fatalf("Ошибка создания сервера: %v", err)
 	}
@@ -187,9 +187,9 @@ func randomCheckpoint(t *rapid.T, chainID uint64, blockNumber uint64) apptypes.C
 }
 
 // Запускаем gRPC сервер в отдельной горутине
-func startGRPCServer[apptx apptypes.AppTransaction](
+func startGRPCServer[apptx apptypes.AppTransaction[R], R apptypes.Receipt](
 	t *rapid.T,
-	srv *AppchainEmitterServer[apptx],
+	srv *AppchainEmitterServer[apptx, R],
 ) (string, func()) {
 	t.Helper()
 
@@ -253,7 +253,7 @@ func TestEmitterCall_PropertyBased(t *testing.T) {
 			defer tx.Rollback()
 
 			// Создаем сервер с MDBX
-			srv := NewServer[*CustomTransaction](db, 1, nil)
+			srv := NewServer[*CustomTransaction[Receipt]](db, 1, nil)
 			defer srv.appchainDB.Close()
 
 			// Запускаем gRPC сервер и получаем динамический адрес
@@ -401,7 +401,7 @@ func TestGetExternalTransactions_PropertyBased(t *testing.T) {
 
 			require.NoError(tr, err)
 
-			srv := NewServer[*CustomTransaction](db, 1, nil)
+			srv := NewServer[*CustomTransaction[Receipt]](db, 1, nil)
 			defer srv.appchainDB.Close()
 
 			tx, err := db.BeginRw(t.Context())
@@ -488,26 +488,30 @@ func TestGetExternalTransactions_PropertyBased(t *testing.T) {
 }
 
 // CustomTransaction - тестовая структура транзакции
-type CustomTransaction struct {
+type CustomTransaction[R Receipt] struct {
 	From  string `json:"from"`
 	To    string `json:"to"`
 	Value int    `json:"value"`
 }
 
-func (c *CustomTransaction) Unmarshal(b []byte) error {
+func (c *CustomTransaction[R]) Unmarshal(b []byte) error {
 	return json.Unmarshal(b, c)
 }
 
-func (c *CustomTransaction) Marshal() ([]byte, error) {
+func (c *CustomTransaction[R]) Marshal() ([]byte, error) {
 	return json.Marshal(c)
 }
 
-func (c *CustomTransaction) Hash() [32]byte {
+func (c *CustomTransaction[R]) Hash() [32]byte {
 	s := c.From + c.To + strconv.Itoa(c.Value)
 
 	return sha256.Sum256([]byte(s))
 }
 
-func (*CustomTransaction) Process(_ kv.RwTx) ([]apptypes.ExternalTransaction, error) {
-	return nil, nil
+func (*CustomTransaction[R]) Process(
+	_ kv.RwTx,
+) (res R, txs []apptypes.ExternalTransaction, err error) {
+	return
 }
+
+type Receipt struct{}

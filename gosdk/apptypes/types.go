@@ -8,10 +8,12 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 )
 
-type AppTransaction interface {
+type AppTransaction[R Receipt] interface {
 	Hash() [32]byte
-	Process(dbTx kv.RwTx) ([]ExternalTransaction, error)
+	Process(dbTx kv.RwTx) (R, []ExternalTransaction, error)
 }
+
+type Receipt any
 
 // How to work with encoding with appchain transactions
 type Serializible interface {
@@ -20,7 +22,7 @@ type Serializible interface {
 }
 
 // AppTransaction should be serializible
-type Batch[appTx AppTransaction] struct {
+type Batch[appTx AppTransaction[R], R Receipt] struct {
 	Atropos        [32]byte
 	Transactions   []appTx
 	ExternalBlocks []ExternalBlock
@@ -50,11 +52,11 @@ type StoredAppchainBlock[appBlock AppchainBlock] struct {
 	Block appBlock
 }
 
-type AppchainBlockConstructor[appTx AppTransaction, block AppchainBlock] func(
+type AppchainBlockConstructor[appTx AppTransaction[R], R Receipt, block AppchainBlock] func(
 	blockNumber uint64,
 	stateRoot [32]byte,
 	previousBlockHash [32]byte,
-	txsBatch Batch[appTx]) block
+	txsBatch Batch[appTx, R]) block
 
 // Для подключенных L1/L2 мы должны  уметь анмаршалить поле tx.
 // Для межапчейновых - вставляем, как есть.
@@ -86,7 +88,7 @@ type DB interface {
 }
 
 // TxPoolInterface определяет методы для работы с пулом транзакций
-type TxPoolInterface[T AppTransaction] interface {
+type TxPoolInterface[T AppTransaction[R], R Receipt] interface {
 	// AddTransaction добавляет транзакцию в пул
 	AddTransaction(ctx context.Context, tx T) error
 

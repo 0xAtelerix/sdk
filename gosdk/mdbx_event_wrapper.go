@@ -14,33 +14,33 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
-type MdbxEventStreamWrapper[appTx apptypes.AppTransaction] struct {
+type MdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	eventReader *EventReader
 	txReader    kv.RoDB
 	chainID     uint32
 	logger      *zerolog.Logger
 }
 
-type EventStreamWrapperConstructor[appTx apptypes.AppTransaction] func(
+type EventStreamWrapperConstructor[appTx apptypes.AppTransaction[R], R apptypes.Receipt] func(
 	eventsPath string,
 	chainID uint32,
 	eventStartPos int64,
 	txBatchDB kv.RoDB,
-	logger *zerolog.Logger) (Streamer[appTx], error)
+	logger *zerolog.Logger) (Streamer[appTx, R], error)
 
-func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction](
+func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	eventsPath string,
 	chainID uint32,
 	eventStartPos int64,
 	txBatchDB kv.RoDB,
 	logger *zerolog.Logger,
-) (*MdbxEventStreamWrapper[appTx], error) {
+) (*MdbxEventStreamWrapper[appTx, R], error) {
 	eventReader, err := NewEventReader(eventsPath, eventStartPos)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create event reader: %w", err)
 	}
 
-	return &MdbxEventStreamWrapper[appTx]{
+	return &MdbxEventStreamWrapper[appTx, R]{
 		eventReader: eventReader,
 		txReader:    txBatchDB,
 		chainID:     chainID,
@@ -48,15 +48,15 @@ func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction](
 	}, nil
 }
 
-type Streamer[appTx apptypes.AppTransaction] interface {
-	GetNewBatchesBlocking(ctx context.Context, limit int) ([]apptypes.Batch[appTx], error)
+type Streamer[appTx apptypes.AppTransaction[R], R apptypes.Receipt] interface {
+	GetNewBatchesBlocking(ctx context.Context, limit int) ([]apptypes.Batch[appTx, R], error)
 	Close() error
 }
 
-func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(
+func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 	ctx context.Context,
 	limit int,
-) ([]apptypes.Batch[appTx], error) {
+) ([]apptypes.Batch[appTx, R], error) {
 	ews.logger.Debug().Int("len", limit).Msg("get new batches")
 
 	vid := utility.ValidatorIDFromCtx(ctx)
@@ -69,7 +69,7 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(
 
 	ews.logger.Debug().Int("batches", len(eventBatches)).Msg("got new batches")
 
-	var result []apptypes.Batch[appTx] //nolint:prealloc // hard to predict also many cases will be with empty batches
+	var result []apptypes.Batch[appTx, R] //nolint:prealloc // hard to predict also many cases will be with empty batches
 
 	for _, eventBatch := range eventBatches {
 		ews.logger.Debug().
@@ -228,7 +228,7 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(
 			}
 		}
 
-		result = append(result, apptypes.Batch[appTx]{
+		result = append(result, apptypes.Batch[appTx, R]{
 			Atropos:      eventBatch.Atropos,
 			Transactions: allParsedTxs,
 			EndOffset:    eventBatch.EndOffset,
@@ -238,7 +238,7 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(
 	return result, nil
 }
 
-func (ews *MdbxEventStreamWrapper[appTx]) Close() error {
+func (ews *MdbxEventStreamWrapper[appTx, R]) Close() error {
 	err := ews.eventReader.Close()
 	if err != nil {
 		return err
