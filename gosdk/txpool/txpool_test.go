@@ -11,6 +11,8 @@ import (
 	mdbxlog "github.com/ledgerwatch/log/v3"
 	"github.com/stretchr/testify/require"
 	"pgregory.net/rapid"
+
+	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
 // CustomTransaction - тестовая структура транзакции
@@ -36,8 +38,8 @@ func (c CustomTransaction) Hash() [32]byte {
 	return sha256.Sum256([]byte(s))
 }
 
-func (CustomTransaction) Process(_ kv.RwTx) error {
-	return nil
+func (CustomTransaction) Process(_ kv.RwTx) ([]apptypes.ExternalTransaction, error) {
+	return nil, nil
 }
 
 // randomTransaction генерирует случайную транзакцию
@@ -52,10 +54,6 @@ func randomTransaction() *rapid.Generator[CustomTransaction] {
 }
 
 type CustomTransactionBuilder struct{}
-
-func (CustomTransactionBuilder) Make() CustomTransaction {
-	return CustomTransaction{}
-}
 
 func TestTxPool_PropertyBased(t *testing.T) {
 	rapid.Check(t, func(tr *rapid.T) {

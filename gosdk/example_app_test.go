@@ -29,8 +29,8 @@ func (c ExampleTransaction) Hash() [32]byte {
 	return sha256.Sum256([]byte(s))
 }
 
-func (ExampleTransaction) Process(_ kv.RwTx) error {
-	return nil
+func (ExampleTransaction) Process(_ kv.RwTx) ([]apptypes.ExternalTransaction, error) {
+	return nil, nil
 }
 
 type ExampleBatchProcesser[appTx apptypes.AppTransaction] struct{}

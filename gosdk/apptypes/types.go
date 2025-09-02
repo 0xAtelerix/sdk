@@ -10,7 +10,7 @@ import (
 
 type AppTransaction interface {
 	Hash() [32]byte
-	Process(dbTx kv.RwTx) error
+	Process(dbTx kv.RwTx) ([]ExternalTransaction, error)
 }
 
 // How to work with encoding with appchain transactions
