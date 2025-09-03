@@ -45,7 +45,7 @@ func TestEmitterCall(t *testing.T) {
 		Open()
 
 	// Создаем сервер с MDBX
-	srv := NewServer[*CustomTransaction[Receipt], Receipt](db, 1, nil)
+	srv := NewServer[*CustomTransaction[Receipt]](db, 1, nil)
 	if err != nil {
 		t.Fatalf("Ошибка создания сервера: %v", err)
 	}
