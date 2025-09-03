@@ -282,10 +282,10 @@ runFor:
 				}
 
 				for _, receipt := range receipts {
-					if err := StoreReceipt(rwtx, receipt); err != nil {
-						logger.Error().Err(err).Msg("Failed to store receipt")
+					if storeErr := StoreReceipt(rwtx, receipt); storeErr != nil {
+						logger.Error().Err(storeErr).Msg("Failed to store receipt")
 
-						return fmt.Errorf("failed to store receipt: %w", err)
+						return fmt.Errorf("failed to store receipt: %w", storeErr)
 					}
 				}
 
@@ -678,10 +678,12 @@ func GetLastStreamPositions(
 
 func StoreReceipt[R apptypes.Receipt](tx kv.RwTx, receipt R) error {
 	key := receipt.TxHash()
+
 	value, err := receipt.Marshal()
 	if err != nil {
 		return err
 	}
+
 	return tx.Put(ReceiptBucket, key[:], value)
 }
 
@@ -689,6 +691,10 @@ func GetReceipt[R apptypes.Receipt](tx kv.Tx, txHash []byte, receipt R) (R, erro
 	value, err := tx.GetOne(ReceiptBucket, txHash)
 	if err != nil {
 		return receipt, err
+	}
+
+	if len(value) == 0 {
+		return receipt, ErrNoReceipts
 	}
 
 	if err := receipt.Unmarshal(value); err != nil {

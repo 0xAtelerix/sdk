@@ -46,11 +46,11 @@ func (r ExampleReceipt) Unmarshal(data []byte) error {
 	return json.Unmarshal(data, &r)
 }
 
-func (r ExampleReceipt) TxHash() [32]byte {
+func (ExampleReceipt) TxHash() [32]byte {
 	return [32]byte{}
 }
 
-func (r ExampleReceipt) Status() apptypes.TxReceiptStatus {
+func (ExampleReceipt) Status() apptypes.TxReceiptStatus {
 	return apptypes.ReceiptConfirmed
 }
 

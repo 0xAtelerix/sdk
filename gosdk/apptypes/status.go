@@ -22,8 +22,11 @@ func (s TxStatus) String() string {
 		return "ReadyToProcess"
 	case Processed:
 		return "Processed"
+	case Unknown:
+		return unknown
+	default:
+		return unknown
 	}
-	return unknown
 }
 
 type TxReceiptStatus uint8
@@ -41,6 +44,7 @@ func (s TxReceiptStatus) String() string {
 		return "Failed"
 	case ReceiptConfirmed:
 		return "Confirmed"
+	default:
+		return unknown
 	}
-	return unknown
 }
