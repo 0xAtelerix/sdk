@@ -684,3 +684,16 @@ func StoreReceipt[R apptypes.Receipt](tx kv.RwTx, receipt R) error {
 	}
 	return tx.Put(ReceiptBucket, key[:], value)
 }
+
+func GetReceipt[R apptypes.Receipt](tx kv.Tx, txHash []byte, receipt R) (R, error) {
+	value, err := tx.GetOne(ReceiptBucket, txHash)
+	if err != nil {
+		return receipt, err
+	}
+
+	if err := receipt.Unmarshal(value); err != nil {
+		return receipt, err
+	}
+
+	return receipt, nil
+}
