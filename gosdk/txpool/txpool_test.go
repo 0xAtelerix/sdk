@@ -57,8 +57,6 @@ func randomTransaction[R Receipt]() *rapid.Generator[CustomTransaction[R]] {
 	})
 }
 
-type CustomTransactionBuilder struct{}
-
 func TestTxPool_PropertyBased(t *testing.T) {
 	rapid.Check(t, func(tr *rapid.T) {
 		t.Run(tr.Name(), func(t *testing.T) {

@@ -17,6 +17,14 @@ type BatchProcesser[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct
 	StateTransitionSimplified
 }
 
+func NewBatchProcesser[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
+	s StateTransitionSimplified,
+) *BatchProcesser[appTx, R] {
+	return &BatchProcesser[appTx, R]{
+		StateTransitionSimplified: s,
+	}
+}
+
 func (b BatchProcesser[appTx, R]) ProcessBatch(
 	batch apptypes.Batch[appTx, R],
 	dbtx kv.RwTx,
