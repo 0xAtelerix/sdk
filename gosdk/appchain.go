@@ -282,7 +282,7 @@ runFor:
 				}
 
 				for _, receipt := range receipts {
-					if storeErr := StoreReceipt(rwtx, receipt); storeErr != nil {
+					if storeErr := storeReceipt(rwtx, receipt); storeErr != nil {
 						logger.Error().Err(storeErr).Msg("Failed to store receipt")
 
 						return fmt.Errorf("failed to store receipt: %w", storeErr)
@@ -676,7 +676,7 @@ func GetLastStreamPositions(
 	return startEventPos, startTxPos, nil
 }
 
-func StoreReceipt[R apptypes.Receipt](tx kv.RwTx, receipt R) error {
+func storeReceipt[R apptypes.Receipt](tx kv.RwTx, receipt R) error {
 	key := receipt.TxHash()
 
 	value, err := receipt.Marshal()

@@ -68,7 +68,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 		receipt := createTestReceipt("test-receipt-1", false)
 
 		err := db.Update(context.Background(), func(tx kv.RwTx) error {
-			return StoreReceipt(tx, receipt)
+			return storeReceipt(tx, receipt)
 		})
 		require.NoError(t, err)
 
@@ -103,7 +103,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 		// Store all receipts
 		err := db.Update(context.Background(), func(tx kv.RwTx) error {
 			for _, receipt := range receipts {
-				if err := StoreReceipt(tx, receipt); err != nil {
+				if err := storeReceipt(tx, receipt); err != nil {
 					return err
 				}
 			}
@@ -159,7 +159,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 		}
 
 		err := db.Update(context.Background(), func(tx kv.RwTx) error {
-			return StoreReceipt(tx, badReceipt)
+			return storeReceipt(tx, badReceipt)
 		})
 		// Should return an error due to marshal failure
 		assert.Error(t, err)
@@ -170,7 +170,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 		receipt := createTestReceipt("valid-receipt", false)
 
 		err := db.Update(context.Background(), func(tx kv.RwTx) error {
-			return StoreReceipt(tx, receipt)
+			return storeReceipt(tx, receipt)
 		})
 		require.NoError(t, err)
 
@@ -230,7 +230,7 @@ func TestReceiptBatchOperations(t *testing.T) {
 		// Store all receipts in a single transaction
 		err := db.Update(context.Background(), func(tx kv.RwTx) error {
 			for _, receipt := range receipts {
-				if err := StoreReceipt(tx, receipt); err != nil {
+				if err := storeReceipt(tx, receipt); err != nil {
 					return err
 				}
 			}
@@ -281,7 +281,7 @@ func BenchmarkStoreReceipt(b *testing.B) {
 			// Create a unique receipt for each iteration
 			testReceipt := createTestReceipt("benchmark-receipt-"+string(rune(i)), false)
 
-			return StoreReceipt(tx, testReceipt)
+			return storeReceipt(tx, testReceipt)
 		})
 		require.NoError(b, err)
 	}
@@ -301,7 +301,7 @@ func BenchmarkGetReceipt(b *testing.B) {
 
 	// Store the receipt first
 	err = db.Update(context.Background(), func(tx kv.RwTx) error {
-		return StoreReceipt(tx, receipt)
+		return storeReceipt(tx, receipt)
 	})
 	require.NoError(b, err)
 
