@@ -11,6 +11,7 @@ const (
 	StateBucket      = "state"
 	Snapshot         = "snapshot"
 	TxSnapshot       = "tx_snapshot"
+	ReceiptBucket    = "receipts" //tx-hash -> receipt
 
 	processedBuckets       = "processed_buckets"
 	eventStreamPositionKey = "event_stream_pos"
@@ -32,6 +33,7 @@ func DefaultTables() kv.TableCfg {
 		ConfigBucket:     {},
 		StateBucket:      {},
 		Snapshot:         {},
+		ReceiptBucket:    {},
 	}
 }
 

@@ -274,13 +274,19 @@ runFor:
 					receipts []R
 				)
 
-				_ = receipts // TODO: use receipts
-
-				_, extTxs, err = a.appchainStateExecution.ProcessBatch(batch, rwtx)
+				receipts, extTxs, err = a.appchainStateExecution.ProcessBatch(batch, rwtx)
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to process batch")
 
 					return fmt.Errorf("failed to process batch: %w", err)
+				}
+
+				for _, receipt := range receipts {
+					if err := StoreReceipt(rwtx, receipt); err != nil {
+						logger.Error().Err(err).Msg("Failed to store receipt")
+
+						return fmt.Errorf("failed to store receipt: %w", err)
+					}
 				}
 
 				// Разделение на блоки(возможное) тоже тут.
@@ -668,4 +674,13 @@ func GetLastStreamPositions(
 	}
 
 	return startEventPos, startTxPos, nil
+}
+
+func StoreReceipt[R apptypes.Receipt](tx kv.RwTx, receipt R) error {
+	key := receipt.TxHash()
+	value, err := receipt.Marshal()
+	if err != nil {
+		return err
+	}
+	return tx.Put(ReceiptBucket, key[:], value)
 }
