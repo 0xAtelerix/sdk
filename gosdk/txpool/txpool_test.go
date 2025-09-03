@@ -46,6 +46,22 @@ func (CustomTransaction[R]) Process(
 
 type Receipt struct{}
 
+func (r Receipt) Marshal() ([]byte, error) {
+	return json.Marshal(r)
+}
+
+func (r Receipt) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, &r)
+}
+
+func (r Receipt) TxHash() [32]byte {
+	return [32]byte{}
+}
+
+func (r Receipt) Status() apptypes.TxReceiptStatus {
+	return apptypes.ReceiptConfirmed
+}
+
 // randomTransaction генерирует случайную транзакцию
 func randomTransaction[R Receipt]() *rapid.Generator[CustomTransaction[R]] {
 	return rapid.Custom(func(t *rapid.T) CustomTransaction[R] {
