@@ -5,16 +5,23 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/0xAtelerix/sdk/gosdk/types"
+
+	"github.com/rs/zerolog/log"
+
+	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-type EventStreamWrapper[appTx types.AppTransaction] struct {
+type EventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	eventReader *EventReader
 	txReader    *EventReader
 	chainID     uint32
 }
 
-func NewEventStreamWrapper[appTx types.AppTransaction](eventsPath, txPath string, chainID uint32, eventStartPos, txStartPos int64) (*EventStreamWrapper[appTx], error) {
+func NewEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
+	eventsPath, txPath string,
+	chainID uint32,
+	eventStartPos, txStartPos int64,
+) (*EventStreamWrapper[appTx, R], error) {
 	eventReader, err := NewEventReader(eventsPath, eventStartPos)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create event reader: %w", err)
@@ -22,24 +29,31 @@ func NewEventStreamWrapper[appTx types.AppTransaction](eventsPath, txPath string
 
 	txReader, err := NewEventReader(txPath, txStartPos)
 	if err != nil {
-		eventReader.Close()
+		closeErr := eventReader.Close()
+		if closeErr != nil {
+			log.Warn().Err(closeErr).Msgf("Failed to close event reader: %q", closeErr)
+		}
+
 		return nil, fmt.Errorf("failed to create tx reader: %w", err)
 	}
 
-	return &EventStreamWrapper[appTx]{
+	return &EventStreamWrapper[appTx, R]{
 		eventReader: eventReader,
 		txReader:    txReader,
 		chainID:     chainID,
 	}, nil
 }
 
-func (ews *EventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Context, limit int) ([]types.Batch[appTx], error) {
+func (ews *EventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
+	ctx context.Context,
+	limit int,
+) ([]apptypes.Batch[appTx, R], error) {
 	eventBatches, err := ews.eventReader.GetNewBatchesBlocking(ctx, limit)
 	if err != nil {
 		return nil, err
 	}
 
-	var result []types.Batch[appTx]
+	var result []apptypes.Batch[appTx, R]
 
 	for _, eventBatch := range eventBatches {
 		// Список нужных транзакционных батчей
@@ -47,10 +61,13 @@ func (ews *EventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Context,
 			eventID   [32]byte
 			batchHash [32]byte
 		}
+
 		var expectedTxBatches []txRef
 
 		for _, rawEvent := range eventBatch.Events {
-			var evt types.Event
+			var evt apptypes.Event
+
+			//nolint:musttag // false-positive
 			if err := json.Unmarshal(rawEvent, &evt); err != nil {
 				return nil, fmt.Errorf("failed to decode event: %w", err)
 			}
@@ -59,6 +76,7 @@ func (ews *EventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Context,
 				if batch.ChainID != uint64(ews.chainID) {
 					continue
 				}
+
 				expectedTxBatches = append(expectedTxBatches, txRef{
 					eventID:   evt.Base.ID,
 					batchHash: batch.Hash,
@@ -71,9 +89,13 @@ func (ews *EventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Context,
 			RawTxs    [][]byte
 			EndOffset int64
 		}
+
 		collected := make(map[[32]byte]collectedTx, len(expectedTxBatches))
 		for len(collected) < len(expectedTxBatches) {
-			txBatches, err := ews.txReader.GetNewBatchesBlocking(ctx, len(expectedTxBatches)) // ограничим разумно
+			txBatches, err := ews.txReader.GetNewBatchesBlocking(
+				ctx,
+				len(expectedTxBatches),
+			) // ограничим разумно
 			if err != nil {
 				return nil, fmt.Errorf("reading txs: %w", err)
 			}
@@ -95,7 +117,7 @@ func (ews *EventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Context,
 		for _, ref := range expectedTxBatches {
 			txsRaw, ok := collected[ref.batchHash]
 			if !ok {
-				return nil, fmt.Errorf("missing tx batch for %x", ref.batchHash[:4])
+				return nil, fmt.Errorf("%w: %x", ErrMissingTxBatch, ref.batchHash[:4])
 			}
 
 			var parsedTxs []appTx
@@ -104,10 +126,11 @@ func (ews *EventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Context,
 				if err := json.Unmarshal(rawTx, &tx); err != nil {
 					return nil, fmt.Errorf("failed to unmarshal tx: %w", err)
 				}
+
 				parsedTxs = append(parsedTxs, tx)
 			}
 
-			result = append(result, types.Batch[appTx]{
+			result = append(result, apptypes.Batch[appTx, R]{
 				Transactions: parsedTxs,
 				// берем EndOffset из ивент батча — txBatch тоже можно пробрасывать
 				EndOffset:   eventBatch.EndOffset,
@@ -119,7 +142,16 @@ func (ews *EventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Context,
 	return result, nil
 }
 
-func (ews *EventStreamWrapper[appTx]) Close() {
-	ews.eventReader.Close()
-	ews.txReader.Close()
+func (ews *EventStreamWrapper[appTx, R]) Close() error {
+	err := ews.eventReader.Close()
+	if err != nil {
+		return fmt.Errorf("failed to close event reader: %w", err)
+	}
+
+	err = ews.txReader.Close()
+	if err != nil {
+		return fmt.Errorf("failed to close tx reader: %w", err)
+	}
+
+	return nil
 }

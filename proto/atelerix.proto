@@ -17,7 +17,7 @@ service Emitter {
   // Retrieves external transactions from a given block number
   rpc GetExternalTransactions(GetExternalTransactionsRequest) returns (GetExternalTransactionsResponse);
 
-  rpc GetChainId(google.protobuf.Empty) returns (GetChainIDResponse);
+  rpc GetChainID(google.protobuf.Empty) returns (GetChainIDResponse);
 }
 
 // Request for retrieving checkpoints

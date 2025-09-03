@@ -7,39 +7,56 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
-	"github.com/0xAtelerix/sdk/gosdk/types"
-	"github.com/0xAtelerix/sdk/gosdk/utility"
+	"strconv"
+
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
+
+	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
+	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
 // Server с поддержкой MDBX
-type AppchainEmitterServer[appTx types.AppTransaction] struct {
+type AppchainEmitterServer[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	emitterproto.UnimplementedEmitterServer
+
 	appchainDB kv.RwDB
 	chainID    uint64
-	txpool     types.TxPoolInterface[appTx]
+	txpool     apptypes.TxPoolInterface[appTx, R]
 	logger     *zerolog.Logger
 }
 
 // Создание нового сервера с MDBX
-func NewServer[appTx types.AppTransaction](db kv.RwDB, chainID uint64, txpool types.TxPoolInterface[appTx]) *AppchainEmitterServer[appTx] {
-	return &AppchainEmitterServer[appTx]{appchainDB: db, chainID: chainID, txpool: txpool, logger: &log.Logger}
+func NewServer[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
+	db kv.RwDB,
+	chainID uint64,
+	txpool apptypes.TxPoolInterface[appTx, R],
+) *AppchainEmitterServer[appTx, R] {
+	return &AppchainEmitterServer[appTx, R]{
+		appchainDB: db,
+		chainID:    chainID,
+		txpool:     txpool,
+		logger:     &log.Logger,
+	}
 }
 
 // Метод GetCheckpoints: выбираем все чекпоинты >= LatestBlockNumber
-func (s *AppchainEmitterServer[appTx]) GetCheckpoints(ctx context.Context, req *emitterproto.GetCheckpointsRequest) (*emitterproto.CheckpointResponse, error) {
+func (s *AppchainEmitterServer[appTx, R]) GetCheckpoints(
+	ctx context.Context,
+	req *emitterproto.GetCheckpointsRequest,
+) (*emitterproto.CheckpointResponse, error) {
 	s.logger.Debug().
 		Str("method", "GetCheckpoints").
-		Uint64("latest_previous_checkpoint_block_number", req.LatestPreviousCheckpointBlockNumber).
+		Uint64("latest_previous_checkpoint_block_number", req.GetLatestPreviousCheckpointBlockNumber()).
 		Uint32("limit", func() uint32 {
 			if req.Limit != nil {
-				return *req.Limit
+				return req.GetLimit()
 			}
+
 			return 0
 		}()).
 		Msg("Received request")
@@ -47,47 +64,54 @@ func (s *AppchainEmitterServer[appTx]) GetCheckpoints(ctx context.Context, req *
 	txn, err := s.appchainDB.BeginRo(ctx)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to open DB transaction")
+
 		return nil, fmt.Errorf("failed to open DB transaction: %w", err)
 	}
+
 	defer txn.Rollback()
 
 	cursor, err := txn.Cursor(CheckpointBucket)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to create cursor")
+
 		return nil, fmt.Errorf("failed to create cursor: %w", err)
 	}
+
 	defer cursor.Close()
 
 	var checkpoints []*emitterproto.CheckpointResponse_Checkpoint
+
 	limit := uint32(10)
 	if req.Limit != nil {
-		limit = *req.Limit
+		limit = req.GetLimit()
 	}
 
 	// Начинаем поиск с блока >= LatestPreviousCheckpointBlockNumber
 	startKey := make([]byte, 8)
-	binary.BigEndian.PutUint64(startKey, req.LatestPreviousCheckpointBlockNumber)
+	binary.BigEndian.PutUint64(startKey, req.GetLatestPreviousCheckpointBlockNumber())
 
 	count := uint32(0)
 	for k, v, err := cursor.Seek(startKey); err == nil && count < limit; k, v, err = cursor.Next() {
-
 		if len(k) == 0 {
 			break // Дошли до конца
 		}
-		checkpoint := &types.Checkpoint{}
-		if err := json.Unmarshal(v, &checkpoint); err != nil {
+
+		checkpoint := &apptypes.Checkpoint{}
+		if err = json.Unmarshal(v, &checkpoint); err != nil {
 			s.logger.Error().Err(err).Msg("Checkpoint deserialization failed")
+
 			return nil, fmt.Errorf("checkpoint deserialization failed: %w", err)
 		}
+
 		checkpoints = append(checkpoints, CheckpointToProto(*checkpoint))
 		count++
 	}
+
 	if len(checkpoints) > 0 {
 		s.logger.Debug().
 			Str("method", "GetCheckpoints").
-			Uint64("last checkpoint", checkpoints[len(checkpoints)-1].LatestBlockNumber).
+			Uint64("last checkpoint", checkpoints[len(checkpoints)-1].GetLatestBlockNumber()).
 			Msg("New checkpoints")
-
 	} else {
 		s.logger.Debug().
 			Str("method", "GetCheckpoints").
@@ -98,14 +122,18 @@ func (s *AppchainEmitterServer[appTx]) GetCheckpoints(ctx context.Context, req *
 }
 
 // Метод GetExternalTransactions: выбираем все транзакции >= LatestPreviousBlockNumber
-func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(ctx context.Context, req *emitterproto.GetExternalTransactionsRequest) (*emitterproto.GetExternalTransactionsResponse, error) {
+func (s *AppchainEmitterServer[appTx, R]) GetExternalTransactions(
+	ctx context.Context,
+	req *emitterproto.GetExternalTransactionsRequest,
+) (*emitterproto.GetExternalTransactionsResponse, error) {
 	s.logger.Debug().
 		Str("method", "GetExternalTransactions").
-		Uint64("latest_previous_block_number", req.LatestPreviousBlockNumber).
+		Uint64("latest_previous_block_number", req.GetLatestPreviousBlockNumber()).
 		Uint32("limit", func() uint32 {
 			if req.Limit != nil {
-				return *req.Limit
+				return req.GetLimit()
 			}
+
 			return 0
 		}()).
 		Msg("Received request")
@@ -113,26 +141,32 @@ func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(ctx context.Conte
 	txn, err := s.appchainDB.BeginRo(ctx)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to open DB transaction")
+
 		return nil, fmt.Errorf("failed to open DB transaction: %w", err)
 	}
+
 	defer txn.Rollback()
 
 	cursor, err := txn.Cursor(ExternalTxBucket)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to create cursor")
-		return nil, fmt.Errorf("failed to create cursor: %w", err)
 
+		return nil, fmt.Errorf("failed to create cursor: %w", err)
 	}
+
 	defer cursor.Close()
 
 	limit := uint32(10)
 	if req.Limit != nil {
-		limit = *req.Limit
+		limit = req.GetLimit()
 	}
 
 	// Начинаем поиск с блока >= LatestPreviousBlockNumber
 	startKey := make([]byte, 10)
-	binary.BigEndian.PutUint64(startKey[:8], req.LatestPreviousBlockNumber)
+	binary.BigEndian.PutUint64(startKey[:8], req.GetLatestPreviousBlockNumber())
+
+	s.logger.Warn().
+		Str("GetExternalTransactions", strconv.FormatUint(req.GetLatestPreviousBlockNumber(), 10))
 
 	blockMap := make(map[uint64][]*emitterproto.ExternalTransaction)
 	count := uint32(0)
@@ -147,6 +181,7 @@ func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(ctx context.Conte
 		tx := &emitterproto.ExternalTransaction{}
 		if err := proto.Unmarshal(v, tx); err != nil {
 			s.logger.Error().Err(err).Msg("Transaction deserialization failed")
+
 			return nil, fmt.Errorf("transaction deserialization failed: %w", err)
 		}
 
@@ -159,23 +194,33 @@ func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(ctx context.Conte
 			Str("method", "GetExternalTransactions").
 			Msg("No new external transactions")
 
-		return nil, nil
+		return nil, nil //nolint:nilnil // it's a loop
 	}
 
 	// Формируем список блоков с транзакциями
-	var blocks []*emitterproto.GetExternalTransactionsResponse_BlockTransactions
+	blocks := make(
+		[]*emitterproto.GetExternalTransactionsResponse_BlockTransactions,
+		0,
+		len(blockMap),
+	)
+
 	for blockNumber, txs := range blockMap {
 		var rawTxs [][]byte
 		for _, tx := range txs {
-			rawTxs = append(rawTxs, tx.Tx)
+			rawTxs = append(rawTxs, tx.GetTx())
 		}
+
 		// Генерация корректного хеша
-		txsFlat := utility.Flatten(rawTxs)
+		txsFlat, err := utility.Flatten(rawTxs)
+		if err != nil {
+			return nil, fmt.Errorf("transaction flatten failed: %w", err)
+		}
+
 		hash := sha256.Sum256(txsFlat)
 
 		blocks = append(blocks, &emitterproto.GetExternalTransactionsResponse_BlockTransactions{
 			BlockNumber:          blockNumber,
-			TransactionsRootHash: hash[:], //todo Нужно заменить на реальный root
+			TransactionsRootHash: hash[:], // todo Нужно заменить на реальный root
 			ExternalTransactions: txs,
 		})
 
@@ -189,26 +234,34 @@ func (s *AppchainEmitterServer[appTx]) GetExternalTransactions(ctx context.Conte
 	return &emitterproto.GetExternalTransactionsResponse{Blocks: blocks}, nil
 }
 
-func (s *AppchainEmitterServer[appTx]) GetChainId(context.Context, *emptypb.Empty) (*emitterproto.GetChainIDResponse, error) {
+func (s *AppchainEmitterServer[appTx, R]) GetChainID(
+	context.Context,
+	*emptypb.Empty,
+) (*emitterproto.GetChainIDResponse, error) {
 	return &emitterproto.GetChainIDResponse{
 		ChainId: s.chainID,
 	}, nil
 }
 
-func (s *AppchainEmitterServer[appTx]) CreateInternalTransactionsBatch(context.Context, *emptypb.Empty) (*emitterproto.CreateInternalTransactionsBatchResponse, error) {
+func (s *AppchainEmitterServer[appTx, R]) CreateInternalTransactionsBatch(
+	ctx context.Context,
+	_ *emptypb.Empty,
+) (*emitterproto.CreateInternalTransactionsBatchResponse, error) {
 	s.logger.Debug().
 		Str("method", "CreateInternalTransactionsBatch").
 		Msg("Received request")
 
-	batchHash, txs, err := s.txpool.CreateTransactionBatch()
+	batchHash, txs, err := s.txpool.CreateTransactionBatch(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get transactions: %w", err)
+		return nil, fmt.Errorf("failed to get transactions: %w", err)
 	}
+
 	if len(txs) == 0 {
 		s.logger.Debug().
 			Str("method", "CreateInternalTransactionsBatch").
 			Msg("No new transactions")
-		return nil, nil
+
+		return nil, nil //nolint:nilnil // it's a loop
 	}
 
 	txsBytes := make([]*emitterproto.ByteArray, len(txs))
@@ -221,8 +274,8 @@ func (s *AppchainEmitterServer[appTx]) CreateInternalTransactionsBatch(context.C
 		InternalTransactions: txsBytes,
 	}
 	s.logger.Debug().
-		Str("batch hash", hex.EncodeToString(resp.BatchHash)).
-		Int("num of tx", len(resp.InternalTransactions)).
+		Str("batch hash", hex.EncodeToString(resp.GetBatchHash())).
+		Int("num of tx", len(resp.GetInternalTransactions())).
 		Msg("New transaction batch")
 
 	return resp, nil

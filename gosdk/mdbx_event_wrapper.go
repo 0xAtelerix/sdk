@@ -10,26 +10,37 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/rs/zerolog"
 
-	"github.com/0xAtelerix/sdk/gosdk/types"
+	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
-type MdbxEventStreamWrapper[appTx types.AppTransaction] struct {
+type MdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	eventReader *EventReader
 	txReader    kv.RoDB
 	chainID     uint32
 	logger      *zerolog.Logger
 }
 
-type EventStreamWrapperConstructor[appTx types.AppTransaction] func(eventsPath string, chainID uint32, eventStartPos int64, txBatchDB kv.RoDB, logger *zerolog.Logger) (Streamer[appTx], error)
+type EventStreamWrapperConstructor[appTx apptypes.AppTransaction[R], R apptypes.Receipt] func(
+	eventsPath string,
+	chainID uint32,
+	eventStartPos int64,
+	txBatchDB kv.RoDB,
+	logger *zerolog.Logger) (Streamer[appTx, R], error)
 
-func NewMdbxEventStreamWrapper[appTx types.AppTransaction](eventsPath string, chainID uint32, eventStartPos int64, txBatchDB kv.RoDB, logger *zerolog.Logger) (*MdbxEventStreamWrapper[appTx], error) {
+func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
+	eventsPath string,
+	chainID uint32,
+	eventStartPos int64,
+	txBatchDB kv.RoDB,
+	logger *zerolog.Logger,
+) (*MdbxEventStreamWrapper[appTx, R], error) {
 	eventReader, err := NewEventReader(eventsPath, eventStartPos)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create event reader: %w", err)
 	}
 
-	return &MdbxEventStreamWrapper[appTx]{
+	return &MdbxEventStreamWrapper[appTx, R]{
 		eventReader: eventReader,
 		txReader:    txBatchDB,
 		chainID:     chainID,
@@ -37,13 +48,17 @@ func NewMdbxEventStreamWrapper[appTx types.AppTransaction](eventsPath string, ch
 	}, nil
 }
 
-type Streamer[appTx types.AppTransaction] interface {
-	GetNewBatchesBlocking(ctx context.Context, limit int) ([]types.Batch[appTx], error)
-	Close()
+type Streamer[appTx apptypes.AppTransaction[R], R apptypes.Receipt] interface {
+	GetNewBatchesBlocking(ctx context.Context, limit int) ([]apptypes.Batch[appTx, R], error)
+	Close() error
 }
 
-func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Context, limit int) ([]types.Batch[appTx], error) {
+func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
+	ctx context.Context,
+	limit int,
+) ([]apptypes.Batch[appTx, R], error) {
 	ews.logger.Debug().Int("len", limit).Msg("get new batches")
+
 	vid := utility.ValidatorIDFromCtx(ctx)
 	cid := utility.ChainIDFromCtx(ctx)
 
@@ -53,10 +68,14 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 	}
 
 	ews.logger.Debug().Int("batches", len(eventBatches)).Msg("got new batches")
-	var result []types.Batch[appTx]
+
+	var result []apptypes.Batch[appTx, R] //nolint:prealloc // hard to predict also many cases will be with empty batches
 
 	for _, eventBatch := range eventBatches {
-		ews.logger.Debug().Hex("atropos", eventBatch.Atropos[:]).Int("events", len(eventBatch.Events)).Msg("Processing event batch")
+		ews.logger.Debug().
+			Hex("atropos", eventBatch.Atropos[:]).
+			Int("events", len(eventBatch.Events)).
+			Msg("Processing event batch")
 
 		txBatches := map[[32]byte][][]byte{}
 		// Список нужных транзакционных батчей
@@ -64,18 +83,24 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 			eventID   [32]byte
 			batchHash [32]byte
 		}
+
 		var expectedTxBatches []txRef
 
 		tParseEvt := time.Now()
+
 		for _, rawEvent := range eventBatch.Events {
-			var evt types.Event
+			var evt apptypes.Event
+
+			//nolint:musttag // false-positive
 			if err := json.Unmarshal(rawEvent, &evt); err != nil {
 				return nil, fmt.Errorf("failed to decode event: %w", err)
 			}
+
 			for _, batch := range evt.TxPool {
 				if batch.ChainID != uint64(ews.chainID) {
 					continue
 				}
+
 				txBatches[batch.Hash] = [][]byte{}
 				expectedTxBatches = append(expectedTxBatches, txRef{
 					eventID:   evt.Base.ID,
@@ -83,29 +108,50 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 				})
 			}
 		}
+
 		MdbxEventParseDuration.WithLabelValues(vid, cid).Observe(time.Since(tParseEvt).Seconds())
 		MdbxTxBatchesExpectedTotal.WithLabelValues(vid, cid).Add(float64(len(expectedTxBatches)))
 
-		ews.logger.Debug().Hex("atropos", eventBatch.Atropos[:]).Int("expected batches", len(expectedTxBatches)).Int("txBatches", len(txBatches)).Msg("expectedTxBatches")
+		ews.logger.Debug().
+			Hex("atropos", eventBatch.Atropos[:]).
+			Int("expected batches", len(expectedTxBatches)).
+			Int("txBatches", len(txBatches)).
+			Msg("expectedTxBatches")
+
 		waitStart := time.Now()
+
 		var notFoundCycle uint64
+
 		for numOfFound := 0; numOfFound < len(txBatches); {
 			if numOfFound != 0 {
 				time.Sleep(time.Millisecond * 50)
+
 				notFoundCycle++
 
-				s := []string{}
+				var s []string
 				for i := range txBatches {
 					s = append(s, hex.EncodeToString(i[:]))
 				}
-				ews.logger.Debug().Int("numOfFound", numOfFound).Int("len(txBatches)", len(txBatches)).Strs("batches", s).Msg("timed out waiting for batches")
+
+				ews.logger.Debug().
+					Int("numOfFound", numOfFound).
+					Int("len(txBatches)", len(txBatches)).
+					Strs("batches", s).
+					Msg("timed out waiting for batches")
+
 				if notFoundCycle%(1000/50) == 0 {
-					ews.logger.Warn().Int("numOfFound", numOfFound).Int("len(txBatches)", len(txBatches)).Strs("batches", s).Msg("timed out waiting for batches")
+					ews.logger.Warn().
+						Int("numOfFound", numOfFound).
+						Int("len(txBatches)", len(txBatches)).
+						Strs("batches", s).
+						Msg("timed out waiting for batches")
 				}
 			}
-			err := func() error {
+
+			err := func(ctx context.Context) error {
 				tLookup := time.Now()
-				tx, err := ews.txReader.BeginRo(context.TODO())
+
+				tx, err := ews.txReader.BeginRo(ctx)
 				if err != nil {
 					return err
 				}
@@ -120,50 +166,69 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 					if err != nil {
 						return err
 					}
+
 					if len(val) == 0 {
 						continue
 					}
+
 					txs, err := utility.Unflatten(val)
 					if err != nil {
 						return err
 					}
+
 					txBatches[hsh] = txs
 					ews.logger.Debug().Str("hash", hex.EncodeToString(hsh[:])).Msg("found tx batch")
+
 					numOfFound++
 				}
-				MdbxTxLookupDuration.WithLabelValues(vid, cid).Observe(time.Since(tLookup).Seconds())
+
+				MdbxTxLookupDuration.WithLabelValues(vid, cid).
+					Observe(time.Since(tLookup).Seconds())
+
 				return nil
-			}()
+			}(ctx)
 			if err != nil {
 				ews.logger.Error().Err(err).Msg("got tx batches from mdbx")
+
 				return nil, err
 			}
 		}
-		ews.logger.Debug().Int("expectedTxBatches", len(expectedTxBatches)).Msg("got tx batches from mdbx")
+
+		ews.logger.Debug().
+			Int("expectedTxBatches", len(expectedTxBatches)).
+			Msg("got tx batches from mdbx")
+
 		if notFoundCycle > 0 {
 			MdbxWaitCyclesTotal.WithLabelValues(vid, cid).Add(float64(notFoundCycle))
 			MdbxWaitTimeSeconds.WithLabelValues(vid, cid).Observe(time.Since(waitStart).Seconds())
 		}
+
 		MdbxTxBatchesFoundTotal.WithLabelValues(vid, cid).Add(float64(len(txBatches)))
 
 		var allParsedTxs []appTx
+
 		for _, ref := range expectedTxBatches {
 			txsRaw, ok := txBatches[ref.batchHash]
 			if !ok {
-				return nil, fmt.Errorf("missing tx batch for %x", ref.batchHash[:4])
+				return nil, fmt.Errorf("%w: %x", ErrMissingTxBatch, ref.batchHash[:4])
 			}
 
 			for _, rawTx := range txsRaw {
 				var tx appTx
 				if err := json.Unmarshal(rawTx, &tx); err != nil {
-					ews.logger.Error().Err(err).Str("json", string(rawTx)).Msg("failed to unmarshal tx")
+					ews.logger.Error().
+						Err(err).
+						Str("json", string(rawTx)).
+						Msg("failed to unmarshal tx")
+
 					return nil, fmt.Errorf("failed to unmarshal tx: %w", err)
 				}
+
 				allParsedTxs = append(allParsedTxs, tx)
 			}
 		}
 
-		result = append(result, types.Batch[appTx]{
+		result = append(result, apptypes.Batch[appTx, R]{
 			Atropos:      eventBatch.Atropos,
 			Transactions: allParsedTxs,
 			EndOffset:    eventBatch.EndOffset,
@@ -173,7 +238,13 @@ func (ews *MdbxEventStreamWrapper[appTx]) GetNewBatchesBlocking(ctx context.Cont
 	return result, nil
 }
 
-func (ews *MdbxEventStreamWrapper[appTx]) Close() {
-	ews.eventReader.Close()
+func (ews *MdbxEventStreamWrapper[appTx, R]) Close() error {
+	err := ews.eventReader.Close()
+	if err != nil {
+		return err
+	}
+
 	ews.txReader.Close()
+
+	return nil
 }

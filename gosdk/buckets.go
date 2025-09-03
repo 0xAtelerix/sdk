@@ -12,31 +12,37 @@ const (
 	Snapshot         = "snapshot"
 	TxSnapshot       = "tx_snapshot"
 
-	processed_buckets      = "processed_buckets"
+	processedBuckets       = "processed_buckets"
 	eventStreamPositionKey = "event_stream_pos"
 
 	TxBuckets = "txbatch"
 )
 
-var TxBucketsTables = kv.TableCfg{
-	TxBuckets: {},
+func TxBucketsTables() kv.TableCfg {
+	return kv.TableCfg{
+		TxBuckets: {},
+	}
 }
 
-var DefaultTables = kv.TableCfg{
-	CheckpointBucket: {},
-	ExternalTxBucket: {},
-	BlocksBucket:     {},
-	ConfigBucket:     {},
-	StateBucket:      {},
-	Snapshot:         {},
+func DefaultTables() kv.TableCfg {
+	return kv.TableCfg{
+		CheckpointBucket: {},
+		ExternalTxBucket: {},
+		BlocksBucket:     {},
+		ConfigBucket:     {},
+		StateBucket:      {},
+		Snapshot:         {},
+	}
 }
 
 func MergeTables(bucketSets ...kv.TableCfg) kv.TableCfg {
 	final := kv.TableCfg{}
+
 	for _, buckets := range bucketSets {
 		for i := range buckets {
 			final[i] = buckets[i]
 		}
 	}
+
 	return final
 }
