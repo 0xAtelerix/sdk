@@ -13,7 +13,12 @@ type AppTransaction[R Receipt] interface {
 	Process(dbTx kv.RwTx) (R, []ExternalTransaction, error)
 }
 
-type Receipt any
+type Receipt interface {
+	TxHash() [32]byte
+	Status() TxReceiptStatus
+	Serializible
+	// TODO - Can add more methods later
+}
 
 // How to work with encoding with appchain transactions
 type Serializible interface {
