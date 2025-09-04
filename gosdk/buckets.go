@@ -1,8 +1,9 @@
 package gosdk
 
 import (
-	"github.com/0xAtelerix/sdk/gosdk/receipt"
 	"github.com/ledgerwatch/erigon-lib/kv"
+
+	"github.com/0xAtelerix/sdk/gosdk/receipt"
 )
 
 const (

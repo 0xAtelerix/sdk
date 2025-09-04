@@ -3,8 +3,9 @@ package rpc // JSONRPCRequest represents a standard JSON-RPC 2.0 request
 import (
 	"context"
 
-	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/ledgerwatch/erigon-lib/kv"
+
+	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
 type JSONRPCRequest struct {

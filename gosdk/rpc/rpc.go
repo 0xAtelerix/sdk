@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/ledgerwatch/erigon-lib/kv"
@@ -36,14 +35,9 @@ func (s *StandardRPCServer[appTx, R]) AddCustomMethod(
 }
 
 // StartHTTPServer starts the HTTP JSON-RPC server
-func (s *StandardRPCServer[appTx, R]) StartHTTPServer(port string) error {
+func (s *StandardRPCServer[appTx, R]) StartHTTPServer(addr string) error {
 	http.HandleFunc("/rpc", s.handleRPC)
-	port = strings.TrimPrefix(port, ":")
-	if port == "" {
-		port = "8545" // Default port
-	}
 
-	addr := fmt.Sprintf(":%s", port)
 	fmt.Printf("Starting Standard RPC server on %s\n", addr)
 	fmt.Println("Available methods:")
 	fmt.Println("  - getTransactionReceipt")
@@ -51,7 +45,6 @@ func (s *StandardRPCServer[appTx, R]) StartHTTPServer(port string) error {
 	fmt.Println("  - sendTransaction")
 	fmt.Println("  - getTransactionStatus")
 	fmt.Println("  - getPendingTransactions")
-	fmt.Println("  - getChainInfo")
 
 	server := &http.Server{
 		Addr:         addr,
@@ -172,6 +165,7 @@ func (s *StandardRPCServer[appTx, R]) getTransactionReceipt(
 		if errors.Is(err, ErrReceiptNotFound) {
 			return nil, err
 		}
+
 		return nil, fmt.Errorf("%w: %w", ErrFailedToGetReceipt, err)
 	}
 

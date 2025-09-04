@@ -40,6 +40,7 @@ func (t TestTransaction[R]) Marshal() ([]byte, error) {
 
 func (t TestTransaction[R]) Hash() [32]byte {
 	s := t.From + t.To + strconv.Itoa(t.Value)
+
 	return sha256.Sum256([]byte(s))
 }
 
@@ -75,11 +76,14 @@ func (r TestReceipt) Error() string {
 	if r.ReceiptStatus == apptypes.ReceiptFailed {
 		return "transaction failed"
 	}
+
 	return ""
 }
 
 // setupTestEnvironment creates a test environment with databases and server
-func setupTestEnvironment(t *testing.T) (*StandardRPCServer[*TestTransaction[TestReceipt], TestReceipt], kv.RwDB, kv.RwDB, func()) {
+func setupTestEnvironment(
+	t *testing.T,
+) (server *StandardRPCServer[*TestTransaction[TestReceipt], TestReceipt], appchainDB kv.RwDB, cleanup func()) {
 	t.Helper()
 
 	// Create temporary directories for databases
@@ -96,7 +100,7 @@ func setupTestEnvironment(t *testing.T) (*StandardRPCServer[*TestTransaction[Tes
 	require.NoError(t, err)
 
 	// Create appchain database
-	appchainDB, err := mdbx.NewMDBX(mdbxlog.New()).
+	appchainDB, err = mdbx.NewMDBX(mdbxlog.New()).
 		Path(appchainDBPath).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return kv.TableCfg{
@@ -110,18 +114,23 @@ func setupTestEnvironment(t *testing.T) (*StandardRPCServer[*TestTransaction[Tes
 	txPool := txpool.NewTxPool[*TestTransaction[TestReceipt], TestReceipt](localDB)
 
 	// Create RPC server
-	server := NewStandardRPCServer(appchainDB, txPool)
+	server = NewStandardRPCServer(appchainDB, txPool)
 
-	cleanup := func() {
+	cleanup = func() {
 		localDB.Close()
 		appchainDB.Close()
 	}
 
-	return server, localDB, appchainDB, cleanup
+	return server, appchainDB, cleanup
 }
 
 // makeJSONRPCRequest creates a JSON-RPC request and returns the response
-func makeJSONRPCRequest(t *testing.T, server *StandardRPCServer[*TestTransaction[TestReceipt], TestReceipt], method string, params []any) *httptest.ResponseRecorder {
+func makeJSONRPCRequest(
+	t *testing.T,
+	server *StandardRPCServer[*TestTransaction[TestReceipt], TestReceipt],
+	method string,
+	params []any,
+) *httptest.ResponseRecorder {
 	t.Helper()
 
 	request := JSONRPCRequest{
@@ -143,31 +152,8 @@ func makeJSONRPCRequest(t *testing.T, server *StandardRPCServer[*TestTransaction
 	return rr
 }
 
-func TestStandardRPCServer_getChainInfo(t *testing.T) {
-	server, _, _, cleanup := setupTestEnvironment(t)
-	defer cleanup()
-
-	rr := makeJSONRPCRequest(t, server, "getChainInfo", []any{})
-
-	assert.Equal(t, http.StatusOK, rr.Code)
-
-	var response JSONRPCResponse
-	err := json.Unmarshal(rr.Body.Bytes(), &response)
-	require.NoError(t, err)
-
-	assert.Equal(t, "2.0", response.JSONRPC)
-	assert.Nil(t, response.Error)
-
-	chainInfo, ok := response.Result.(map[string]interface{})
-	require.True(t, ok)
-
-	assert.Equal(t, "1337", chainInfo["chainId"])
-	assert.Equal(t, "test-network", chainInfo["networkName"])
-	assert.Equal(t, "1.0.0", chainInfo["version"])
-}
-
 func TestStandardRPCServer_sendTransaction(t *testing.T) {
-	server, _, _, cleanup := setupTestEnvironment(t)
+	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
 	// Create a test transaction
@@ -182,6 +168,7 @@ func TestStandardRPCServer_sendTransaction(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 
 	var response JSONRPCResponse
+
 	err := json.Unmarshal(rr.Body.Bytes(), &response)
 	require.NoError(t, err)
 
@@ -192,12 +179,12 @@ func TestStandardRPCServer_sendTransaction(t *testing.T) {
 	// Check that the result is a hex string (transaction hash)
 	hashStr, ok := response.Result.(string)
 	require.True(t, ok)
-	assert.True(t, len(hashStr) > 0)
-	assert.True(t, hashStr[:2] == "0x")
+	assert.NotEmpty(t, hashStr)
+	assert.Equal(t, "0x", hashStr[:2])
 }
 
 func TestStandardRPCServer_getTransactionByHash(t *testing.T) {
-	server, _, _, cleanup := setupTestEnvironment(t)
+	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
 	// First, send a transaction
@@ -212,6 +199,7 @@ func TestStandardRPCServer_getTransactionByHash(t *testing.T) {
 	require.Equal(t, http.StatusOK, sendRR.Code)
 
 	var sendResponse JSONRPCResponse
+
 	err := json.Unmarshal(sendRR.Body.Bytes(), &sendResponse)
 	require.NoError(t, err)
 
@@ -224,6 +212,7 @@ func TestStandardRPCServer_getTransactionByHash(t *testing.T) {
 	assert.Equal(t, http.StatusOK, getRR.Code)
 
 	var getResponse JSONRPCResponse
+
 	err = json.Unmarshal(getRR.Body.Bytes(), &getResponse)
 	require.NoError(t, err)
 
@@ -233,7 +222,7 @@ func TestStandardRPCServer_getTransactionByHash(t *testing.T) {
 }
 
 func TestStandardRPCServer_getTransactionStatus(t *testing.T) {
-	server, _, _, cleanup := setupTestEnvironment(t)
+	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
 	// First, send a transaction
@@ -248,6 +237,7 @@ func TestStandardRPCServer_getTransactionStatus(t *testing.T) {
 	require.Equal(t, http.StatusOK, sendRR.Code)
 
 	var sendResponse JSONRPCResponse
+
 	err := json.Unmarshal(sendRR.Body.Bytes(), &sendResponse)
 	require.NoError(t, err)
 
@@ -260,6 +250,7 @@ func TestStandardRPCServer_getTransactionStatus(t *testing.T) {
 	assert.Equal(t, http.StatusOK, statusRR.Code)
 
 	var statusResponse JSONRPCResponse
+
 	err = json.Unmarshal(statusRR.Body.Bytes(), &statusResponse)
 	require.NoError(t, err)
 
@@ -268,11 +259,15 @@ func TestStandardRPCServer_getTransactionStatus(t *testing.T) {
 
 	status, ok := statusResponse.Result.(string)
 	require.True(t, ok)
-	assert.Contains(t, []string{"Pending", "Batched", "ReadyToProcess", "Processed", "Unknown"}, status)
+	assert.Contains(
+		t,
+		[]string{"Pending", "Batched", "ReadyToProcess", "Processed", "Unknown"},
+		status,
+	)
 }
 
 func TestStandardRPCServer_getPendingTransactions(t *testing.T) {
-	server, _, _, cleanup := setupTestEnvironment(t)
+	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
 	// First, send some transactions
@@ -292,6 +287,7 @@ func TestStandardRPCServer_getPendingTransactions(t *testing.T) {
 	assert.Equal(t, http.StatusOK, pendingRR.Code)
 
 	var pendingResponse JSONRPCResponse
+
 	err := json.Unmarshal(pendingRR.Body.Bytes(), &pendingResponse)
 	require.NoError(t, err)
 
@@ -300,13 +296,13 @@ func TestStandardRPCServer_getPendingTransactions(t *testing.T) {
 	assert.NotNil(t, pendingResponse.Result)
 
 	// The result should be an array
-	pendingTxs, ok := pendingResponse.Result.([]interface{})
+	pendingTxs, ok := pendingResponse.Result.([]any)
 	require.True(t, ok)
 	assert.Len(t, pendingTxs, 2)
 }
 
 func TestStandardRPCServer_getTransactionReceipt(t *testing.T) {
-	server, _, appchainDB, cleanup := setupTestEnvironment(t)
+	server, appchainDB, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
 	// Create a test receipt
@@ -330,6 +326,7 @@ func TestStandardRPCServer_getTransactionReceipt(t *testing.T) {
 	assert.Equal(t, http.StatusOK, receiptRR.Code)
 
 	var receiptResponse JSONRPCResponse
+
 	err = json.Unmarshal(receiptRR.Body.Bytes(), &receiptResponse)
 	require.NoError(t, err)
 
@@ -339,12 +336,12 @@ func TestStandardRPCServer_getTransactionReceipt(t *testing.T) {
 }
 
 func TestStandardRPCServer_customMethod(t *testing.T) {
-	server, _, _, cleanup := setupTestEnvironment(t)
+	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
 	// Add a custom method
-	server.AddCustomMethod("customTest", func(ctx context.Context, params []any) (any, error) {
-		return map[string]interface{}{
+	server.AddCustomMethod("customTest", func(_ context.Context, params []any) (any, error) {
+		return map[string]any{
 			"message": "custom method works",
 			"params":  params,
 		}, nil
@@ -356,19 +353,20 @@ func TestStandardRPCServer_customMethod(t *testing.T) {
 	assert.Equal(t, http.StatusOK, customRR.Code)
 
 	var customResponse JSONRPCResponse
+
 	err := json.Unmarshal(customRR.Body.Bytes(), &customResponse)
 	require.NoError(t, err)
 
 	assert.Equal(t, "2.0", customResponse.JSONRPC)
 	assert.Nil(t, customResponse.Error)
 
-	result, ok := customResponse.Result.(map[string]interface{})
+	result, ok := customResponse.Result.(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "custom method works", result["message"])
 }
 
 func TestStandardRPCServer_invalidMethod(t *testing.T) {
-	server, _, _, cleanup := setupTestEnvironment(t)
+	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
 	rr := makeJSONRPCRequest(t, server, "nonExistentMethod", []any{})
@@ -376,6 +374,7 @@ func TestStandardRPCServer_invalidMethod(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 
 	var response JSONRPCResponse
+
 	err := json.Unmarshal(rr.Body.Bytes(), &response)
 	require.NoError(t, err)
 
@@ -385,7 +384,7 @@ func TestStandardRPCServer_invalidMethod(t *testing.T) {
 }
 
 func TestStandardRPCServer_invalidJSONRPC(t *testing.T) {
-	server, _, _, cleanup := setupTestEnvironment(t)
+	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
 	// Test invalid JSON
@@ -398,6 +397,7 @@ func TestStandardRPCServer_invalidJSONRPC(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 
 	var response JSONRPCResponse
+
 	err := json.Unmarshal(rr.Body.Bytes(), &response)
 	require.NoError(t, err)
 
@@ -406,7 +406,7 @@ func TestStandardRPCServer_invalidJSONRPC(t *testing.T) {
 }
 
 func TestStandardRPCServer_wrongHTTPMethod(t *testing.T) {
-	server, _, _, cleanup := setupTestEnvironment(t)
+	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
 	req := httptest.NewRequest(http.MethodGet, "/rpc", nil)
@@ -418,11 +418,12 @@ func TestStandardRPCServer_wrongHTTPMethod(t *testing.T) {
 
 // Benchmark tests
 func BenchmarkRPCServer_getChainInfo(b *testing.B) {
-	server, _, _, cleanup := setupTestEnvironment(&testing.T{})
+	server, _, cleanup := setupTestEnvironment(&testing.T{})
 	defer cleanup()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for range b.N {
 		req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBufferString(`{
 			"jsonrpc": "2.0",
 			"method": "getChainInfo",
@@ -443,6 +444,7 @@ func ExampleStandardRPCServer() {
 	// Create databases (in real usage, use persistent storage)
 	localDB, _ := mdbx.NewMDBX(mdbxlog.New()).InMem("").Open()
 	appchainDB, _ := mdbx.NewMDBX(mdbxlog.New()).InMem("").Open()
+
 	defer localDB.Close()
 	defer appchainDB.Close()
 
@@ -453,7 +455,7 @@ func ExampleStandardRPCServer() {
 	server := NewStandardRPCServer(appchainDB, txPool)
 
 	// Add custom method
-	server.AddCustomMethod("ping", func(ctx context.Context, params []any) (any, error) {
+	server.AddCustomMethod("ping", func(_ context.Context, _ []any) (any, error) {
 		return "pong", nil
 	})
 

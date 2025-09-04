@@ -3,8 +3,9 @@ package receipt
 import (
 	"errors"
 
-	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/ledgerwatch/erigon-lib/kv"
+
+	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
 const ReceiptBucket = "receipts" // tx-hash -> receipt
