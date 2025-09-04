@@ -24,6 +24,7 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
 	"github.com/0xAtelerix/sdk/gosdk/receipt"
+	"github.com/0xAtelerix/sdk/gosdk/rpc"
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
@@ -61,9 +62,11 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 		rootCalculator:         NewStubRootCalculator(),
 		blockBuilder:           blockBuilder,
 		emiterAPI:              emiterAPI,
+		rpcServer:              rpc.NewStandardRPCServer(appchainDB, txpool),
 		AppchainDB:             appchainDB,
 		config:                 config,
 		multichainDB:           multichainDB,
+		txpool:                 txpool,
 	}
 	for _, option := range options {
 		option(&appchain)
@@ -81,9 +84,15 @@ func WithRootCalculator[STI StateTransitionInterface[AppTx, R],
 	}
 }
 
+// GetRPCServer returns the RPC server instance for adding custom methods
+func (a *Appchain[STI, appTx, R, AppBlock]) GetRPCServer() *rpc.StandardRPCServer[appTx, R] {
+	return a.rpcServer
+}
+
 type AppchainConfig struct {
 	ChainID           uint64
 	EmitterPort       string
+	RPCPort           string
 	PrometheusPort    string
 	AppchainDBPath    string
 	EventStreamDir    string
@@ -98,6 +107,7 @@ func MakeAppchainConfig(chainID uint64) AppchainConfig {
 	return AppchainConfig{
 		ChainID:        chainID,
 		EmitterPort:    ":50051",
+		RPCPort:        ":8545",
 		PrometheusPort: "",
 		AppchainDBPath: "chaindb",
 		EventStreamDir: "epochs",
@@ -111,10 +121,12 @@ type Appchain[STI StateTransitionInterface[appTx, R], appTx apptypes.AppTransact
 	blockBuilder           apptypes.AppchainBlockConstructor[appTx, R, AppBlock]
 
 	emiterAPI    emitterproto.EmitterServer
+	rpcServer    *rpc.StandardRPCServer[appTx, R]
 	AppchainDB   kv.RwDB
 	TxBatchDB    kv.RoDB
 	config       AppchainConfig
 	multichainDB *MultichainStateAccess
+	txpool       apptypes.TxPoolInterface[appTx, R]
 }
 
 func (a *Appchain[STI, appTx, R, AppBlock]) Run(
@@ -130,6 +142,13 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 	cid := utility.ChainIDFromCtx(ctx)
 
 	go a.RunEmitterAPI(ctx)
+
+	// Start RPC server
+	go func() {
+		if err := a.rpcServer.StartHTTPServer(a.config.RPCPort); err != nil {
+			logger.Error().Err(err).Msg("Failed to start RPC server")
+		}
+	}()
 
 	if a.config.PrometheusPort != "" {
 		go startPrometheusServer(ctx, a.config.PrometheusPort)

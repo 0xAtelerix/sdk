@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ledgerwatch/erigon-lib/kv"
@@ -18,12 +19,10 @@ import (
 func NewStandardRPCServer[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	appchainDB kv.RwDB,
 	txpool apptypes.TxPoolInterface[appTx, R],
-	chainInfo ChainInfo,
 ) *StandardRPCServer[appTx, R] {
 	return &StandardRPCServer[appTx, R]{
 		appchainDB:    appchainDB,
 		txpool:        txpool,
-		chainInfo:     chainInfo,
 		customMethods: make(map[string]func(context.Context, []any) (any, error)),
 	}
 }
@@ -37,10 +36,14 @@ func (s *StandardRPCServer[appTx, R]) AddCustomMethod(
 }
 
 // StartHTTPServer starts the HTTP JSON-RPC server
-func (s *StandardRPCServer[appTx, R]) StartHTTPServer(port int) error {
+func (s *StandardRPCServer[appTx, R]) StartHTTPServer(port string) error {
 	http.HandleFunc("/rpc", s.handleRPC)
+	port = strings.TrimPrefix(port, ":")
+	if port == "" {
+		port = "8545" // Default port
+	}
 
-	addr := fmt.Sprintf(":%d", port)
+	addr := fmt.Sprintf(":%s", port)
 	fmt.Printf("Starting Standard RPC server on %s\n", addr)
 	fmt.Println("Available methods:")
 	fmt.Println("  - getTransactionReceipt")
@@ -121,8 +124,6 @@ func (s *StandardRPCServer[appTx, R]) handleMethod(
 		return s.getTransactionStatus(ctx, params)
 	case "getPendingTransactions":
 		return s.getPendingTransactions(ctx, params)
-	case "getChainInfo":
-		return s.getChainInfo()
 	default:
 		// Check for custom methods
 		if handler, exists := s.customMethods[method]; exists {
@@ -276,9 +277,4 @@ func (s *StandardRPCServer[appTx, R]) getPendingTransactions(
 	}
 
 	return transactions, nil
-}
-
-// getChainInfo retrieves basic chain information
-func (s *StandardRPCServer[appTx, R]) getChainInfo() (any, error) {
-	return s.chainInfo, nil
 }

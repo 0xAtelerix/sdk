@@ -109,15 +109,8 @@ func setupTestEnvironment(t *testing.T) (*StandardRPCServer[*TestTransaction[Tes
 	// Create txpool
 	txPool := txpool.NewTxPool[*TestTransaction[TestReceipt], TestReceipt](localDB)
 
-	// Create chain info
-	chainInfo := ChainInfo{
-		ChainID:     "1337",
-		NetworkName: "test-network",
-		Version:     "1.0.0",
-	}
-
 	// Create RPC server
-	server := NewStandardRPCServer(appchainDB, txPool, chainInfo)
+	server := NewStandardRPCServer(appchainDB, txPool)
 
 	cleanup := func() {
 		localDB.Close()
@@ -456,15 +449,8 @@ func ExampleStandardRPCServer() {
 	// Create txpool
 	txPool := txpool.NewTxPool[*TestTransaction[TestReceipt], TestReceipt](localDB)
 
-	// Create chain info
-	chainInfo := ChainInfo{
-		ChainID:     "1337",
-		NetworkName: "example-network",
-		Version:     "1.0.0",
-	}
-
 	// Create RPC server
-	server := NewStandardRPCServer(appchainDB, txPool, chainInfo)
+	server := NewStandardRPCServer(appchainDB, txPool)
 
 	// Add custom method
 	server.AddCustomMethod("ping", func(ctx context.Context, params []any) (any, error) {

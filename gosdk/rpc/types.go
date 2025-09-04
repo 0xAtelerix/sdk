@@ -29,17 +29,9 @@ type Error struct {
 	Data    string `json:"data,omitempty"`
 }
 
-// ChainInfo represents basic chain information
-type ChainInfo struct {
-	ChainID     string `json:"chainId"`
-	NetworkName string `json:"networkName"`
-	Version     string `json:"version"`
-}
-
 // StandardRPCServer provides standard blockchain RPC methods
 type StandardRPCServer[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	appchainDB    kv.RwDB
 	txpool        apptypes.TxPoolInterface[appTx, R]
-	chainInfo     ChainInfo
 	customMethods map[string]func(context.Context, []any) (any, error)
 }
