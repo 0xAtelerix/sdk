@@ -32,7 +32,8 @@ func (s TxStatus) String() string {
 type TxReceiptStatus uint8
 
 const (
-	ReceiptFailed TxReceiptStatus = iota
+	ReceiptUnknown TxReceiptStatus = iota
+	ReceiptFailed
 	ReceiptConfirmed
 )
 
@@ -40,6 +41,8 @@ func (s TxReceiptStatus) String() string {
 	const unknown = "Unknown"
 
 	switch s {
+	case ReceiptUnknown:
+		return unknown
 	case ReceiptFailed:
 		return "Failed"
 	case ReceiptConfirmed:
