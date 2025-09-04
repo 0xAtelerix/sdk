@@ -16,6 +16,7 @@ type AppTransaction[R Receipt] interface {
 type Receipt interface {
 	TxHash() [32]byte
 	Status() TxReceiptStatus
+	Error() string
 	Serializible
 	// TODO - Can add more methods later
 }

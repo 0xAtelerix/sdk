@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/ledgerwatch/erigon-lib/kv"
@@ -16,9 +17,9 @@ import (
 
 // TestReceipt is a mock implementation of apptypes.Receipt for testing
 type TestReceipt struct {
-	Hash   [32]byte `json:"hash"`
-	Data   string   `json:"data"`
-	Failed bool     `json:"failed"`
+	Hash     [32]byte `json:"hash"`
+	Data     string   `json:"data"`
+	ErrorMsg string   `json:"error_msg,omitempty"`
 }
 
 func (r *TestReceipt) TxHash() [32]byte {
@@ -26,7 +27,7 @@ func (r *TestReceipt) TxHash() [32]byte {
 }
 
 func (r *TestReceipt) Status() apptypes.TxReceiptStatus {
-	if r.Failed {
+	if r.Error() != "" {
 		return apptypes.ReceiptFailed
 	}
 
@@ -41,14 +42,18 @@ func (r *TestReceipt) Unmarshal(data []byte) error {
 	return json.Unmarshal(data, r)
 }
 
+func (r *TestReceipt) Error() string {
+	return r.ErrorMsg
+}
+
 // Helper function to create a test receipt
-func createTestReceipt(data string, failed bool) *TestReceipt {
+func createTestReceipt(data string, errorMsg string) *TestReceipt {
 	hash := sha256.Sum256([]byte(data))
 
 	return &TestReceipt{
-		Hash:   hash,
-		Data:   data,
-		Failed: failed,
+		Hash:     hash,
+		Data:     data,
+		ErrorMsg: errorMsg,
 	}
 }
 
@@ -65,7 +70,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("successful store and retrieve", func(t *testing.T) {
-		receipt := createTestReceipt("test-receipt-1", false)
+		receipt := createTestReceipt("test-receipt-1", "")
 
 		err := db.Update(context.Background(), func(tx kv.RwTx) error {
 			return storeReceipt(tx, receipt)
@@ -89,15 +94,15 @@ func TestStoreAndGetReceipt(t *testing.T) {
 		// Verify the retrieved receipt matches the original
 		assert.Equal(t, receipt.Hash, retrievedReceipt.Hash)
 		assert.Equal(t, receipt.Data, retrievedReceipt.Data)
-		assert.Equal(t, receipt.Failed, retrievedReceipt.Failed)
+		assert.Equal(t, receipt.Error(), retrievedReceipt.Error())
 		assert.Equal(t, receipt.Status(), retrievedReceipt.Status())
 	})
 
 	t.Run("store multiple receipts", func(t *testing.T) {
 		receipts := []*TestReceipt{
-			createTestReceipt("receipt-1", false),
-			createTestReceipt("receipt-2", true),
-			createTestReceipt("receipt-3", false),
+			createTestReceipt("receipt-1", ""),
+			createTestReceipt("receipt-2", "some error"),
+			createTestReceipt("receipt-3", ""),
 		}
 
 		// Store all receipts
@@ -129,7 +134,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 
 				assert.Equal(t, originalReceipt.Hash, retrievedReceipt.Hash)
 				assert.Equal(t, originalReceipt.Data, retrievedReceipt.Data)
-				assert.Equal(t, originalReceipt.Failed, retrievedReceipt.Failed)
+				assert.Equal(t, originalReceipt.Error(), retrievedReceipt.Error())
 			}
 
 			return nil
@@ -167,7 +172,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 
 	t.Run("get receipt with unmarshal error", func(t *testing.T) {
 		// Store valid data but try to unmarshal into bad receipt
-		receipt := createTestReceipt("valid-receipt", false)
+		receipt := createTestReceipt("valid-receipt", "")
 
 		err := db.Update(context.Background(), func(tx kv.RwTx) error {
 			return storeReceipt(tx, receipt)
@@ -210,6 +215,10 @@ func (*BadTestReceipt) Unmarshal(_ []byte) error {
 	return assert.AnError // Always return an error
 }
 
+func (*BadTestReceipt) Error() string {
+	return ""
+}
+
 func TestReceiptBatchOperations(t *testing.T) {
 	// Test storing multiple receipts in a single transaction (like in the real use case)
 	db := memdb.NewTestDB(t)
@@ -223,8 +232,14 @@ func TestReceiptBatchOperations(t *testing.T) {
 
 	t.Run("batch store receipts", func(t *testing.T) {
 		receipts := make([]*TestReceipt, 100)
+
 		for i := range 100 {
-			receipts[i] = createTestReceipt(string(rune('a'+i%26))+string(rune('0'+i%10)), i%3 == 0)
+			errorMsg := ""
+			if i%3 == 0 {
+				errorMsg = fmt.Sprintf("error %d", i)
+			}
+
+			receipts[i] = createTestReceipt(string(rune('a'+i%26))+string(rune('0'+i%10)), errorMsg)
 		}
 
 		// Store all receipts in a single transaction
@@ -255,7 +270,7 @@ func TestReceiptBatchOperations(t *testing.T) {
 				}
 
 				assert.Equal(t, originalReceipt.Data, retrievedReceipt.Data)
-				assert.Equal(t, originalReceipt.Failed, retrievedReceipt.Failed)
+				assert.Equal(t, originalReceipt.Error(), retrievedReceipt.Error())
 			}
 
 			return nil
@@ -279,7 +294,7 @@ func BenchmarkStoreReceipt(b *testing.B) {
 	for i := range b.N {
 		err := db.Update(context.Background(), func(tx kv.RwTx) error {
 			// Create a unique receipt for each iteration
-			testReceipt := createTestReceipt("benchmark-receipt-"+string(rune(i)), false)
+			testReceipt := createTestReceipt("benchmark-receipt-"+string(rune(i)), "")
 
 			return storeReceipt(tx, testReceipt)
 		})
@@ -297,7 +312,7 @@ func BenchmarkGetReceipt(b *testing.B) {
 	})
 	require.NoError(b, err)
 
-	receipt := createTestReceipt("benchmark-receipt", false)
+	receipt := createTestReceipt("benchmark-receipt", "")
 
 	// Store the receipt first
 	err = db.Update(context.Background(), func(tx kv.RwTx) error {
@@ -316,4 +331,118 @@ func BenchmarkGetReceipt(b *testing.B) {
 		})
 		require.NoError(b, err)
 	}
+}
+
+func TestReceiptErrorHandling(t *testing.T) {
+	// Create in-memory database
+	db := memdb.NewTestDB(t)
+	defer db.Close()
+
+	// Create tables
+	err := db.Update(context.Background(), func(tx kv.RwTx) error {
+		return tx.CreateBucket(ReceiptBucket)
+	})
+	require.NoError(t, err)
+
+	t.Run("error message serialization", func(t *testing.T) {
+		// Test that error messages with special characters serialize correctly
+		specialErrorMsg := "error with unicode: \u6d4b\u8bd5 and symbols: !@#$%^&*()[]{}|;':\",./<>?"
+		receipt := createTestReceipt("unicode-error", specialErrorMsg)
+
+		err := db.Update(context.Background(), func(tx kv.RwTx) error {
+			return storeReceipt(tx, receipt)
+		})
+		require.NoError(t, err)
+
+		// Retrieve and verify special characters are preserved
+		err = db.View(context.Background(), func(tx kv.Tx) error {
+			txHash := receipt.TxHash()
+
+			retrievedReceipt, getErr := GetReceipt(tx, txHash[:], &TestReceipt{})
+			if getErr != nil {
+				return getErr
+			}
+
+			assert.Equal(t, specialErrorMsg, retrievedReceipt.Error())
+
+			return nil
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("long error message", func(t *testing.T) {
+		// Test with a very long error message
+		longError := "this is a very long error message that simulates a detailed stack trace or " +
+			"comprehensive error description that might occur in complex transaction processing scenarios " +
+			"where multiple validation steps fail and detailed information needs to be preserved for debugging purposes"
+
+		receipt := createTestReceipt("long-error", longError)
+
+		err := db.Update(context.Background(), func(tx kv.RwTx) error {
+			return storeReceipt(tx, receipt)
+		})
+		require.NoError(t, err)
+
+		// Retrieve and verify long error is preserved
+		err = db.View(context.Background(), func(tx kv.Tx) error {
+			txHash := receipt.TxHash()
+
+			retrievedReceipt, getErr := GetReceipt(tx, txHash[:], &TestReceipt{})
+			if getErr != nil {
+				return getErr
+			}
+
+			assert.Equal(t, longError, retrievedReceipt.Error())
+			assert.Greater(t, len(retrievedReceipt.Error()), 200, "Error message should be long")
+
+			return nil
+		})
+		require.NoError(t, err)
+	})
+}
+
+func TestErrorMethodContract(t *testing.T) {
+	t.Run("error method contract for success", func(t *testing.T) {
+		receipt := createTestReceipt("success", "")
+		receipt.ErrorMsg = ""
+
+		// For successful transactions, Error() should return empty string
+		assert.Empty(t, receipt.Error())
+		assert.Equal(t, apptypes.ReceiptConfirmed, receipt.Status())
+
+		// Verify the contract: empty error means success
+		assert.Empty(t, receipt.Error(), "Successful receipt should have empty error")
+	})
+
+	t.Run("error method contract for failure", func(t *testing.T) {
+		receipt := createTestReceipt("failure", "transaction failed")
+
+		// For failed transactions, Error() should return the error message
+		assert.Equal(t, "transaction failed", receipt.Error())
+		assert.Equal(t, apptypes.ReceiptFailed, receipt.Status())
+
+		// Verify the contract: non-empty error indicates failure
+		assert.NotEmpty(t, receipt.Error(), "Failed receipt should have non-empty error")
+	})
+
+	t.Run("error and status consistency", func(t *testing.T) {
+		testCases := []struct {
+			name           string
+			errorMsg       string
+			expectedStatus apptypes.TxReceiptStatus
+		}{
+			{"success_no_error", "", apptypes.ReceiptConfirmed},
+			{"success_with_empty_error", "", apptypes.ReceiptConfirmed},
+			{"failed_with_error", "some error", apptypes.ReceiptFailed},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				receipt := createTestReceipt(tc.name, tc.errorMsg)
+
+				assert.Equal(t, tc.expectedStatus, receipt.Status())
+				assert.Equal(t, tc.errorMsg, receipt.Error())
+			})
+		}
+	})
 }

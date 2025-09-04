@@ -54,6 +54,10 @@ func (ExampleReceipt) Status() apptypes.TxReceiptStatus {
 	return apptypes.ReceiptConfirmed
 }
 
+func (ExampleReceipt) Error() string {
+	return ""
+}
+
 type ExampleBatchProcesser[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct{}
 
 func (ExampleBatchProcesser[appTx, R]) ProcessBatch(

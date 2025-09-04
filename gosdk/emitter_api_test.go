@@ -531,3 +531,7 @@ func (Receipt) TxHash() [32]byte {
 func (Receipt) Status() apptypes.TxReceiptStatus {
 	return apptypes.ReceiptConfirmed
 }
+
+func (Receipt) Error() string {
+	return ""
+}

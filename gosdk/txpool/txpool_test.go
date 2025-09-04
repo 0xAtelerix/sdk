@@ -62,6 +62,10 @@ func (Receipt) Status() apptypes.TxReceiptStatus {
 	return apptypes.ReceiptConfirmed
 }
 
+func (Receipt) Error() string {
+	return ""
+}
+
 // randomTransaction генерирует случайную транзакцию
 func randomTransaction[R Receipt]() *rapid.Generator[CustomTransaction[R]] {
 	return rapid.Custom(func(t *rapid.T) CustomTransaction[R] {
