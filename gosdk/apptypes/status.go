@@ -28,3 +28,26 @@ func (s TxStatus) String() string {
 		return unknown
 	}
 }
+
+type TxReceiptStatus uint8
+
+const (
+	ReceiptUnknown TxReceiptStatus = iota
+	ReceiptFailed
+	ReceiptConfirmed
+)
+
+func (s TxReceiptStatus) String() string {
+	const unknown = "Unknown"
+
+	switch s {
+	case ReceiptUnknown:
+		return unknown
+	case ReceiptFailed:
+		return "Failed"
+	case ReceiptConfirmed:
+		return "Confirmed"
+	default:
+		return unknown
+	}
+}
