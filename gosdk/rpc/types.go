@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/rs/zerolog"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
@@ -34,5 +35,6 @@ type Error struct {
 type StandardRPCServer[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	appchainDB    kv.RwDB
 	txpool        apptypes.TxPoolInterface[appTx, R]
+	logger        *zerolog.Logger
 	customMethods map[string]func(context.Context, []any) (any, error)
 }

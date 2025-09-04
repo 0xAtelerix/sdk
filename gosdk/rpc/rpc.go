@@ -3,15 +3,20 @@ package rpc
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
-	"github.com/0xAtelerix/sdk/gosdk/receipt"
+)
+
+const (
+	healthStatusHealthy   = "healthy"
+	healthStatusUnhealthy = "unhealthy"
+	healthStatusDegraded  = "degraded"
 )
 
 // NewStandardRPCServer creates a new standard RPC server
@@ -35,16 +40,14 @@ func (s *StandardRPCServer[appTx, R]) AddCustomMethod(
 }
 
 // StartHTTPServer starts the HTTP JSON-RPC server
-func (s *StandardRPCServer[appTx, R]) StartHTTPServer(addr string) error {
+func (s *StandardRPCServer[appTx, R]) StartHTTPServer(ctx context.Context, addr string) error {
+	s.logger = log.Ctx(ctx)
 	http.HandleFunc("/rpc", s.handleRPC)
+	http.HandleFunc("/health", s.healthcheck)
 
-	fmt.Printf("Starting Standard RPC server on %s\n", addr)
-	fmt.Println("Available methods:")
-	fmt.Println("  - getTransactionReceipt")
-	fmt.Println("  - getTransactionByHash")
-	fmt.Println("  - sendTransaction")
-	fmt.Println("  - getTransactionStatus")
-	fmt.Println("  - getPendingTransactions")
+	s.logger.Info().Msgf("Starting Standard RPC server on %s\n", addr)
+	fmt.Printf("Available methods: %d custom methods registered\n", len(s.customMethods))
+	fmt.Printf("Health endpoint available at: %s/health\n", addr)
 
 	server := &http.Server{
 		Addr:         addr,
@@ -82,7 +85,14 @@ func (s *StandardRPCServer[appTx, R]) handleRPC(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	result, err := s.handleMethod(r.Context(), req.Method, req.Params)
+	handler, exists := s.customMethods[req.Method]
+	if !exists {
+		s.writeError(w, -32601, fmt.Errorf("%w: %s", ErrMethodNotFound, req.Method).Error(), req.ID)
+
+		return
+	}
+
+	result, err := handler(r.Context(), req.Params)
 	if err != nil {
 		s.writeError(w, -32603, err.Error(), req.ID)
 
@@ -100,175 +110,71 @@ func (s *StandardRPCServer[appTx, R]) handleRPC(w http.ResponseWriter, r *http.R
 	}
 }
 
-// handleMethod routes method calls to appropriate handlers
-func (s *StandardRPCServer[appTx, R]) handleMethod(
-	ctx context.Context,
-	method string,
-	params []any,
-) (any, error) {
-	switch method {
-	case "getTransactionReceipt":
-		return s.getTransactionReceipt(ctx, params)
-	case "getTransactionByHash":
-		return s.getTransactionByHash(ctx, params)
-	case "sendTransaction":
-		return s.sendTransaction(ctx, params)
-	case "getTransactionStatus":
-		return s.getTransactionStatus(ctx, params)
-	case "getPendingTransactions":
-		return s.getPendingTransactions(ctx, params)
-	default:
-		// Check for custom methods
-		if handler, exists := s.customMethods[method]; exists {
-			return handler(ctx, params)
+// healthcheck handles HTTP health check requests
+func (s *StandardRPCServer[appTx, R]) healthcheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	healthStatus := map[string]any{
+		"status":    healthStatusHealthy,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"services":  map[string]string{},
+	}
+
+	if services, ok := healthStatus["services"].(map[string]string); ok {
+		// Check database connection
+		err := s.appchainDB.View(r.Context(), func(_ kv.Tx) error {
+			return nil // Just test if we can create a read transaction
+		})
+		if err != nil {
+			services["database"] = healthStatusUnhealthy
+			healthStatus["status"] = healthStatusUnhealthy
+
+			w.WriteHeader(http.StatusServiceUnavailable)
+		} else {
+			services["database"] = healthStatusHealthy
 		}
 
-		return nil, fmt.Errorf("%w: %s", ErrMethodNotFound, method)
-	}
-}
+		// Check txpool availability
+		if s.txpool == nil {
+			services["txpool"] = "unavailable"
+		} else {
+			// Try to get pending transactions to test txpool health
+			_, err := s.txpool.GetPendingTransactions(r.Context())
+			if err != nil {
+				services["txpool"] = healthStatusUnhealthy
 
-// getTransactionReceipt retrieves a transaction receipt by hash
-func (s *StandardRPCServer[appTx, R]) getTransactionReceipt(
-	ctx context.Context,
-	params []any,
-) (any, error) {
-	if len(params) != 1 {
-		return nil, ErrGetTransactionReceiptRequires1Param
-	}
-
-	hashStr, ok := params[0].(string)
-	if !ok {
-		return nil, ErrHashParameterMustBeString
-	}
-
-	hash, err := parseHash(hashStr)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidHashFormat, err)
-	}
-
-	// Get receipt using the database
-	var receiptResp R
-
-	err = s.appchainDB.View(ctx, func(tx kv.Tx) error {
-		value, getErr := tx.GetOne(receipt.ReceiptBucket, hash[:])
-		if getErr != nil {
-			return getErr
+				if healthStatus["status"] == healthStatusHealthy {
+					healthStatus["status"] = healthStatusDegraded
+				}
+			} else {
+				services["txpool"] = healthStatusHealthy
+			}
 		}
-
-		if len(value) == 0 {
-			return ErrReceiptNotFound
-		}
-
-		return receiptResp.Unmarshal(value)
-	})
-	if err != nil {
-		if errors.Is(err, ErrReceiptNotFound) {
-			return nil, err
-		}
-
-		return nil, fmt.Errorf("%w: %w", ErrFailedToGetReceipt, err)
 	}
 
-	return receiptResp, nil
+	// Add method count for monitoring
+	healthStatus["rpc_methods"] = len(s.customMethods)
+
+	if err := json.NewEncoder(w).Encode(healthStatus); err != nil {
+		http.Error(w, "Failed to encode health response", http.StatusInternalServerError)
+	}
 }
 
-// getTransactionByHash retrieves a transaction by hash
-func (s *StandardRPCServer[appTx, R]) getTransactionByHash(
-	ctx context.Context,
-	params []any,
-) (any, error) {
-	if len(params) != 1 {
-		return nil, ErrGetTransactionByHashRequires1Param
-	}
-
-	hashStr, ok := params[0].(string)
-	if !ok {
-		return nil, ErrHashParameterMustBeString
-	}
-
-	hash, err := parseHash(hashStr)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidHashFormat, err)
-	}
-
-	// Get transaction from txpool
-	tx, err := s.txpool.GetTransaction(ctx, hash[:])
-	if err != nil {
-		return nil, ErrTransactionNotFound
-	}
-
-	return tx, nil
-}
-
-// sendTransaction submits a transaction to the pool
-func (s *StandardRPCServer[appTx, R]) sendTransaction(
-	ctx context.Context,
-	params []any,
-) (any, error) {
-	if len(params) != 1 {
-		return nil, ErrSendTransactionRequires1Param
-	}
-
-	// Convert params to transaction (this will need type-specific handling)
-	txData, err := json.Marshal(params[0])
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidTransactionData, err)
-	}
-
-	var tx appTx
-	if err := json.Unmarshal(txData, &tx); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrFailedToParseTransaction, err)
-	}
-
-	// Add to txpool
-	if err := s.txpool.AddTransaction(ctx, tx); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrFailedToAddTransaction, err)
-	}
-
-	// Return transaction hash
-	hash := tx.Hash()
-
-	return fmt.Sprintf("0x%x", hash[:]), nil
-}
-
-// getTransactionStatus retrieves transaction status
-func (s *StandardRPCServer[appTx, R]) getTransactionStatus(
-	ctx context.Context,
-	params []any,
-) (any, error) {
-	if len(params) != 1 {
-		return nil, ErrGetTransactionStatusRequires1Param
-	}
-
-	hashStr, ok := params[0].(string)
-	if !ok {
-		return nil, ErrHashParameterMustBeString
-	}
-
-	hash, err := parseHash(hashStr)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidHashFormat, err)
-	}
-
-	// Use txpool's GetTransactionStatus method
-	status, err := s.txpool.GetTransactionStatus(ctx, hash[:])
-	if err != nil {
-		return "not_found", ErrTransactionNotFound
-	}
-
-	// Convert TxStatus to string
-	return status.String(), nil
-}
-
-// getPendingTransactions retrieves all pending transactions
-func (s *StandardRPCServer[appTx, R]) getPendingTransactions(
-	ctx context.Context,
-	_ []any,
-) (any, error) {
-	transactions, err := s.txpool.GetPendingTransactions(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrFailedToGetPendingTransactions, err)
-	}
-
-	return transactions, nil
+// AddStandardMethods adds all standard blockchain methods to the RPC server
+func AddStandardMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
+	server *StandardRPCServer[appTx, R],
+	appchainDB kv.RwDB,
+	txpool apptypes.TxPoolInterface[appTx, R],
+) {
+	AddTxPoolMethods(server, txpool)
+	AddReceiptMethods(server, appchainDB)
 }

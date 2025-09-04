@@ -56,14 +56,6 @@ type TestReceipt struct {
 	TransactionHash [32]byte                 `json:"txHash"`
 }
 
-func (r TestReceipt) Marshal() ([]byte, error) {
-	return json.Marshal(r)
-}
-
-func (r TestReceipt) Unmarshal(b []byte) error {
-	return json.Unmarshal(b, &r)
-}
-
 func (r TestReceipt) TxHash() [32]byte {
 	return r.TransactionHash
 }
@@ -111,10 +103,13 @@ func setupTestEnvironment(
 	require.NoError(t, err)
 
 	// Create txpool
-	txPool := txpool.NewTxPool[*TestTransaction[TestReceipt], TestReceipt](localDB)
+	txPool := txpool.NewTxPool[*TestTransaction[TestReceipt]](localDB)
 
 	// Create RPC server
 	server = NewStandardRPCServer(appchainDB, txPool)
+
+	// Add standard methods to maintain compatibility with existing tests
+	AddStandardMethods(server, appchainDB, txPool)
 
 	cleanup = func() {
 		localDB.Close()
@@ -307,7 +302,7 @@ func TestStandardRPCServer_getTransactionReceipt(t *testing.T) {
 
 	// Create a test receipt
 	testReceipt := TestReceipt{ReceiptStatus: apptypes.ReceiptConfirmed}
-	receiptData, err := testReceipt.Marshal()
+	receiptData, err := json.Marshal(testReceipt)
 	require.NoError(t, err)
 
 	// Create a test hash
@@ -464,4 +459,64 @@ func ExampleStandardRPCServer() {
 
 	fmt.Println("RPC server configured successfully")
 	// Output: RPC server configured successfully
+}
+
+func TestStandardRPCServer_healthEndpoint(t *testing.T) {
+	server, _, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	// Create a direct HTTP request to the health endpoint
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	server.healthcheck(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	var healthResp map[string]any
+
+	err = json.Unmarshal(rr.Body.Bytes(), &healthResp)
+	require.NoError(t, err)
+
+	// Check health response structure
+	status, exists := healthResp["status"]
+	require.True(t, exists)
+	assert.Contains(t, []string{"healthy", "degraded", "unhealthy"}, status)
+
+	services, exists := healthResp["services"]
+	require.True(t, exists)
+
+	servicesMap, ok := services.(map[string]any)
+	require.True(t, ok)
+
+	// Check that database and txpool services are reported
+	_, hasDatabase := servicesMap["database"]
+	assert.True(t, hasDatabase)
+
+	_, hasTxpool := servicesMap["txpool"]
+	assert.True(t, hasTxpool)
+
+	// Check that timestamp is present
+	_, hasTimestamp := healthResp["timestamp"]
+	assert.True(t, hasTimestamp)
+
+	// Check that rpc_methods count is present
+	methodCount, hasMethodCount := healthResp["rpc_methods"]
+	assert.True(t, hasMethodCount)
+	assert.IsType(t, float64(0), methodCount) // JSON numbers are float64
+}
+
+func TestStandardRPCServer_healthEndpoint_wrongMethod(t *testing.T) {
+	server, _, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	// Test with POST method (should fail)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "/health", nil)
+	require.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	server.healthcheck(rr, req)
+
+	assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
 }
