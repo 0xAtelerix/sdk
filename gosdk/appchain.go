@@ -23,6 +23,7 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
+	"github.com/0xAtelerix/sdk/gosdk/receipt"
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
@@ -39,7 +40,7 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 ) (Appchain[STI, AppTx, R, AppBlock], error) {
 	log.Info().Str("db_path", config.AppchainDBPath).Msg("Initializing appchain database")
 
-	emiterAPI := NewServer[AppTx](appchainDB, config.ChainID, txpool)
+	emiterAPI := NewServer(appchainDB, config.ChainID, txpool)
 
 	emiterAPI.logger = &log.Logger
 	if config.Logger != nil {
@@ -270,19 +271,19 @@ runFor:
 				logger.Debug().Int("tx", len(batch.Transactions)).Msg("Process batch")
 
 				var (
-					extTxs   []apptypes.ExternalTransaction
-					receipts []R
+					extTxs            []apptypes.ExternalTransaction
+					processedReceipts []R
 				)
 
-				receipts, extTxs, err = a.appchainStateExecution.ProcessBatch(batch, rwtx)
+				processedReceipts, extTxs, err = a.appchainStateExecution.ProcessBatch(batch, rwtx)
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to process batch")
 
 					return fmt.Errorf("failed to process batch: %w", err)
 				}
 
-				for _, receipt := range receipts {
-					if storeErr := storeReceipt(rwtx, receipt); storeErr != nil {
+				for _, processedReceipt := range processedReceipts {
+					if storeErr := receipt.StoreReceipt(rwtx, processedReceipt); storeErr != nil {
 						logger.Error().Err(storeErr).Msg("Failed to store receipt")
 
 						return fmt.Errorf("failed to store receipt: %w", storeErr)
@@ -674,32 +675,4 @@ func GetLastStreamPositions(
 	}
 
 	return startEventPos, startTxPos, nil
-}
-
-func storeReceipt[R apptypes.Receipt](tx kv.RwTx, receipt R) error {
-	key := receipt.TxHash()
-
-	value, err := receipt.Marshal()
-	if err != nil {
-		return err
-	}
-
-	return tx.Put(ReceiptBucket, key[:], value)
-}
-
-func GetReceipt[R apptypes.Receipt](tx kv.Tx, txHash []byte, receipt R) (R, error) {
-	value, err := tx.GetOne(ReceiptBucket, txHash)
-	if err != nil {
-		return receipt, err
-	}
-
-	if len(value) == 0 {
-		return receipt, ErrNoReceipts
-	}
-
-	if err := receipt.Unmarshal(value); err != nil {
-		return receipt, err
-	}
-
-	return receipt, nil
 }
