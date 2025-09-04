@@ -42,10 +42,10 @@ func main() {
 
 ### Making RPC Calls
 
-Once your appchain is running, you can make JSON-RPC 2.0 calls to `http://localhost:8080`:
+Once your appchain is running, you can make JSON-RPC 2.0 calls to `http://localhost:8080/rpc`:
 
 ```bash
-curl -X POST http://localhost:8080 \
+curl -X POST http://localhost:8080/rpc \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
@@ -148,6 +148,7 @@ You can extend the RPC server with custom methods specific to your appchain:
 package main
 
 import (
+    "context"
     "encoding/json"
     "fmt"
     "github.com/0xAtelerix/sdk/gosdk"
@@ -172,7 +173,7 @@ func main() {
     rpcServer := appchain.GetRPCServer()
     
     // Add a simple custom method
-    rpcServer.AddMethod("getChainName", func(params json.RawMessage) (any, error) {
+    rpcServer.AddCustomMethod("getChainName", func(ctx context.Context, params []any) (any, error) {
         return map[string]string{
             "name": "MyAppchain",
             "version": "1.0.0",
@@ -188,17 +189,15 @@ func main() {
 
 ```go
 // Add a method that takes parameters
-rpcServer.AddMethod("getAccountBalance", func(params json.RawMessage) (any, error) {
-    var args []string
-    if err := json.Unmarshal(params, &args); err != nil {
-        return nil, fmt.Errorf("invalid parameters: %w", err)
+rpcServer.AddCustomMethod("getAccountBalance", func(ctx context.Context, params []any) (any, error) {
+    if len(params) != 1 {
+        return nil, fmt.Errorf("expected 1 parameter, got %d", len(params))
     }
     
-    if len(args) != 1 {
-        return nil, fmt.Errorf("expected 1 parameter, got %d", len(args))
+    address, ok := params[0].(string)
+    if !ok {
+        return nil, fmt.Errorf("address parameter must be string")
     }
-    
-    address := args[0]
     
     // Your custom logic here
     balance := getBalanceFromDatabase(address)
@@ -214,18 +213,25 @@ rpcServer.AddMethod("getAccountBalance", func(params json.RawMessage) (any, erro
 
 ```go
 // Method that interacts with your appchain's database
-rpcServer.AddMethod("getCustomData", func(params json.RawMessage) (any, error) {
-    var args struct {
-        Key   string `json:"key"`
-        Block uint64 `json:"block,omitempty"`
+rpcServer.AddCustomMethod("getCustomData", func(ctx context.Context, params []any) (any, error) {
+    if len(params) < 1 {
+        return nil, fmt.Errorf("missing required parameter 'key'")
     }
     
-    if err := json.Unmarshal(params, &args); err != nil {
-        return nil, fmt.Errorf("invalid parameters: %w", err)
+    key, ok := params[0].(string)
+    if !ok {
+        return nil, fmt.Errorf("key parameter must be string")
+    }
+    
+    var block uint64
+    if len(params) > 1 {
+        if blockFloat, ok := params[1].(float64); ok {
+            block = uint64(blockFloat)
+        }
     }
     
     // Access your database through the appchain
-    data, err := yourCustomDatabaseQuery(args.Key, args.Block)
+    data, err := yourCustomDatabaseQuery(key, block)
     if err != nil {
         return nil, fmt.Errorf("database query failed: %w", err)
     }
@@ -237,28 +243,26 @@ rpcServer.AddMethod("getCustomData", func(params json.RawMessage) (any, error) {
 ### Method with Error Handling
 
 ```go
-rpcServer.AddMethod("validateTransaction", func(params json.RawMessage) (any, error) {
-    var args []string
-    if err := json.Unmarshal(params, &args); err != nil {
-        return nil, &rpc.RPCError{
-            Code:    -32602, // Invalid params
-            Message: "Invalid parameters format",
-            Data:    err.Error(),
-        }
-    }
-    
-    if len(args) == 0 {
-        return nil, &rpc.RPCError{
+rpcServer.AddCustomMethod("validateTransaction", func(ctx context.Context, params []any) (any, error) {
+    if len(params) == 0 {
+        return nil, &rpc.Error{
             Code:    -32602,
             Message: "Missing transaction data",
         }
     }
     
-    txData := args[0]
+    txData, ok := params[0].(string)
+    if !ok {
+        return nil, &rpc.Error{
+            Code:    -32602, // Invalid params
+            Message: "Transaction data must be string",
+        }
+    }
+    
     isValid, reason := validateTransactionData(txData)
     
     if !isValid {
-        return nil, &rpc.RPCError{
+        return nil, &rpc.Error{
             Code:    -32000, // Custom application error
             Message: "Transaction validation failed",
             Data:    reason,
@@ -277,6 +281,7 @@ Here's a complete example showing how to create an appchain with custom RPC meth
 package main
 
 import (
+    "context"
     "encoding/json"
     "fmt"
     "log"
@@ -316,7 +321,7 @@ func main() {
 
 func addCustomMethods(rpcServer *rpc.StandardRPCServer) {
     // Chain information
-    rpcServer.AddMethod("getChainInfo", func(params json.RawMessage) (any, error) {
+    rpcServer.AddCustomMethod("getChainInfo", func(ctx context.Context, params []any) (any, error) {
         return map[string]any{
             "chainId":     1,
             "chainName":   "MyAppchain",
@@ -326,25 +331,25 @@ func addCustomMethods(rpcServer *rpc.StandardRPCServer) {
     })
     
     // Account balance
-    rpcServer.AddMethod("getBalance", func(params json.RawMessage) (any, error) {
-        var args []string
-        if err := json.Unmarshal(params, &args); err != nil {
-            return nil, &rpc.RPCError{
-                Code:    -32602,
-                Message: "Invalid parameters",
-            }
-        }
-        
-        if len(args) != 1 {
-            return nil, &rpc.RPCError{
+    rpcServer.AddCustomMethod("getBalance", func(ctx context.Context, params []any) (any, error) {
+        if len(params) != 1 {
+            return nil, &rpc.Error{
                 Code:    -32602,
                 Message: "Expected 1 parameter (address)",
             }
         }
         
-        balance, err := db.GetAccountBalance(args[0])
+        address, ok := params[0].(string)
+        if !ok {
+            return nil, &rpc.Error{
+                Code:    -32602,
+                Message: "Address parameter must be string",
+            }
+        }
+        
+        balance, err := db.GetAccountBalance(address)
         if err != nil {
-            return nil, &rpc.RPCError{
+            return nil, &rpc.Error{
                 Code:    -32000,
                 Message: "Failed to get balance",
                 Data:    err.Error(),
@@ -352,31 +357,33 @@ func addCustomMethods(rpcServer *rpc.StandardRPCServer) {
         }
         
         return map[string]any{
-            "address": args[0],
+            "address": address,
             "balance": balance,
         }, nil
     })
     
     // Custom transaction type
-    rpcServer.AddMethod("sendCustomTransaction", func(params json.RawMessage) (any, error) {
-        var args struct {
-            From   string `json:"from"`
-            To     string `json:"to"`
-            Amount uint64 `json:"amount"`
-            Data   string `json:"data"`
+    rpcServer.AddCustomMethod("sendCustomTransaction", func(ctx context.Context, params []any) (any, error) {
+        if len(params) != 1 {
+            return nil, &rpc.Error{
+                Code:    -32602,
+                Message: "Expected 1 parameter (transaction object)",
+            }
         }
         
-        if err := json.Unmarshal(params, &args); err != nil {
-            return nil, &rpc.RPCError{
+        // Parse transaction object from params
+        txMap, ok := params[0].(map[string]any)
+        if !ok {
+            return nil, &rpc.Error{
                 Code:    -32602,
                 Message: "Invalid transaction format",
             }
         }
         
         // Create and validate your custom transaction
-        tx, err := createCustomTransaction(args)
+        tx, err := createCustomTransactionFromMap(txMap)
         if err != nil {
-            return nil, &rpc.RPCError{
+            return nil, &rpc.Error{
                 Code:    -32000,
                 Message: "Failed to create transaction",
                 Data:    err.Error(),
@@ -386,7 +393,7 @@ func addCustomMethods(rpcServer *rpc.StandardRPCServer) {
         // Submit to transaction pool
         hash, err := submitTransaction(tx)
         if err != nil {
-            return nil, &rpc.RPCError{
+            return nil, &rpc.Error{
                 Code:    -32000,
                 Message: "Failed to submit transaction",
                 Data:    err.Error(),
@@ -406,7 +413,7 @@ You can test your custom methods using curl:
 
 ```bash
 # Test getChainInfo
-curl -X POST http://localhost:8080 \
+curl -X POST http://localhost:8080/rpc \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
@@ -416,7 +423,7 @@ curl -X POST http://localhost:8080 \
   }'
 
 # Test getBalance
-curl -X POST http://localhost:8080 \
+curl -X POST http://localhost:8080/rpc \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
@@ -456,7 +463,7 @@ appchain, err := gosdk.NewAppchain(
     appchainDB,
 )
 
-// The server will be available at http://localhost:8080
+// The server will be available at http://localhost:8080/rpc
 ```
 
 ## Security Considerations
