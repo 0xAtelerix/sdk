@@ -17,8 +17,8 @@ func main() {
     // Create server
     server := rpc.NewStandardRPCServer()
     
-    // Add methods you need
-    rpc.AddStandardMethods(server, appchainDB, txpool)
+    // Add methods you need - specify your transaction and receipt types
+    rpc.AddStandardMethods[*MyTransaction, MyReceipt](server, appchainDB, txpool)
     
     // Start server
     log.Fatal(server.StartHTTPServer(context.Background(), ":8080"))
@@ -36,7 +36,7 @@ func main() {
 
 ### Transaction Pool Methods
 ```go
-rpc.AddTxPoolMethods(server, txpool)
+rpc.AddTxPoolMethods[*MyTransaction, MyReceipt](server, txpool)
 ```
 - `sendTransaction` - Submit transactions
 - `getTransactionByHash` - Retrieve transactions
@@ -45,13 +45,13 @@ rpc.AddTxPoolMethods(server, txpool)
 
 ### Receipt Methods
 ```go
-rpc.AddReceiptMethods(server, appchainDB)
+rpc.AddReceiptMethods[MyReceipt](server, appchainDB)
 ```
 - `getTransactionReceipt` - Get transaction receipts
 
 ### All Standard Methods
 ```go
-rpc.AddStandardMethods(server, appchainDB, txpool)
+rpc.AddStandardMethods[*MyTransaction, MyReceipt](server, appchainDB, txpool)
 ```
 Adds all transaction pool and receipt methods at once.
 
@@ -78,11 +78,11 @@ func main() {
     server := rpc.NewStandardRPCServer()
     
     // Option 1: Add all standard methods
-    rpc.AddStandardMethods(server, appchainDB, txpool)
+    rpc.AddStandardMethods[*MyTransaction, MyReceipt](server, appchainDB, txpool)
     
     // Option 2: Add only specific method sets
-    // rpc.AddTxPoolMethods(server, txpool)
-    // rpc.AddReceiptMethods(server, appchainDB)
+    // rpc.AddTxPoolMethods[*MyTransaction, MyReceipt](server, txpool)
+    // rpc.AddReceiptMethods[MyReceipt](server, appchainDB)
     
     // Add custom methods
     server.AddCustomMethod("getNetworkInfo", func(ctx context.Context, params []any) (any, error) {
@@ -134,7 +134,7 @@ server.StartHTTPServer(context.Background(), ":8080")
 
 ```go
 server := rpc.NewStandardRPCServer()
-rpc.AddTxPoolMethods(server, txpool)
+rpc.AddTxPoolMethods[*MyTransaction, MyReceipt](server, txpool)
 server.StartHTTPServer(context.Background(), ":8080")
 ```
 
@@ -142,7 +142,7 @@ server.StartHTTPServer(context.Background(), ":8080")
 
 ```go
 server := rpc.NewStandardRPCServer()
-rpc.AddStandardMethods(server, appchainDB, txpool)
+rpc.AddStandardMethods[*MyTransaction, MyReceipt](server, appchainDB, txpool)
 
 // Add custom business logic
 server.AddCustomMethod("getStats", func(ctx context.Context, params []any) (any, error) {
