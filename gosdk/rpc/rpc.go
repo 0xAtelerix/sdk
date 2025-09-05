@@ -2,11 +2,11 @@ package rpc
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/goccy/go-json"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/rs/zerolog/log"
 
@@ -39,8 +39,8 @@ func (s *StandardRPCServer) StartHTTPServer(ctx context.Context, addr string) er
 	http.HandleFunc("/health", s.healthcheck)
 
 	s.logger.Info().Msgf("Starting Standard RPC server on %s\n", addr)
-	fmt.Printf("Available methods: %d custom methods registered\n", len(s.customMethods))
-	fmt.Printf("Health endpoint available at: %s/health\n", addr)
+	s.logger.Info().Msgf("Available methods: %d custom methods registered\n", len(s.customMethods))
+	s.logger.Info().Msgf("Health endpoint available at: %s/health\n", addr)
 
 	server := &http.Server{
 		Addr:         addr,

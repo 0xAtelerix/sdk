@@ -6,6 +6,8 @@ require (
 	github.com/blocto/solana-go-sdk v1.30.0
 	github.com/ethereum/go-ethereum v1.15.7
 	github.com/fsnotify/fsnotify v1.8.0
+	github.com/fxamacker/cbor/v2 v2.9.0
+	github.com/goccy/go-json v0.10.5
 	github.com/ledgerwatch/erigon-lib v1.0.0
 	github.com/ledgerwatch/log/v3 v3.9.0
 	github.com/prometheus/client_golang v1.12.0
@@ -48,6 +50,7 @@ require (
 	github.com/supranational/blst v0.3.14 // indirect
 	github.com/valyala/fastrand v1.1.0 // indirect
 	github.com/valyala/histogram v1.2.0 // indirect
+	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/crypto v0.39.0 // indirect
 	golang.org/x/exp v0.0.0-20230711023510-fffb14384f22 // indirect
 	golang.org/x/net v0.41.0 // indirect

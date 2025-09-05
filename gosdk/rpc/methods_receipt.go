@@ -2,10 +2,10 @@ package rpc
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
@@ -53,7 +53,7 @@ func (m *ReceiptMethods[R]) GetTransactionReceipt(ctx context.Context, params []
 			return ErrReceiptNotFound
 		}
 
-		return json.Unmarshal(value, &receiptResp)
+		return cbor.Unmarshal(value, &receiptResp)
 	})
 	if err != nil {
 		if errors.Is(err, ErrReceiptNotFound) {

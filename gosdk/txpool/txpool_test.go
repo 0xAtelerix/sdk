@@ -2,7 +2,6 @@ package txpool
 
 import (
 	"crypto/sha256"
-	"encoding/json"
 	"strconv"
 	"testing"
 
@@ -22,14 +21,6 @@ type CustomTransaction[R Receipt] struct {
 	From  string `json:"from"`
 	To    string `json:"to"`
 	Value int    `json:"value"`
-}
-
-func (c *CustomTransaction[R]) Unmarshal(b []byte) error {
-	return json.Unmarshal(b, c)
-}
-
-func (c CustomTransaction[R]) Marshal() ([]byte, error) {
-	return json.Marshal(c)
 }
 
 func (c CustomTransaction[R]) Hash() [32]byte {
