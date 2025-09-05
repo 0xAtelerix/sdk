@@ -75,7 +75,7 @@ func (r TestReceipt) Error() string {
 // setupTestEnvironment creates a test environment with databases and server
 func setupTestEnvironment(
 	t *testing.T,
-) (server *StandardRPCServer[*TestTransaction[TestReceipt], TestReceipt], appchainDB kv.RwDB, cleanup func()) {
+) (server *StandardRPCServer, appchainDB kv.RwDB, cleanup func()) {
 	t.Helper()
 
 	// Create temporary directories for databases
@@ -106,7 +106,7 @@ func setupTestEnvironment(
 	txPool := txpool.NewTxPool[*TestTransaction[TestReceipt]](localDB)
 
 	// Create RPC server
-	server = NewStandardRPCServer(appchainDB, txPool)
+	server = NewStandardRPCServer()
 
 	// Add standard methods to maintain compatibility with existing tests
 	AddStandardMethods(server, appchainDB, txPool)
@@ -122,7 +122,7 @@ func setupTestEnvironment(
 // makeJSONRPCRequest creates a JSON-RPC request and returns the response
 func makeJSONRPCRequest(
 	t *testing.T,
-	server *StandardRPCServer[*TestTransaction[TestReceipt], TestReceipt],
+	server *StandardRPCServer,
 	method string,
 	params []any,
 ) *httptest.ResponseRecorder {
@@ -436,18 +436,8 @@ func BenchmarkRPCServer_getChainInfo(b *testing.B) {
 func ExampleStandardRPCServer() {
 	// This example shows how to set up and use the StandardRPCServer
 
-	// Create databases (in real usage, use persistent storage)
-	localDB, _ := mdbx.NewMDBX(mdbxlog.New()).InMem("").Open()
-	appchainDB, _ := mdbx.NewMDBX(mdbxlog.New()).InMem("").Open()
-
-	defer localDB.Close()
-	defer appchainDB.Close()
-
-	// Create txpool
-	txPool := txpool.NewTxPool[*TestTransaction[TestReceipt], TestReceipt](localDB)
-
 	// Create RPC server
-	server := NewStandardRPCServer(appchainDB, txPool)
+	server := NewStandardRPCServer()
 
 	// Add custom method
 	server.AddCustomMethod("ping", func(_ context.Context, _ []any) (any, error) {
@@ -483,19 +473,6 @@ func TestStandardRPCServer_healthEndpoint(t *testing.T) {
 	status, exists := healthResp["status"]
 	require.True(t, exists)
 	assert.Contains(t, []string{"healthy", "degraded", "unhealthy"}, status)
-
-	services, exists := healthResp["services"]
-	require.True(t, exists)
-
-	servicesMap, ok := services.(map[string]any)
-	require.True(t, ok)
-
-	// Check that database and txpool services are reported
-	_, hasDatabase := servicesMap["database"]
-	assert.True(t, hasDatabase)
-
-	_, hasTxpool := servicesMap["txpool"]
-	assert.True(t, hasTxpool)
 
 	// Check that timestamp is present
 	_, hasTimestamp := healthResp["timestamp"]

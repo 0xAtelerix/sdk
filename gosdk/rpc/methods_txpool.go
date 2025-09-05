@@ -122,7 +122,7 @@ func (m *TxPoolMethods[appTx, R]) GetPendingTransactions(
 
 // AddTxPoolMethods adds all transaction pool methods to the RPC server
 func AddTxPoolMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
-	server *StandardRPCServer[appTx, R],
+	server *StandardRPCServer,
 	txpool apptypes.TxPoolInterface[appTx, R],
 ) {
 	methods := NewTxPoolMethods(txpool)

@@ -14,25 +14,18 @@ import (
 )
 
 const (
-	healthStatusHealthy   = "healthy"
-	healthStatusUnhealthy = "unhealthy"
-	healthStatusDegraded  = "degraded"
+	healthStatusHealthy = "healthy"
 )
 
 // NewStandardRPCServer creates a new standard RPC server
-func NewStandardRPCServer[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
-	appchainDB kv.RwDB,
-	txpool apptypes.TxPoolInterface[appTx, R],
-) *StandardRPCServer[appTx, R] {
-	return &StandardRPCServer[appTx, R]{
-		appchainDB:    appchainDB,
-		txpool:        txpool,
+func NewStandardRPCServer() *StandardRPCServer {
+	return &StandardRPCServer{
 		customMethods: make(map[string]func(context.Context, []any) (any, error)),
 	}
 }
 
 // AddCustomMethod allows adding custom RPC methods
-func (s *StandardRPCServer[appTx, R]) AddCustomMethod(
+func (s *StandardRPCServer) AddCustomMethod(
 	method string,
 	handler func(context.Context, []any) (any, error),
 ) {
@@ -40,7 +33,7 @@ func (s *StandardRPCServer[appTx, R]) AddCustomMethod(
 }
 
 // StartHTTPServer starts the HTTP JSON-RPC server
-func (s *StandardRPCServer[appTx, R]) StartHTTPServer(ctx context.Context, addr string) error {
+func (s *StandardRPCServer) StartHTTPServer(ctx context.Context, addr string) error {
 	s.logger = log.Ctx(ctx)
 	http.HandleFunc("/rpc", s.handleRPC)
 	http.HandleFunc("/health", s.healthcheck)
@@ -60,7 +53,7 @@ func (s *StandardRPCServer[appTx, R]) StartHTTPServer(ctx context.Context, addr 
 }
 
 // handleRPC handles incoming JSON-RPC requests
-func (s *StandardRPCServer[appTx, R]) handleRPC(w http.ResponseWriter, r *http.Request) {
+func (s *StandardRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 
@@ -111,7 +104,7 @@ func (s *StandardRPCServer[appTx, R]) handleRPC(w http.ResponseWriter, r *http.R
 }
 
 // healthcheck handles HTTP health check requests
-func (s *StandardRPCServer[appTx, R]) healthcheck(w http.ResponseWriter, r *http.Request) {
+func (s *StandardRPCServer) healthcheck(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 
@@ -124,45 +117,10 @@ func (s *StandardRPCServer[appTx, R]) healthcheck(w http.ResponseWriter, r *http
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
 	healthStatus := map[string]any{
-		"status":    healthStatusHealthy,
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
-		"services":  map[string]string{},
+		"status":      healthStatusHealthy,
+		"timestamp":   time.Now().UTC().Format(time.RFC3339),
+		"rpc_methods": len(s.customMethods),
 	}
-
-	if services, ok := healthStatus["services"].(map[string]string); ok {
-		// Check database connection
-		err := s.appchainDB.View(r.Context(), func(_ kv.Tx) error {
-			return nil // Just test if we can create a read transaction
-		})
-		if err != nil {
-			services["database"] = healthStatusUnhealthy
-			healthStatus["status"] = healthStatusUnhealthy
-
-			w.WriteHeader(http.StatusServiceUnavailable)
-		} else {
-			services["database"] = healthStatusHealthy
-		}
-
-		// Check txpool availability
-		if s.txpool == nil {
-			services["txpool"] = "unavailable"
-		} else {
-			// Try to get pending transactions to test txpool health
-			_, err := s.txpool.GetPendingTransactions(r.Context())
-			if err != nil {
-				services["txpool"] = healthStatusUnhealthy
-
-				if healthStatus["status"] == healthStatusHealthy {
-					healthStatus["status"] = healthStatusDegraded
-				}
-			} else {
-				services["txpool"] = healthStatusHealthy
-			}
-		}
-	}
-
-	// Add method count for monitoring
-	healthStatus["rpc_methods"] = len(s.customMethods)
 
 	if err := json.NewEncoder(w).Encode(healthStatus); err != nil {
 		http.Error(w, "Failed to encode health response", http.StatusInternalServerError)
@@ -171,10 +129,10 @@ func (s *StandardRPCServer[appTx, R]) healthcheck(w http.ResponseWriter, r *http
 
 // AddStandardMethods adds all standard blockchain methods to the RPC server
 func AddStandardMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
-	server *StandardRPCServer[appTx, R],
+	server *StandardRPCServer,
 	appchainDB kv.RwDB,
 	txpool apptypes.TxPoolInterface[appTx, R],
 ) {
 	AddTxPoolMethods(server, txpool)
-	AddReceiptMethods(server, appchainDB)
+	AddReceiptMethods[R](server, appchainDB)
 }

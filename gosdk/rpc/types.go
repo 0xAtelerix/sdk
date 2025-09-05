@@ -3,10 +3,7 @@ package rpc // JSONRPCRequest represents a standard JSON-RPC 2.0 request
 import (
 	"context"
 
-	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/rs/zerolog"
-
-	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
 type JSONRPCRequest struct {
@@ -32,9 +29,7 @@ type Error struct {
 }
 
 // StandardRPCServer provides standard blockchain RPC methods
-type StandardRPCServer[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
-	appchainDB    kv.RwDB
-	txpool        apptypes.TxPoolInterface[appTx, R]
+type StandardRPCServer struct {
 	logger        *zerolog.Logger
 	customMethods map[string]func(context.Context, []any) (any, error)
 }

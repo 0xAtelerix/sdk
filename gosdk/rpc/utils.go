@@ -9,7 +9,7 @@ import (
 )
 
 // writeError writes a JSON-RPC error response
-func (*StandardRPCServer[appTx, R]) writeError(
+func (*StandardRPCServer) writeError(
 	w http.ResponseWriter,
 	code int,
 	message string,

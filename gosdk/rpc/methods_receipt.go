@@ -67,8 +67,8 @@ func (m *ReceiptMethods[R]) GetTransactionReceipt(ctx context.Context, params []
 }
 
 // AddReceiptMethods adds all receipt methods to the RPC server
-func AddReceiptMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
-	server *StandardRPCServer[appTx, R],
+func AddReceiptMethods[R apptypes.Receipt](
+	server *StandardRPCServer,
 	appchainDB kv.RwDB,
 ) {
 	methods := NewReceiptMethods[R](appchainDB)
