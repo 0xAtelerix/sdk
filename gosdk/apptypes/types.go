@@ -19,12 +19,6 @@ type Receipt interface {
 	Error() string
 }
 
-// How to work with encoding with appchain transactions
-type Serializible interface {
-	Unmarshal(data []byte) error
-	Marshal() (data []byte, err error)
-}
-
 // AppTransaction should be serializible
 type Batch[appTx AppTransaction[R], R Receipt] struct {
 	Atropos        [32]byte
@@ -48,7 +42,6 @@ type AppchainBlock interface {
 	Hash() [32]byte
 	StateRoot() [32]byte
 	Bytes() []byte
-	Serializible
 }
 
 type StoredAppchainBlock[appBlock AppchainBlock] struct {
