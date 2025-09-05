@@ -17,8 +17,6 @@ type Receipt interface {
 	TxHash() [32]byte
 	Status() TxReceiptStatus
 	Error() string
-	Serializible
-	// TODO - Can add more methods later
 }
 
 // How to work with encoding with appchain transactions

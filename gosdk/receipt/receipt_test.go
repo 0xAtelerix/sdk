@@ -3,7 +3,6 @@ package receipt
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -32,14 +31,6 @@ func (r *TestReceipt) Status() apptypes.TxReceiptStatus {
 	}
 
 	return apptypes.ReceiptConfirmed
-}
-
-func (r *TestReceipt) Marshal() ([]byte, error) {
-	return json.Marshal(r)
-}
-
-func (r *TestReceipt) Unmarshal(data []byte) error {
-	return json.Unmarshal(data, r)
 }
 
 func (r *TestReceipt) Error() string {
@@ -205,14 +196,6 @@ func (r *BadTestReceipt) TxHash() [32]byte {
 
 func (*BadTestReceipt) Status() apptypes.TxReceiptStatus {
 	return apptypes.ReceiptFailed
-}
-
-func (*BadTestReceipt) Marshal() ([]byte, error) {
-	return nil, assert.AnError // Always return an error
-}
-
-func (*BadTestReceipt) Unmarshal(_ []byte) error {
-	return assert.AnError // Always return an error
 }
 
 func (*BadTestReceipt) Error() string {
