@@ -192,7 +192,7 @@ func TestStandardRPCServer_getTransactionByHash(t *testing.T) {
 	require.NoError(t, err)
 
 	hashStr, ok := sendResponse.Result.(string)
-	require.True(t, ok)
+	require.True(t, ok, "sendResponse should be string", sendResponse.Result, sendRR.Body)
 
 	// Now get the transaction by hash
 	getRR := makeJSONRPCRequest(t, server, "getTransactionByHash", []any{hashStr})

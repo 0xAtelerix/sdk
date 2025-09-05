@@ -18,9 +18,9 @@ import (
 //
 
 type CustomTransaction[R Receipt] struct {
-	From  string `json:"from"`
-	To    string `json:"to"`
-	Value int    `json:"value"`
+	From  string `json:"from"  cbor:"1,keyasint"`
+	To    string `json:"to"    cbor:"2,keyasint"`
+	Value int    `json:"value" cbor:"3,keyasint"`
 }
 
 func (c CustomTransaction[R]) Hash() [32]byte {

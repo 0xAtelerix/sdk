@@ -16,9 +16,9 @@ import (
 
 // TestReceipt is a mock implementation of apptypes.Receipt for testing
 type TestReceipt struct {
-	Hash     [32]byte `json:"hash"`
-	Data     string   `json:"data"`
-	ErrorMsg string   `json:"error_msg,omitempty"`
+	Hash     [32]byte `json:"hash"                cbor:"1,keyasint"`
+	Data     string   `json:"data"                cbor:"2,keyasint"`
+	ErrorMsg string   `json:"error_msg,omitempty" cbor:"3,keyasint,omitempty"`
 }
 
 func (r *TestReceipt) TxHash() [32]byte {
