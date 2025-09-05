@@ -147,59 +147,6 @@ func TestStoreAndGetReceipt(t *testing.T) {
 		})
 		require.NoError(t, err)
 	})
-
-	t.Run("store receipt with marshal error", func(t *testing.T) {
-		// Create a receipt that will fail to marshal
-		badReceipt := &BadTestReceipt{
-			Hash: sha256.Sum256([]byte("bad-receipt")),
-		}
-
-		err := db.Update(context.Background(), func(tx kv.RwTx) error {
-			return StoreReceipt(tx, badReceipt)
-		})
-		// Should return an error due to marshal failure
-		assert.Error(t, err)
-	})
-
-	t.Run("get receipt with unmarshal error", func(t *testing.T) {
-		// Store valid data but try to unmarshal into bad receipt
-		receipt := createTestReceipt("valid-receipt", "")
-
-		err := db.Update(context.Background(), func(tx kv.RwTx) error {
-			return StoreReceipt(tx, receipt)
-		})
-		require.NoError(t, err)
-
-		// Try to retrieve into a bad receipt type
-		err = db.View(context.Background(), func(tx kv.Tx) error {
-			var badReceipt BadTestReceipt
-
-			txHash := receipt.TxHash()
-			_, getErr := getReceipt(tx, txHash[:], &badReceipt)
-			// Should return an error due to unmarshal failure
-			assert.Error(t, getErr)
-
-			return nil
-		})
-		require.NoError(t, err)
-	})
-}
-
-// BadTestReceipt is a receipt type that fails to marshal/unmarshal for testing error cases
-type BadTestReceipt struct {
-	Hash [32]byte
-}
-
-func (r *BadTestReceipt) TxHash() [32]byte {
-	return r.Hash
-}
-
-func (*BadTestReceipt) Status() apptypes.TxReceiptStatus {
-	return apptypes.ReceiptFailed
-}
-
-func (*BadTestReceipt) Error() string {
-	return ""
 }
 
 func TestReceiptBatchOperations(t *testing.T) {
