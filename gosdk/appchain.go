@@ -26,55 +26,10 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
-func NewAppchain[STI StateTransitionInterface[AppTx, R],
-AppTx apptypes.AppTransaction[R],
-R apptypes.Receipt,
-AppBlock apptypes.AppchainBlock](
-	sti STI,
-	blockBuilder apptypes.AppchainBlockConstructor[AppTx, R, AppBlock],
-	txpool apptypes.TxPoolInterface[AppTx, R],
-	config AppchainConfig,
-	appchainDB kv.RwDB,
-	options ...func(a *Appchain[STI, AppTx, R, AppBlock]),
-) (Appchain[STI, AppTx, R, AppBlock], error) {
-	log.Info().Str("db_path", config.AppchainDBPath).Msg("Initializing appchain database")
-
-	emiterAPI := NewServer[AppTx](appchainDB, config.ChainID, txpool)
-
-	emiterAPI.logger = &log.Logger
-	if config.Logger != nil {
-		emiterAPI.logger = config.Logger
-	}
-
-	log.Info().Msg("Appchain initialized successfully")
-
-	multichainDB, err := NewMultichainStateAccess(config.MultichainStateDB)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to initialize MultichainStateAccess")
-
-		return Appchain[STI, AppTx, R, AppBlock]{}, err
-	}
-
-	appchain := Appchain[STI, AppTx, R, AppBlock]{
-		appchainStateExecution: sti,
-		rootCalculator:         NewStubRootCalculator(),
-		blockBuilder:           blockBuilder,
-		emiterAPI:              emiterAPI,
-		AppchainDB:             appchainDB,
-		config:                 config,
-		multichainDB:           multichainDB,
-	}
-	for _, option := range options {
-		option(&appchain)
-	}
-
-	return appchain, nil
-}
-
 func WithRootCalculator[STI StateTransitionInterface[AppTx, R],
-AppTx apptypes.AppTransaction[R],
-R apptypes.Receipt,
-AppBlock apptypes.AppchainBlock](rc apptypes.RootCalculator) func(a *Appchain[STI, AppTx, R, AppBlock]) {
+	AppTx apptypes.AppTransaction[R],
+	R apptypes.Receipt,
+	AppBlock apptypes.AppchainBlock](rc apptypes.RootCalculator) func(a *Appchain[STI, AppTx, R, AppBlock]) {
 	return func(a *Appchain[STI, AppTx, R, AppBlock]) {
 		a.rootCalculator = rc
 	}
@@ -104,6 +59,54 @@ func MakeAppchainConfig(chainID uint64) AppchainConfig {
 	}
 }
 
+func NewAppchain[STI StateTransitionInterface[AppTx, R],
+	AppTx apptypes.AppTransaction[R],
+	R apptypes.Receipt,
+	AppBlock apptypes.AppchainBlock](
+	sti STI,
+	blockBuilder apptypes.AppchainBlockConstructor[AppTx, R, AppBlock],
+	txpool apptypes.TxPoolInterface[AppTx, R],
+	config AppchainConfig,
+	appchainDB kv.RwDB,
+	subscriber *Subscriber,
+	options ...func(a *Appchain[STI, AppTx, R, AppBlock]),
+) (Appchain[STI, AppTx, R, AppBlock], error) {
+	log.Info().Str("db_path", config.AppchainDBPath).Msg("Initializing appchain database")
+
+	emiterAPI := NewServer[AppTx](appchainDB, config.ChainID, txpool)
+
+	emiterAPI.logger = &log.Logger
+	if config.Logger != nil {
+		emiterAPI.logger = config.Logger
+	}
+
+	log.Info().Msg("Appchain initialized successfully")
+
+	multichainDB, err := NewMultichainStateAccess(config.MultichainStateDB)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to initialize MultichainStateAccess")
+
+		return Appchain[STI, AppTx, R, AppBlock]{}, err
+	}
+
+	appchain := Appchain[STI, AppTx, R, AppBlock]{
+		appchainStateExecution: sti,
+		rootCalculator:         NewStubRootCalculator(),
+		blockBuilder:           blockBuilder,
+		emiterAPI:              emiterAPI,
+		AppchainDB:             appchainDB,
+		config:                 config,
+		multichainDB:           multichainDB,
+		subscriber:             subscriber,
+	}
+
+	for _, option := range options {
+		option(&appchain)
+	}
+
+	return appchain, nil
+}
+
 type Appchain[STI StateTransitionInterface[appTx, R], appTx apptypes.AppTransaction[R], R apptypes.Receipt, AppBlock apptypes.AppchainBlock] struct {
 	appchainStateExecution STI
 	rootCalculator         apptypes.RootCalculator
@@ -114,6 +117,7 @@ type Appchain[STI StateTransitionInterface[appTx, R], appTx apptypes.AppTransact
 	TxBatchDB    kv.RoDB
 	config       AppchainConfig
 	multichainDB *MultichainStateAccess
+	subscriber   *Subscriber
 }
 
 func (a *Appchain[STI, appTx, R, AppBlock]) Run(
@@ -469,6 +473,12 @@ func (a *Appchain[STI, appTx, R, AppBlock]) RunEmitterAPI(ctx context.Context) {
 
 		logger.Info().Msg("gRPC server exited")
 	}
+}
+
+func (a *Appchain[STI, appTx, R, AppBlock]) Shutdown() {
+	a.multichainDB.Close()
+	a.TxBatchDB.Close()
+	a.AppchainDB.Close()
 }
 
 func WriteBlock(rwtx kv.RwTx, blockNumber uint64, blockBytes []byte) error {

@@ -132,6 +132,11 @@ func ExampleAppchain() {
 		log.Fatal().Err(err).Msg("Failed to appchain mdbx database")
 	}
 
+	subscriber, err := NewSubscriber(context.Background(), appchainDB)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to init a subscriber")
+	}
+
 	log.Info().Msg("Starting appchain...")
 
 	appchainExample, err := NewAppchain(
@@ -142,6 +147,7 @@ func ExampleAppchain() {
 		txPool,
 		config,
 		appchainDB,
+		subscriber,
 	)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to start appchain")
@@ -157,6 +163,8 @@ func ExampleAppchain() {
 	}()
 
 	err = <-runErr
+
+	appchainExample.Shutdown()
 
 	log.Info().Err(err).Msg("Appchain exited")
 }

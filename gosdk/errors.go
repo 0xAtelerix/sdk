@@ -8,7 +8,9 @@ func (e SDKError) Error() string {
 
 const (
 	ErrCorruptedFile  = SDKError("corrupted file")
-	ErrUnknownChain   = SDKError("no DB for chainID")
+	ErrUnknownChain   = SDKError("unknown chain")
 	ErrMissingTxBatch = SDKError("missing tx batch")
 	ErrNoReceipts     = SDKError("no receipts found")
+
+	ErrWrongBlock = SDKError("wrong block hash")
 )

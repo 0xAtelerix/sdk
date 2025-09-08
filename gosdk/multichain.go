@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 
@@ -44,7 +45,9 @@ type MultichainStateAccess struct {
 	stateAccessDB map[uint32]kv.RoDB
 }
 
-func NewMultichainStateAccess(cfg map[uint32]string) (*MultichainStateAccess, error) {
+type MultichainConfig map[uint32]string // chainID, chainDBpath
+
+func NewMultichainStateAccess(cfg MultichainConfig) (*MultichainStateAccess, error) {
 	multichainStateDB := MultichainStateAccess{
 		stateAccessDB: make(map[uint32]kv.RoDB, len(cfg)),
 	}
@@ -80,21 +83,12 @@ func NewMultichainStateAccess(cfg map[uint32]string) (*MultichainStateAccess, er
 	return &multichainStateDB, nil
 }
 
-//nolint:unparam // interface implementation
-func (sa *MultichainStateAccess) Close() error {
-	for _, db := range sa.stateAccessDB {
-		db.Close()
-	}
-
-	return nil
-}
-
 func (sa *MultichainStateAccess) EthBlock(
 	ctx context.Context,
 	block apptypes.ExternalBlock,
 ) (*gethtypes.Block, error) {
 	if _, ok := sa.stateAccessDB[uint32(block.ChainID)]; !ok {
-		return nil, fmt.Errorf("%w %v", ErrUnknownChain, block.ChainID)
+		return nil, fmt.Errorf("%w, no DB for chainID, %v", ErrUnknownChain, block.ChainID)
 	}
 
 	key := make([]byte, 40)
@@ -112,9 +106,27 @@ func (sa *MultichainStateAccess) EthBlock(
 		return rlp.DecodeBytes(v, &ethBlock)
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf(
+			"failed to read eth block: %w, chainID %d, block number %d, block hash %s",
+			err,
+			block.ChainID,
+			block.BlockNumber,
+			hex.EncodeToString(block.BlockHash[:]),
+		)
 	}
-	// todo verify block hash
+
+	ethBlockHash := ethBlock.Hash()
+	if ethBlockHash != block.BlockHash {
+		return nil, fmt.Errorf(
+			"%w, chainID %d; got block number %d, hash %s; expected block number %d, hash %s",
+			ErrWrongBlock,
+			block.ChainID,
+			ethBlock.Number(),
+			hex.EncodeToString(ethBlockHash[:]),
+			block.BlockNumber,
+			hex.EncodeToString(block.BlockHash[:]),
+		)
+	}
 
 	return &ethBlock, nil
 }
@@ -124,7 +136,7 @@ func (sa *MultichainStateAccess) EthReceipts(
 	block apptypes.ExternalBlock,
 ) ([]*gethtypes.Receipt, error) {
 	if _, ok := sa.stateAccessDB[uint32(block.ChainID)]; !ok {
-		return nil, fmt.Errorf("%w %v", ErrUnknownChain, block.ChainID)
+		return nil, fmt.Errorf("%w, no DB for chainID, %v", ErrUnknownChain, block.ChainID)
 	}
 
 	key := make([]byte, 44)
@@ -168,7 +180,7 @@ func (sa *MultichainStateAccess) SolanaBlock(
 ) (*client.Block, error) {
 	db, ok := sa.stateAccessDB[uint32(block.ChainID)]
 	if !ok {
-		return nil, fmt.Errorf("%w %v", ErrUnknownChain, block.ChainID)
+		return nil, fmt.Errorf("%w, no DB for chainID, %v", ErrUnknownChain, block.ChainID)
 	}
 
 	key := make([]byte, 8)
@@ -188,10 +200,14 @@ func (sa *MultichainStateAccess) SolanaBlock(
 		return nil, err
 	}
 
-	////  todo ✅ Проверка целостности по хешу
-	//if solBlock.Blockhash != "" && block.BlockHash.String() != solBlock.Blockhash {
-	//	return nil, fmt.Errorf("block hash mismatch: expected %s, got %s", block.BlockHash.String(), solBlock.Blockhash)
-	//}
+	if string(block.BlockHash[:]) != solBlock.Blockhash {
+		return nil, fmt.Errorf(
+			"%w: expected %s, got %s",
+			ErrWrongBlock,
+			string(block.BlockHash[:]),
+			solBlock.Blockhash,
+		)
+	}
 
 	return &solBlock, nil
 }
@@ -205,8 +221,14 @@ func (sa *MultichainStateAccess) ViewDB(
 ) error {
 	db, ok := sa.stateAccessDB[chainID]
 	if !ok {
-		return fmt.Errorf("%w %d", ErrUnknownChain, chainID)
+		return fmt.Errorf("%w, no DB for chainID, %d", ErrUnknownChain, chainID)
 	}
 
 	return db.View(ctx, fn)
+}
+
+func (sa *MultichainStateAccess) Close() {
+	for _, db := range sa.stateAccessDB {
+		db.Close()
+	}
 }
