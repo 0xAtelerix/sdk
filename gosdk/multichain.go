@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 
 	"github.com/blocto/solana-go-sdk/client"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
@@ -182,7 +182,7 @@ func (sa *MultichainStateAccess) SolanaBlock(
 			return err
 		}
 
-		return json.Unmarshal(v, &solBlock)
+		return cbor.Unmarshal(v, &solBlock)
 	})
 	if err != nil {
 		return nil, err

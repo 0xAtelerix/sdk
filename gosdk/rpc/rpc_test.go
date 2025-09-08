@@ -5,13 +5,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
 
+	"github.com/fxamacker/cbor/v2"
+	"github.com/goccy/go-json"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
@@ -25,17 +26,9 @@ import (
 
 // TestTransaction - test transaction implementation
 type TestTransaction[R TestReceipt] struct {
-	From  string `json:"from"`
-	To    string `json:"to"`
-	Value int    `json:"value"`
-}
-
-func (t *TestTransaction[R]) Unmarshal(b []byte) error {
-	return json.Unmarshal(b, t)
-}
-
-func (t TestTransaction[R]) Marshal() ([]byte, error) {
-	return json.Marshal(t)
+	From  string `json:"from"  cbor:"1,keyasint"`
+	To    string `json:"to"    cbor:"2,keyasint"`
+	Value int    `json:"value" cbor:"3,keyasint"`
 }
 
 func (t TestTransaction[R]) Hash() [32]byte {
@@ -52,8 +45,8 @@ func (TestTransaction[R]) Process(
 
 // TestReceipt - test receipt implementation
 type TestReceipt struct {
-	ReceiptStatus   apptypes.TxReceiptStatus `json:"status"`
-	TransactionHash [32]byte                 `json:"txHash"`
+	ReceiptStatus   apptypes.TxReceiptStatus `json:"status" cbor:"1,keyasint"`
+	TransactionHash [32]byte                 `json:"txHash" cbor:"2,keyasint"`
 }
 
 func (r TestReceipt) TxHash() [32]byte {
@@ -103,7 +96,7 @@ func setupTestEnvironment(
 	require.NoError(t, err)
 
 	// Create txpool
-	txPool := txpool.NewTxPool[*TestTransaction[TestReceipt]](localDB)
+	txPool := txpool.NewTxPool[TestTransaction[TestReceipt]](localDB)
 
 	// Create RPC server
 	server = NewStandardRPCServer()
@@ -199,7 +192,7 @@ func TestStandardRPCServer_getTransactionByHash(t *testing.T) {
 	require.NoError(t, err)
 
 	hashStr, ok := sendResponse.Result.(string)
-	require.True(t, ok)
+	require.True(t, ok, "sendResponse should be string", sendResponse.Result, sendRR.Body)
 
 	// Now get the transaction by hash
 	getRR := makeJSONRPCRequest(t, server, "getTransactionByHash", []any{hashStr})
@@ -266,7 +259,7 @@ func TestStandardRPCServer_getPendingTransactions(t *testing.T) {
 	defer cleanup()
 
 	// First, send some transactions
-	txs := []*TestTransaction[TestReceipt]{
+	txs := []TestTransaction[TestReceipt]{
 		{From: "0x1111", To: "0x2222", Value: 100},
 		{From: "0x3333", To: "0x4444", Value: 200},
 	}
@@ -302,7 +295,7 @@ func TestStandardRPCServer_getTransactionReceipt(t *testing.T) {
 
 	// Create a test receipt
 	testReceipt := TestReceipt{ReceiptStatus: apptypes.ReceiptConfirmed}
-	receiptData, err := json.Marshal(testReceipt)
+	receiptData, err := cbor.Marshal(testReceipt)
 	require.NoError(t, err)
 
 	// Create a test hash
@@ -447,7 +440,7 @@ func ExampleStandardRPCServer() {
 	// Start server (commented out for example)
 	// server.StartHTTPServer(8545)
 
-	fmt.Println("RPC server configured successfully")
+	_, _ = fmt.Println("RPC server configured successfully")
 	// Output: RPC server configured successfully
 }
 
@@ -456,7 +449,7 @@ func TestStandardRPCServer_healthEndpoint(t *testing.T) {
 	defer cleanup()
 
 	// Create a direct HTTP request to the health endpoint
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()

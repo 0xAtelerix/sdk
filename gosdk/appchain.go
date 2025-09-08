@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -14,6 +13,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
@@ -584,7 +584,7 @@ func WriteCheckpoint(ctx context.Context, dbTx kv.RwTx, checkpoint apptypes.Chec
 	binary.BigEndian.PutUint64(key, checkpoint.BlockNumber)
 
 	// Сериализуем чекпоинт
-	value, err := json.Marshal(checkpoint)
+	value, err := cbor.Marshal(checkpoint)
 	if err != nil {
 		logger.Error().Err(err).Msg("Checkpoint serialization failed")
 

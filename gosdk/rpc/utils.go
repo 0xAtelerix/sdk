@@ -2,10 +2,11 @@ package rpc
 
 import (
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/goccy/go-json"
 )
 
 // writeError writes a JSON-RPC error response

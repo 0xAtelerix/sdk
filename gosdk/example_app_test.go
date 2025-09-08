@@ -76,14 +76,6 @@ func (*ExampleBlock) Bytes() []byte {
 	return []byte{}
 }
 
-func (*ExampleBlock) Marshal() ([]byte, error) {
-	return nil, nil
-}
-
-func (*ExampleBlock) Unmarshal([]byte) error {
-	return nil
-}
-
 func ExampleAppchain() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 

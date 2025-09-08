@@ -1,9 +1,9 @@
 package receipt
 
 import (
-	"encoding/json"
 	"errors"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
@@ -16,7 +16,7 @@ var ErrNoReceipts = errors.New("no receipts found")
 func StoreReceipt[R apptypes.Receipt](tx kv.RwTx, receipt R) error {
 	key := receipt.TxHash()
 
-	value, err := json.Marshal(receipt)
+	value, err := cbor.Marshal(receipt)
 	if err != nil {
 		return err
 	}
@@ -35,7 +35,7 @@ func getReceipt[R apptypes.Receipt](tx kv.Tx, txHash []byte, receipt R) (R, erro
 		return receipt, ErrNoReceipts
 	}
 
-	if err := json.Unmarshal(value, &receipt); err != nil {
+	if err := cbor.Unmarshal(value, &receipt); err != nil {
 		return receipt, err
 	}
 

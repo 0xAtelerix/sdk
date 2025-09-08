@@ -2,8 +2,9 @@ package rpc
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+
+	"github.com/goccy/go-json"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )

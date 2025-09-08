@@ -5,10 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"strconv"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -97,7 +97,7 @@ func (s *AppchainEmitterServer[appTx, R]) GetCheckpoints(
 		}
 
 		checkpoint := &apptypes.Checkpoint{}
-		if err = json.Unmarshal(v, &checkpoint); err != nil {
+		if err = cbor.Unmarshal(v, &checkpoint); err != nil {
 			s.logger.Error().Err(err).Msg("Checkpoint deserialization failed")
 
 			return nil, fmt.Errorf("checkpoint deserialization failed: %w", err)
