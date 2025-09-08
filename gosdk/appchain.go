@@ -27,9 +27,9 @@ import (
 )
 
 func NewAppchain[STI StateTransitionInterface[AppTx, R],
-	AppTx apptypes.AppTransaction[R],
-	R apptypes.Receipt,
-	AppBlock apptypes.AppchainBlock](
+AppTx apptypes.AppTransaction[R],
+R apptypes.Receipt,
+AppBlock apptypes.AppchainBlock](
 	sti STI,
 	blockBuilder apptypes.AppchainBlockConstructor[AppTx, R, AppBlock],
 	txpool apptypes.TxPoolInterface[AppTx, R],
@@ -72,9 +72,9 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 }
 
 func WithRootCalculator[STI StateTransitionInterface[AppTx, R],
-	AppTx apptypes.AppTransaction[R],
-	R apptypes.Receipt,
-	AppBlock apptypes.AppchainBlock](rc apptypes.RootCalculator) func(a *Appchain[STI, AppTx, R, AppBlock]) {
+AppTx apptypes.AppTransaction[R],
+R apptypes.Receipt,
+AppBlock apptypes.AppchainBlock](rc apptypes.RootCalculator) func(a *Appchain[STI, AppTx, R, AppBlock]) {
 	return func(a *Appchain[STI, AppTx, R, AppBlock]) {
 		a.rootCalculator = rc
 	}
@@ -197,6 +197,13 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 
 		return fmt.Errorf("failed to create event stream: %w", err)
 	}
+
+	defer func() {
+		streamErr := eventStream.Close()
+		if streamErr != nil {
+			logger.Error().Err(streamErr).Msg("Error closing event stream")
+		}
+	}()
 
 	var (
 		previousBlockNumber uint64

@@ -16,6 +16,8 @@ const (
 	processedBuckets       = "processed_buckets"
 	eventStreamPositionKey = "event_stream_pos"
 
+	subscriptionBucket = "subscription_bucket" // chainID -> {address|contract}
+
 	TxBuckets = "txbatch"
 )
 
@@ -27,13 +29,14 @@ func TxBucketsTables() kv.TableCfg {
 
 func DefaultTables() kv.TableCfg {
 	return kv.TableCfg{
-		CheckpointBucket: {},
-		ExternalTxBucket: {},
-		BlocksBucket:     {},
-		ConfigBucket:     {},
-		StateBucket:      {},
-		Snapshot:         {},
-		ReceiptBucket:    {},
+		CheckpointBucket:   {},
+		ExternalTxBucket:   {},
+		BlocksBucket:       {},
+		ConfigBucket:       {},
+		StateBucket:        {},
+		Snapshot:           {},
+		ReceiptBucket:      {},
+		subscriptionBucket: {},
 	}
 }
 
