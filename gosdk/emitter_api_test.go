@@ -150,7 +150,7 @@ func TestEmitterCall(t *testing.T) {
 	}()
 
 	wg.Wait()
-	time.Sleep(time.Millisecond * 500)
+	time.Sleep(time.Second)
 
 	// Подключение к серверу
 	conn, err := grpc.NewClient(
