@@ -152,7 +152,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 				valset = &ValidatorSet{}
 
-				err = cbor.Unmarshal(valsetData, &valset)
+				err = cbor.Unmarshal(valsetData, valset)
 				if err != nil {
 					ews.logger.Err(err).
 						Uint32("Epoch", evt.Base.Epoch)
@@ -162,6 +162,8 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 				votingBlocks = NewVotingFromValidatorSet[apptypes.ExternalBlock](valset)
 				votingCheckpoints = NewVotingFromValidatorSet[apptypes.Checkpoint](valset)
+
+				time.Sleep(time.Millisecond * 50)
 			}
 
 			for _, batch := range evt.TxPool {

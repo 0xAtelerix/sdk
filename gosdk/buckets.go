@@ -38,6 +38,7 @@ func DefaultTables() kv.TableCfg {
 		Snapshot:           {},
 		ReceiptBucket:      {},
 		subscriptionBucket: {},
+		ValsetBucket:       {},
 	}
 }
 
