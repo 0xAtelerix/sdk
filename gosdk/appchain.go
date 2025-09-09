@@ -294,6 +294,10 @@ runFor:
 					receipts []R
 				)
 
+				// TODO: filter external blocks
+				// TODO: filter checkpoints
+				// TODO: possibly get external blocks
+
 				receipts, extTxs, err = a.appchainStateExecution.ProcessBatch(batch, rwtx)
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to process batch")

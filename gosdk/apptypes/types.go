@@ -31,14 +31,29 @@ type Serializible interface {
 type Batch[appTx AppTransaction[R], R Receipt] struct {
 	Atropos        [32]byte
 	Transactions   []appTx
-	ExternalBlocks []ExternalBlock
+	ExternalBlocks []*ExternalBlock
+	Checkpoints    []*Checkpoint
 	// todo add crossappchain tx
 	// ExternalTransactions [][]byte
 	EndOffset   int64
 	TxEndOffset int64 // txReader.position после чтения
 }
 
+type ExternalEntity interface {
+	GetEntityID() ExternalID
+}
+
 type ExternalBlock struct {
+	ChainID     uint64
+	BlockNumber uint64
+	BlockHash   [32]byte
+}
+
+func (e ExternalBlock) GetEntityID() ExternalID {
+	return ExternalID(e)
+}
+
+type ExternalID struct {
 	ChainID     uint64
 	BlockNumber uint64
 	BlockHash   [32]byte
@@ -122,6 +137,14 @@ type Checkpoint struct {
 	BlockHash                [32]byte `json:"blockHash"`
 	StateRoot                [32]byte `json:"stateRoot"`
 	ExternalTransactionsRoot [32]byte `json:"externalTransactionsRoot"`
+}
+
+func (c Checkpoint) GetEntityID() ExternalID {
+	return ExternalID{
+		ChainID:     c.ChainID,
+		BlockNumber: c.BlockNumber,
+		BlockHash:   c.BlockHash,
+	}
 }
 
 type Event struct {

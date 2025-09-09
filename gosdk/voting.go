@@ -6,17 +6,22 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-type Voting struct {
+type Voting[T apptypes.ExternalEntity] struct {
 	totalVotingPower *uint256.Int
 	threshold        *uint256.Int
 
 	// map[ChainID][BlockNumber][BlockHash]votes
-	voting map[uint64]map[uint64]map[[32]byte]*uint256.Int
+	voting map[uint64]map[uint64]map[[32]byte]*Entity[T]
+}
+
+type Entity[T apptypes.ExternalEntity] struct {
+	voted  *uint256.Int
+	entity *T
 }
 
 // NewVoting creates a new Voting accumulator.
 // total must be non-nil. If you need to change total later, just set v.totalVotingPower.
-func NewVoting(total *uint256.Int) *Voting {
+func NewVoting[T apptypes.ExternalEntity](total *uint256.Int) *Voting[T] {
 	if total == nil {
 		total = uint256.NewInt(0)
 	}
@@ -26,14 +31,14 @@ func NewVoting(total *uint256.Int) *Voting {
 
 	threshold := Threshold(total)
 
-	return &Voting{
+	return &Voting[T]{
 		totalVotingPower: cp,
 		threshold:        threshold,
-		voting:           make(map[uint64]map[uint64]map[[32]byte]*uint256.Int),
+		voting:           make(map[uint64]map[uint64]map[[32]byte]*Entity[T]),
 	}
 }
 
-func NewVotingFromValidatorSet(validators *ValidatorSet) *Voting {
+func NewVotingFromValidatorSet[T apptypes.ExternalEntity](validators *ValidatorSet) *Voting[T] {
 	total := uint256.NewInt(0)
 
 	if validators != nil {
@@ -46,56 +51,57 @@ func NewVotingFromValidatorSet(validators *ValidatorSet) *Voting {
 		}
 	}
 
-	return NewVoting(total)
+	return NewVoting[T](total)
 }
 
 // AddVote adds `power` to the tally for (chainID, blockNumber, blockHash).
 // A nil power is treated as 0 and is a no-op.
-func (v *Voting) AddVote(extBlock apptypes.ExternalBlock, power *uint256.Int) {
+func (v *Voting[T]) AddVote(extBlock T, power *uint256.Int) {
 	if power == nil || power.IsZero() {
 		return
 	}
 
-	blockVoting, ok := v.voting[extBlock.ChainID]
+	id := extBlock.GetEntityID()
+
+	blockVoting, ok := v.voting[id.ChainID]
 	if !ok {
-		blockVoting = make(map[uint64]map[[32]byte]*uint256.Int)
-		v.voting[extBlock.ChainID] = blockVoting
+		blockVoting = make(map[uint64]map[[32]byte]*Entity[T])
+		v.voting[id.ChainID] = blockVoting
 	}
 
-	hashVoting, ok := blockVoting[extBlock.BlockNumber]
+	hashVoting, ok := blockVoting[id.BlockNumber]
 	if !ok {
-		hashVoting = make(map[[32]byte]*uint256.Int)
-		blockVoting[extBlock.BlockNumber] = hashVoting
+		hashVoting = make(map[[32]byte]*Entity[T])
+		blockVoting[id.BlockNumber] = hashVoting
 	}
 
-	curr, ok := hashVoting[extBlock.BlockHash]
+	curr, ok := hashVoting[id.BlockHash]
 	if !ok {
-		curr = uint256.NewInt(0)
-		hashVoting[extBlock.BlockHash] = curr
+		curr = &Entity[T]{
+			voted:  uint256.NewInt(0),
+			entity: &extBlock,
+		}
+		hashVoting[id.BlockHash] = curr
 	}
 
-	curr.Add(curr, power)
+	curr.voted.Add(curr.voted, power)
 }
 
-// FinalizedBlocks returns all blocks that have votes >= Threshold().
-func (v *Voting) FinalizedBlocks() []apptypes.ExternalBlock {
+// Finalized returns all blocks that have votes >= Threshold().
+func (v *Voting[T]) Finalized() []*T {
 	th := v.threshold
 
 	if th.IsZero() {
 		return nil
 	}
 
-	var out []apptypes.ExternalBlock
+	var out []*T
 
-	for chainID, byBlockNum := range v.voting {
-		for blockNum, byHash := range byBlockNum {
-			for h, votes := range byHash {
-				if votes.Cmp(th) >= 0 {
-					out = append(out, apptypes.ExternalBlock{
-						ChainID:     chainID,
-						BlockNumber: blockNum,
-						BlockHash:   h,
-					})
+	for _, byBlockNum := range v.voting {
+		for _, byHash := range byBlockNum {
+			for _, ent := range byHash {
+				if ent.voted.Cmp(th) >= 0 {
+					out = append(out, ent.entity)
 				}
 			}
 		}
@@ -104,11 +110,13 @@ func (v *Voting) FinalizedBlocks() []apptypes.ExternalBlock {
 	return out
 }
 
-func (v *Voting) GetVotes(block apptypes.ExternalBlock) *uint256.Int {
-	if blockVoting, ok := v.voting[block.ChainID]; ok {
-		if hashVoting, ok := blockVoting[block.BlockNumber]; ok {
-			if votes, ok := hashVoting[block.BlockHash]; ok {
-				return votes.Clone()
+func (v *Voting[T]) GetVotes(block T) *uint256.Int {
+	id := block.GetEntityID()
+
+	if blockVoting, ok := v.voting[id.ChainID]; ok {
+		if hashVoting, ok := blockVoting[id.BlockNumber]; ok {
+			if ent, ok := hashVoting[id.BlockHash]; ok {
+				return ent.voted.Clone()
 			}
 		}
 	}

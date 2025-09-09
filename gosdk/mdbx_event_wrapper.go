@@ -85,8 +85,9 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 	// getting the valset for the epoch
 	var (
-		valset *ValidatorSet
-		voting *Voting
+		valset            *ValidatorSet
+		votingBlocks      *Voting[apptypes.ExternalBlock]
+		votingCheckpoints *Voting[apptypes.Checkpoint]
 	)
 
 	for _, eventBatch := range eventBatches {
@@ -158,7 +159,8 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 					continue
 				}
 
-				voting = NewVotingFromValidatorSet(valset)
+				votingBlocks = NewVotingFromValidatorSet[apptypes.ExternalBlock](valset)
+				votingCheckpoints = NewVotingFromValidatorSet[apptypes.Checkpoint](valset)
 			}
 
 			for _, batch := range evt.TxPool {
@@ -173,11 +175,18 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 				})
 			}
 
-			// voting. BaseEvent Creator+Epoch
+			// votingBlocks. BaseEvent Creator+Epoch
 			// if don't have epoch data - block and wait
 			for _, extBlock := range evt.BlockVotes {
-				voting.AddVote(
+				votingBlocks.AddVote(
 					extBlock,
+					uint256.NewInt(uint64(valset.GetStake(ValidatorID(evt.Base.Creator)))),
+				)
+			}
+
+			for _, checkpoint := range evt.Appchains {
+				votingCheckpoints.AddVote(
+					checkpoint,
 					uint256.NewInt(uint64(valset.GetStake(ValidatorID(evt.Base.Creator)))),
 				)
 			}
@@ -305,7 +314,8 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 		result = append(result, apptypes.Batch[appTx, R]{
 			Atropos:        eventBatch.Atropos,
 			Transactions:   allParsedTxs,
-			ExternalBlocks: voting.FinalizedBlocks(),
+			ExternalBlocks: votingBlocks.Finalized(),
+			Checkpoints:    votingCheckpoints.Finalized(),
 			EndOffset:      eventBatch.EndOffset,
 		})
 	}

@@ -56,7 +56,7 @@ func TestThreshold_CeilTwoThirdsPlusOne(t *testing.T) {
 
 func TestNewVoting_StoresCloneAndThreshold(t *testing.T) {
 	total := uint256.NewInt(10)
-	v := NewVoting(total)
+	v := NewVoting[apptypes.ExternalBlock](total)
 
 	// internal copy made
 	require.NotSame(t, total, v.totalVotingPower)
@@ -78,12 +78,12 @@ func TestNewVotingFromValidatorSet_SumsStakes(t *testing.T) {
 			3: 250, // non-zero
 		},
 	}
-	v := NewVotingFromValidatorSet(vs)
+	v := NewVotingFromValidatorSet[apptypes.ExternalBlock](vs)
 	require.Equal(t, uint256.NewInt(350), v.totalVotingPower)
 	require.Equal(t, Threshold(uint256.NewInt(350)), v.threshold)
 
 	// nil validator set -> 0
-	v2 := NewVotingFromValidatorSet(nil)
+	v2 := NewVotingFromValidatorSet[apptypes.ExternalBlock](nil)
 	require.True(t, v2.totalVotingPower.IsZero())
 	require.True(t, v2.threshold.IsZero())
 }
@@ -91,7 +91,7 @@ func TestNewVotingFromValidatorSet_SumsStakes(t *testing.T) {
 // --- AddVote / GetVotes ---
 
 func TestAddVote_And_GetVotes(t *testing.T) {
-	v := NewVoting(uint256.NewInt(9)) // threshold = ceil(6)+1=7
+	v := NewVoting[apptypes.ExternalBlock](uint256.NewInt(9)) // threshold = ceil(6)+1=7
 	b := block(1, 100, 0xAA)
 
 	// start 0
@@ -117,22 +117,22 @@ func TestAddVote_And_GetVotes(t *testing.T) {
 }
 
 func TestAddVote_ZeroPower_NoOp(t *testing.T) {
-	v := NewVoting(uint256.NewInt(5))
+	v := NewVoting[apptypes.ExternalBlock](uint256.NewInt(5))
 	b := block(2, 42, 0x01)
 
 	v.AddVote(b, uint256.NewInt(0))
 	require.True(t, v.GetVotes(b).IsZero())
 }
 
-// --- FinalizedBlocks ---
+// --- Finalized ---
 
 func TestFinalizedBlocks_ZeroThreshold_ReturnsNil(t *testing.T) {
-	v := NewVoting(uint256.NewInt(0)) // threshold=0
-	require.Nil(t, v.FinalizedBlocks())
+	v := NewVoting[apptypes.ExternalBlock](uint256.NewInt(0)) // threshold=0
+	require.Nil(t, v.Finalized())
 }
 
 func TestFinalizedBlocks_ReturnsAllMeetingThreshold(t *testing.T) {
-	v := NewVoting(uint256.NewInt(10)) // threshold = ceil(6.66)+1 = 8
+	v := NewVoting[apptypes.ExternalBlock](uint256.NewInt(10)) // threshold = ceil(6.66)+1 = 8
 	// chain 1
 	b1 := block(1, 100, 0x01)
 	b2 := block(1, 100, 0x02)
@@ -148,7 +148,7 @@ func TestFinalizedBlocks_ReturnsAllMeetingThreshold(t *testing.T) {
 	// above threshold
 	v.AddVote(b3, uint256.NewInt(9)) // > 8
 
-	final := v.FinalizedBlocks()
+	final := v.Finalized()
 	// order is not specified; assert set membership
 	require.Len(t, final, 2)
 
@@ -182,7 +182,7 @@ func TestFinalizedBlocks_ReturnsAllMeetingThreshold(t *testing.T) {
 
 func TestFinalizedBlocks_MultipleChainsAndBlocks(t *testing.T) {
 	// total = 6 -> ceil(4)+1 = 5
-	v := NewVoting(uint256.NewInt(6))
+	v := NewVoting[apptypes.ExternalBlock](uint256.NewInt(6))
 
 	// c1-n1-hA: 5 => finalize
 	bA := block(1, 1, 0xA)
@@ -201,7 +201,7 @@ func TestFinalizedBlocks_MultipleChainsAndBlocks(t *testing.T) {
 	bD := block(2, 1, 0xD)
 	v.AddVote(bD, uint256.NewInt(6))
 
-	final := v.FinalizedBlocks()
+	final := v.Finalized()
 	require.Len(t, final, 3)
 
 	// membership checks
@@ -236,7 +236,7 @@ func TestFinalizedBlocks_MultipleChainsAndBlocks(t *testing.T) {
 // --- GetVotes returns a clone (immutability) ---
 
 func TestGetVotes_ReturnsClone_NotAliased(t *testing.T) {
-	v := NewVoting(uint256.NewInt(9))
+	v := NewVoting[apptypes.ExternalBlock](uint256.NewInt(9))
 	b := block(3, 33, 0xCC)
 	v.AddVote(b, uint256.NewInt(4))
 
