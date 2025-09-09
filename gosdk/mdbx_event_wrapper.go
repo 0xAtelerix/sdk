@@ -119,6 +119,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 			var notFoundCycleValset int
 
+			// FIXME: epoch change, update valset accordingly
 			for valset == nil {
 				notFoundCycleValset++
 
@@ -151,7 +152,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 				valset = &ValidatorSet{}
 
-				err = cbor.Unmarshal(valsetData, &evt)
+				err = cbor.Unmarshal(valsetData, &valset)
 				if err != nil {
 					ews.logger.Err(err).
 						Uint32("Epoch", evt.Base.Epoch)
@@ -330,6 +331,8 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) Close() error {
 	}
 
 	ews.txReader.Close()
+
+	ews.appchainDB.Rollback()
 
 	return nil
 }

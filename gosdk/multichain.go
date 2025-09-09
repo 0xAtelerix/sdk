@@ -14,6 +14,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
+	"github.com/mr-tron/base58"
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
@@ -200,7 +201,12 @@ func (sa *MultichainStateAccess) SolanaBlock(
 		return nil, err
 	}
 
-	if string(block.BlockHash[:]) != solBlock.Blockhash {
+	got, err := base58.Decode(solBlock.Blockhash)
+	if err != nil {
+		return nil, err
+	}
+
+	if !bytes.Equal(block.BlockHash[:], got) {
 		return nil, fmt.Errorf(
 			"%w: expected %s, got %s",
 			ErrWrongBlock,

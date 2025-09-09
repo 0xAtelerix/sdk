@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/blocto/solana-go-sdk/client"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ledgerwatch/erigon-lib/kv"
 )
 
@@ -41,6 +43,10 @@ type Batch[appTx AppTransaction[R], R Receipt] struct {
 
 type ExternalEntity interface {
 	GetEntityID() ExternalID
+}
+
+type ExternalFullBlock interface {
+	gethtypes.Block | client.Block
 }
 
 type ExternalBlock struct {
