@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"net"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
@@ -40,15 +42,45 @@ func TestEmitterCall(t *testing.T) {
 				CheckpointBucket: {},
 				ExternalTxBucket: {},
 				BlocksBucket:     {},
+				ValsetBucket:     {},
 			}
 		}).
 		Open()
+	require.NoError(t, err)
+
+	rwTx, err := db.BeginRw(t.Context())
+	require.NoError(t, err)
+
+	valsetMap := map[ValidatorID]Stake{
+		1: 10,
+		2: 20,
+		3: 30,
+	}
+
+	valset := NewValidatorSet(valsetMap)
+
+	var epochKey [4]byte
+
+	epoch := currentEpoch
+	binary.BigEndian.PutUint32(epochKey[:], epoch)
+
+	valsetData, err := cbor.Marshal(valset)
+	require.NoError(t, err)
+
+	err = rwTx.Put(ValsetBucket, epochKey[:], valsetData)
+	require.NoError(t, err)
+
+	err = rwTx.Commit()
+	require.NoError(t, err)
+
+	rwTx.Rollback()
 
 	// Создаем сервер с MDBX
 	srv := NewServer[*CustomTransaction[Receipt]](db, 1, nil)
 	if err != nil {
 		t.Fatalf("Ошибка создания сервера: %v", err)
 	}
+
 	defer srv.appchainDB.Close()
 
 	// Записываем тестовые чекпоинты через WriteCheckpoint
@@ -113,6 +145,8 @@ func TestEmitterCall(t *testing.T) {
 
 			return
 		}
+
+		log.Info().Msg("Сервер на порту 50051 закрыт.")
 	}()
 
 	wg.Wait()
@@ -241,6 +275,7 @@ func TestEmitterCall_PropertyBased(t *testing.T) {
 						CheckpointBucket: {},
 						ExternalTxBucket: {},
 						BlocksBucket:     {},
+						ValsetBucket:     {},
 					}
 				}).
 				Open()
@@ -395,6 +430,7 @@ func TestGetExternalTransactions_PropertyBased(t *testing.T) {
 						CheckpointBucket: {},
 						ExternalTxBucket: {},
 						BlocksBucket:     {},
+						ValsetBucket:     {},
 					}
 				}).
 				Open()

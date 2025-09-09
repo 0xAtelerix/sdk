@@ -42,7 +42,7 @@ type AppchainConfig struct {
 	AppchainDBPath    string
 	EventStreamDir    string
 	TxStreamDir       string
-	MultichainStateDB map[uint32]string
+	MultichainStateDB map[ChainType]string
 	Logger            *zerolog.Logger
 	ValidatorID       string
 }
@@ -178,6 +178,11 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 
 	var eventStream Streamer[appTx, R]
 
+	roTx, err := a.AppchainDB.BeginRo(ctx)
+	if err != nil {
+		return err
+	}
+
 	if streamConstructor == nil {
 		logger.Info().Msg("NewMdbxEventStreamWrapper")
 		eventStream, err = NewMdbxEventStreamWrapper[appTx, R](
@@ -186,6 +191,8 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 			startEventPos,
 			a.TxBatchDB,
 			logger,
+			roTx,
+			a.subscriber,
 		)
 	} else {
 		eventStream, err = streamConstructor(filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
@@ -193,6 +200,8 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 			startEventPos,
 			a.TxBatchDB,
 			logger,
+			roTx,
+			a.subscriber,
 		)
 	}
 

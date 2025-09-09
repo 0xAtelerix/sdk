@@ -16,7 +16,8 @@ const (
 	processedBuckets       = "processed_buckets"
 	eventStreamPositionKey = "event_stream_pos"
 
-	subscriptionBucket = "subscription_bucket" // chainID -> {address|contract}
+	subscriptionBucket = "subscription_bucket"  // chainID -> []{address|contract}
+	ValsetBucket       = "validator_set_bucket" // Epoch -> map[validatorID][stake] // map[uint32][uint64]
 
 	TxBuckets = "txbatch"
 )

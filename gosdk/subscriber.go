@@ -4,31 +4,18 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"slices"
 	"sync"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
 )
 
-type EthereumAddress [EthereumAddressLength]byte
-
-type SolanaAddress [SolanaAddressLength]byte
-
-type Address interface {
-	~[EthereumAddressLength]byte | ~[SolanaAddressLength]byte
-}
-
-const (
-	EthereumAddressLength = 20
-	SolanaAddressLength   = 32
-)
-
 type Subscriber struct {
-	ethContracts map[uint64]map[EthereumAddress]struct{} // chainID -> EthereumContractAddress
-	solAddresses map[uint64]map[SolanaAddress]struct{}   // chainID -> SolanaAddress
+	ethContracts map[ChainType]map[EthereumAddress]struct{} // chainID -> EthereumContractAddress
+	solAddresses map[ChainType]map[SolanaAddress]struct{}   // chainID -> SolanaAddress
 
-	deletedEthContracts map[uint64]map[EthereumAddress]struct{} // chainID -> EthereumContractAddress
-	deletedSolAddresses map[uint64]map[SolanaAddress]struct{}   // chainID -> SolanaAddress
+	deletedEthContracts map[ChainType]map[EthereumAddress]struct{} // chainID -> EthereumContractAddress
+	deletedSolAddresses map[ChainType]map[SolanaAddress]struct{}   // chainID -> SolanaAddress
 
 	mu sync.RWMutex
 }
@@ -42,32 +29,13 @@ func NewSubscriber(ctx context.Context, tx kv.RoDB) (*Subscriber, error) {
 	defer roTx.Rollback()
 
 	sub := &Subscriber{
-		ethContracts:        make(map[uint64]map[EthereumAddress]struct{}),
-		solAddresses:        make(map[uint64]map[SolanaAddress]struct{}),
-		deletedEthContracts: make(map[uint64]map[EthereumAddress]struct{}),
-		deletedSolAddresses: make(map[uint64]map[SolanaAddress]struct{}),
+		ethContracts:        make(map[ChainType]map[EthereumAddress]struct{}),
+		solAddresses:        make(map[ChainType]map[SolanaAddress]struct{}),
+		deletedEthContracts: make(map[ChainType]map[EthereumAddress]struct{}),
+		deletedSolAddresses: make(map[ChainType]map[SolanaAddress]struct{}),
 	}
 
-	err = roTx.ForEach(subscriptionBucket, nil, func(chainIDBytes, addrBytes []byte) error {
-		chainID := binary.BigEndian.Uint64(chainIDBytes)
-
-		switch len(addrBytes) {
-		case EthereumAddressLength:
-			var addr [EthereumAddressLength]byte
-			copy(addr[:], addrBytes)
-
-			sub.ethContracts[chainID][addr] = struct{}{}
-		case SolanaAddressLength:
-			var addr [SolanaAddressLength]byte
-			copy(addr[:], addrBytes)
-
-			sub.solAddresses[chainID][addr] = struct{}{}
-		default:
-			return fmt.Errorf("%w: invalid address length %d", ErrUnknownChain, len(addrBytes))
-		}
-
-		return nil
-	})
+	sub.ethContracts, sub.solAddresses, err = loadAllSubscriptions(roTx)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +43,7 @@ func NewSubscriber(ctx context.Context, tx kv.RoDB) (*Subscriber, error) {
 	return sub, nil
 }
 
-func (s *Subscriber) SubscribeEthContract(chainID uint64, contract EthereumAddress) {
+func (s *Subscriber) SubscribeEthContract(chainID ChainType, contracts ...EthereumAddress) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -83,10 +51,17 @@ func (s *Subscriber) SubscribeEthContract(chainID uint64, contract EthereumAddre
 		s.ethContracts[chainID] = make(map[EthereumAddress]struct{})
 	}
 
-	s.ethContracts[chainID][contract] = struct{}{}
+	for _, contract := range contracts {
+		delete(s.deletedEthContracts[chainID], contract)
+		s.ethContracts[chainID][contract] = struct{}{}
+	}
 }
 
-func (s *Subscriber) UnsubscribeEthContract(chainID uint64, contract EthereumAddress) {
+func (s *Subscriber) UnsubscribeEthContract(chainID ChainType, contracts ...EthereumAddress) {
+	if len(contracts) == 0 {
+		return
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -94,11 +69,18 @@ func (s *Subscriber) UnsubscribeEthContract(chainID uint64, contract EthereumAdd
 		return
 	}
 
-	delete(s.ethContracts[chainID], contract)
-	s.deletedEthContracts[chainID][contract] = struct{}{}
+	if _, ok := s.deletedEthContracts[chainID]; !ok {
+		s.deletedEthContracts[chainID] = make(map[EthereumAddress]struct{})
+	}
+
+	for _, contract := range contracts {
+		delete(s.ethContracts[chainID], contract)
+
+		s.deletedEthContracts[chainID][contract] = struct{}{}
+	}
 }
 
-func (s *Subscriber) IsEthSubscription(chainID uint64, contract EthereumAddress) bool {
+func (s *Subscriber) IsEthSubscription(chainID ChainType, contract EthereumAddress) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -106,25 +88,30 @@ func (s *Subscriber) IsEthSubscription(chainID uint64, contract EthereumAddress)
 		return false
 	}
 
-	if _, ok := s.ethContracts[chainID][contract]; !ok {
-		return false
-	}
+	_, ok := s.ethContracts[chainID][contract]
 
-	return true
+	return ok
 }
 
-func (s *Subscriber) SubscribeSolanaAddress(chainID uint64, address SolanaAddress) {
+func (s *Subscriber) SubscribeSolanaAddress(chainID ChainType, addresses ...SolanaAddress) {
+	if len(addresses) == 0 {
+		return
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.ethContracts[chainID]; !ok {
+	if _, ok := s.solAddresses[chainID]; !ok {
 		s.solAddresses[chainID] = make(map[SolanaAddress]struct{})
 	}
 
-	s.solAddresses[chainID][address] = struct{}{}
+	for _, address := range addresses {
+		delete(s.deletedSolAddresses[chainID], address)
+		s.solAddresses[chainID][address] = struct{}{}
+	}
 }
 
-func (s *Subscriber) IsSolanaSubscription(chainID uint64, address SolanaAddress) bool {
+func (s *Subscriber) IsSolanaSubscription(chainID ChainType, address SolanaAddress) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -139,7 +126,11 @@ func (s *Subscriber) IsSolanaSubscription(chainID uint64, address SolanaAddress)
 	return true
 }
 
-func (s *Subscriber) UnsubscribeSolanaAddress(chainID uint64, address SolanaAddress) {
+func (s *Subscriber) UnsubscribeSolanaAddress(chainID ChainType, addresses ...SolanaAddress) {
+	if len(addresses) == 0 {
+		return
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -147,127 +138,173 @@ func (s *Subscriber) UnsubscribeSolanaAddress(chainID uint64, address SolanaAddr
 		return
 	}
 
-	delete(s.solAddresses[chainID], address)
-	s.deletedSolAddresses[chainID][address] = struct{}{}
+	if _, ok := s.deletedSolAddresses[chainID]; !ok {
+		s.deletedSolAddresses[chainID] = make(map[SolanaAddress]struct{})
+	}
+
+	for _, address := range addresses {
+		delete(s.solAddresses[chainID], address)
+
+		s.deletedSolAddresses[chainID][address] = struct{}{}
+	}
 }
 
 func (s *Subscriber) Store(tx kv.RwTx) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	err := deleteChainAddresses(tx, s.deletedEthContracts)
+	evmSet, solSet, err := loadAllSubscriptions(tx)
 	if err != nil {
 		return err
 	}
 
-	err = deleteChainAddresses(tx, s.deletedSolAddresses)
-	if err != nil {
-		return err
-	}
-
-	err = putChainAddresses(tx, s.ethContracts)
-	if err != nil {
-		return err
-	}
-
-	return putChainAddresses(tx, s.solAddresses)
-}
-
-type chainAddresses[T Address] struct {
-	chainID   uint64
-	addresses []T
-}
-
-func cmpAddr[T Address](a, b T) int {
-	for i := range len(a) {
-		if a[i] < b[i] {
-			return -1
-		}
-
-		if a[i] > b[i] {
-			return 1
+	// Ensure inner maps exist for chains referenced by pending ops
+	for chainID := range s.ethContracts {
+		if evmSet[chainID] == nil {
+			evmSet[chainID] = make(map[EthereumAddress]struct{})
 		}
 	}
 
-	return 0
-}
-
-func sortChainAddresses[T Address](items []chainAddresses[T]) {
-	slices.SortFunc(items, func(a, b chainAddresses[T]) int {
-		switch {
-		case a.chainID < b.chainID:
-			return -1
-		case a.chainID > b.chainID:
-			return 1
-		default:
-			return 0
+	for chainID := range s.deletedEthContracts {
+		if evmSet[chainID] == nil {
+			evmSet[chainID] = make(map[EthereumAddress]struct{})
 		}
-	})
-
-	for i := range items {
-		slices.SortFunc(items[i].addresses, cmpAddr[T])
-	}
-}
-
-func collectChainAddresses[T Address](m map[uint64]map[T]struct{}) []chainAddresses[T] {
-	out := make([]chainAddresses[T], 0, len(m))
-
-	for chainID, set := range m {
-		ca := chainAddresses[T]{
-			chainID:   chainID,
-			addresses: make([]T, 0, len(set)),
-		}
-
-		for addr := range set {
-			ca.addresses = append(ca.addresses, addr)
-		}
-
-		out = append(out, ca)
 	}
 
-	sortChainAddresses(out)
+	for chainID := range s.solAddresses {
+		if solSet[chainID] == nil {
+			solSet[chainID] = make(map[SolanaAddress]struct{})
+		}
+	}
 
-	return out
-}
+	for chainID := range s.deletedSolAddresses {
+		if solSet[chainID] == nil {
+			solSet[chainID] = make(map[SolanaAddress]struct{})
+		}
+	}
 
-func deleteChainAddresses[T Address](tx kv.RwTx, m map[uint64]map[T]struct{}) error {
-	items := collectChainAddresses(m)
+	// 2) Apply deletes (remove from sets)
+	for chainID, delSet := range s.deletedEthContracts {
+		for addr := range delSet {
+			delete(evmSet[chainID], addr)
+		}
+	}
 
-	var (
-		key [8]byte
-		err error
-	)
+	for chainID, delSet := range s.deletedSolAddresses {
+		for addr := range delSet {
+			delete(solSet[chainID], addr)
+		}
+	}
 
-	for _, ca := range items {
-		binary.BigEndian.PutUint64(key[:], ca.chainID)
+	// 3) Apply appends (merge additions)
+	for chainID, addSet := range s.ethContracts {
+		for addr := range addSet {
+			evmSet[chainID][addr] = struct{}{}
+		}
+	}
 
-		if err = tx.Delete(subscriptionBucket, key[:]); err != nil {
+	for chainID, addSet := range s.solAddresses {
+		for addr := range addSet {
+			solSet[chainID][addr] = struct{}{}
+		}
+	}
+
+	// 4) Sort (deterministic ordering)
+	evmItems := CollectChainAddresses(evmSet) // []chainAddresses[EthereumAddress]
+	solItems := CollectChainAddresses(solSet) // []chainAddresses[SolanaAddress]
+
+	// 5) Write back (CBOR per chain)
+	// EVM
+	for _, ca := range evmItems {
+		if err = putChainAddresses(tx, ca.chainID, ca.addresses); err != nil {
 			return err
 		}
 	}
 
-	return nil
-}
-
-func putChainAddresses[T Address](tx kv.RwTx, m map[uint64]map[T]struct{}) error {
-	items := collectChainAddresses(m)
-
-	var (
-		key [8]byte
-		err error
-	)
-
-	for _, ca := range items {
-		binary.BigEndian.PutUint64(key[:], ca.chainID)
-
-		for _, addr := range ca.addresses {
-			if err = tx.Put(subscriptionBucket, key[:], bytesOf(addr)); err != nil {
-				return err
-			}
+	// SOL
+	for _, ca := range solItems {
+		if err = putChainAddresses(tx, ca.chainID, ca.addresses); err != nil {
+			return err
 		}
 	}
 
+	// Clear the deleted maps after successful persist
+	s.deletedEthContracts = make(map[ChainType]map[EthereumAddress]struct{})
+	s.deletedSolAddresses = make(map[ChainType]map[SolanaAddress]struct{})
+
 	return nil
+}
+
+// loadAllSubscriptions reads the whole subscription bucket and returns
+// two in-memory sets: EVM and Solana, keyed by chainID then address.
+func loadAllSubscriptions(tx kv.Tx) (
+	map[ChainType]map[EthereumAddress]struct{},
+	map[ChainType]map[SolanaAddress]struct{},
+	error,
+) {
+	evm := make(map[ChainType]map[EthereumAddress]struct{})
+	sol := make(map[ChainType]map[SolanaAddress]struct{})
+
+	err := tx.ForEach(subscriptionBucket, nil, func(chainIDBytes, addrBytes []byte) error {
+		chainID := ChainType(binary.BigEndian.Uint64(chainIDBytes))
+
+		if IsEvmChain(chainID) {
+			var addrSlice []EthereumAddress
+			if err := cbor.Unmarshal(addrBytes, &addrSlice); err != nil {
+				return err
+			}
+
+			if evm[chainID] == nil {
+				evm[chainID] = make(map[EthereumAddress]struct{})
+			}
+
+			for _, a := range addrSlice {
+				evm[chainID][a] = struct{}{}
+			}
+
+			return nil
+		}
+
+		if IsSolanaChain(chainID) {
+			var addrSlice []SolanaAddress
+			if err := cbor.Unmarshal(addrBytes, &addrSlice); err != nil {
+				return err
+			}
+
+			if sol[chainID] == nil {
+				sol[chainID] = make(map[SolanaAddress]struct{})
+			}
+
+			for _, a := range addrSlice {
+				sol[chainID][a] = struct{}{}
+			}
+
+			return nil
+		}
+
+		return fmt.Errorf("%w: unknown chain type %d", ErrUnknownChain, chainID)
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return evm, sol, nil
+}
+
+func putChainAddresses[T Address](tx kv.RwTx, chainID ChainType, addrs []T) error {
+	var key [8]byte
+	binary.BigEndian.PutUint64(key[:], uint64(chainID))
+
+	if len(addrs) == 0 {
+		return tx.Delete(subscriptionBucket, key[:])
+	}
+
+	data, err := cbor.Marshal(addrs)
+	if err != nil {
+		return err
+	}
+
+	return tx.Put(subscriptionBucket, key[:], data)
 }
 
 func bytesOf[T Address](a T) []byte {

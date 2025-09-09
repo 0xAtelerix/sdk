@@ -2,11 +2,14 @@ package gosdk
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
+	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/rs/zerolog"
 
@@ -19,6 +22,8 @@ type MdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 	txReader    kv.RoDB
 	chainID     uint32
 	logger      *zerolog.Logger
+	subscriber  *Subscriber
+	appchainDB  kv.Tx
 }
 
 type EventStreamWrapperConstructor[appTx apptypes.AppTransaction[R], R apptypes.Receipt] func(
@@ -26,7 +31,10 @@ type EventStreamWrapperConstructor[appTx apptypes.AppTransaction[R], R apptypes.
 	chainID uint32,
 	eventStartPos int64,
 	txBatchDB kv.RoDB,
-	logger *zerolog.Logger) (Streamer[appTx, R], error)
+	logger *zerolog.Logger,
+	appchainTx kv.Tx,
+	subscriber *Subscriber,
+) (Streamer[appTx, R], error)
 
 func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	eventsPath string,
@@ -34,6 +42,8 @@ func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Rece
 	eventStartPos int64,
 	txBatchDB kv.RoDB,
 	logger *zerolog.Logger,
+	appchainDB kv.Tx,
+	subscriber *Subscriber,
 ) (*MdbxEventStreamWrapper[appTx, R], error) {
 	eventReader, err := NewEventReader(eventsPath, eventStartPos)
 	if err != nil {
@@ -45,6 +55,8 @@ func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Rece
 		txReader:    txBatchDB,
 		chainID:     chainID,
 		logger:      logger,
+		subscriber:  subscriber,
+		appchainDB:  appchainDB,
 	}, nil
 }
 
@@ -71,6 +83,12 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 	var result []apptypes.Batch[appTx, R] //nolint:prealloc // hard to predict also many cases will be with empty batches
 
+	// getting the valset for the epoch
+	var (
+		valset *ValidatorSet
+		voting *Voting
+	)
+
 	for _, eventBatch := range eventBatches {
 		ews.logger.Debug().
 			Hex("atropos", eventBatch.Atropos[:]).
@@ -88,12 +106,59 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 		tParseEvt := time.Now()
 
+		// TODO: add checkpoint loop
+
 		for _, rawEvent := range eventBatch.Events {
 			var evt apptypes.Event
 
 			//nolint:musttag // false-positive
 			if err := json.Unmarshal(rawEvent, &evt); err != nil {
 				return nil, fmt.Errorf("failed to decode event: %w", err)
+			}
+
+			var notFoundCycleValset int
+
+			for valset == nil {
+				notFoundCycleValset++
+
+				ews.logger.Debug().
+					Int("notFoundCycleValset", notFoundCycleValset).
+					Fields(valset).
+					Msg("timed out waiting for valset")
+
+				if notFoundCycleValset%(1000/50) == 0 {
+					ews.logger.Warn().
+						Int("notFoundCycleValset", notFoundCycleValset).
+						Fields(valset).
+						Msg("timed out waiting for valset")
+				}
+
+				key := [4]byte{}
+				binary.BigEndian.PutUint32(key[:], evt.Base.Epoch)
+
+				valsetData, err := ews.appchainDB.GetOne(ValsetBucket, key[:])
+				if err != nil {
+					ews.logger.Err(err).
+						Uint32("Epoch", evt.Base.Epoch)
+
+					continue
+				}
+
+				if len(valsetData) == 0 {
+					continue
+				}
+
+				valset = &ValidatorSet{}
+
+				err = cbor.Unmarshal(valsetData, &evt)
+				if err != nil {
+					ews.logger.Err(err).
+						Uint32("Epoch", evt.Base.Epoch)
+
+					continue
+				}
+
+				voting = NewVotingFromValidatorSet(valset)
 			}
 
 			for _, batch := range evt.TxPool {
@@ -106,6 +171,15 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 					eventID:   evt.Base.ID,
 					batchHash: batch.Hash,
 				})
+			}
+
+			// voting. BaseEvent Creator+Epoch
+			// if don't have epoch data - block and wait
+			for _, extBlock := range evt.BlockVotes {
+				voting.AddVote(
+					extBlock,
+					uint256.NewInt(uint64(valset.GetStake(ValidatorID(evt.Base.Creator)))),
+				)
 			}
 		}
 
@@ -229,9 +303,10 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 		}
 
 		result = append(result, apptypes.Batch[appTx, R]{
-			Atropos:      eventBatch.Atropos,
-			Transactions: allParsedTxs,
-			EndOffset:    eventBatch.EndOffset,
+			Atropos:        eventBatch.Atropos,
+			Transactions:   allParsedTxs,
+			ExternalBlocks: voting.FinalizedBlocks(),
+			EndOffset:      eventBatch.EndOffset,
 		})
 	}
 
