@@ -2,20 +2,27 @@ package external
 
 import (
 	"context"
+	"errors"
 	"math/big"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-// ExternalTxBuilder provides a unified interface for building external transaction intents
-type ExternalTxBuilder interface {
+// Static errors for validation.
+var (
+	ErrChainIDRequired = errors.New("chainID must be set")
+	ErrAddressRequired = errors.New("to address must be set")
+)
+
+// ExTxBuilder provides a unified interface for building external transaction intents
+type ExTxBuilder interface {
 	// Chain configuration
-	SetChainID(chainID uint64) ExternalTxBuilder
+	SetChainID(chainID uint64) ExTxBuilder
 
 	// Transaction parameters (intent data)
-	SetTo(address string) ExternalTxBuilder
-	SetValue(value *big.Int) ExternalTxBuilder
-	SetData(data []byte) ExternalTxBuilder
+	SetTo(address string) ExTxBuilder
+	SetValue(value *big.Int) ExTxBuilder
+	SetData(data []byte) ExTxBuilder
 
 	// Build the external transaction intent (no signer needed - TSS handles it)
 	Build(ctx context.Context) (*apptypes.ExternalTransaction, error)
@@ -30,7 +37,7 @@ type BaseTxIntent struct {
 }
 
 // Factory function to create chain-specific builders
-func NewExternalTxBuilder(chainType ChainType) ExternalTxBuilder {
+func NewExternalTxBuilder(chainType ChainType) ExTxBuilder {
 	switch chainType {
 	case ChainTypeEVM:
 		return NewEVMTxBuilder()

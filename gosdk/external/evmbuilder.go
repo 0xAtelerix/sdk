@@ -24,32 +24,36 @@ func NewEVMTxBuilder() *EVMTxBuilder {
 	}
 }
 
-func (b *EVMTxBuilder) SetChainID(chainID uint64) ExternalTxBuilder {
+func (b *EVMTxBuilder) SetChainID(chainID uint64) ExTxBuilder {
 	b.chainID = chainID
+
 	return b
 }
 
-func (b *EVMTxBuilder) SetTo(address string) ExternalTxBuilder {
+func (b *EVMTxBuilder) SetTo(address string) ExTxBuilder {
 	b.to = address
+
 	return b
 }
 
-func (b *EVMTxBuilder) SetValue(value *big.Int) ExternalTxBuilder {
+func (b *EVMTxBuilder) SetValue(value *big.Int) ExTxBuilder {
 	if value != nil {
 		b.value = new(big.Int).Set(value)
 	}
+
 	return b
 }
 
-func (b *EVMTxBuilder) SetData(data []byte) ExternalTxBuilder {
+func (b *EVMTxBuilder) SetData(data []byte) ExTxBuilder {
 	b.data = make([]byte, len(data))
 	copy(b.data, data)
+
 	return b
 }
 
-func (b *EVMTxBuilder) Build(ctx context.Context) (*apptypes.ExternalTransaction, error) {
+func (b *EVMTxBuilder) Build(_ context.Context) (*apptypes.ExternalTransaction, error) {
 	if b.chainID == 0 {
-		return nil, fmt.Errorf("chainID must be set")
+		return nil, ErrChainIDRequired
 	}
 
 	// Create intent structure
@@ -78,6 +82,7 @@ func (b *EVMTxBuilder) SetValueEther(ether float64) *EVMTxBuilder {
 	wei := new(big.Float).Mul(big.NewFloat(ether), big.NewFloat(1e18))
 	weiInt, _ := wei.Int(nil)
 	b.value = weiInt
+
 	return b
 }
 
@@ -86,6 +91,7 @@ func (b *EVMTxBuilder) SetValueWei(wei *big.Int) *EVMTxBuilder {
 	if wei != nil {
 		b.value = new(big.Int).Set(wei)
 	}
+
 	return b
 }
 
@@ -93,10 +99,12 @@ func (b *EVMTxBuilder) SetValueWei(wei *big.Int) *EVMTxBuilder {
 // TODO : Will update with more chains
 func (b *EVMTxBuilder) Ethereum() *EVMTxBuilder {
 	b.SetChainID(1)
+
 	return b
 }
 
 func (b *EVMTxBuilder) Polygon() *EVMTxBuilder {
 	b.SetChainID(137)
+
 	return b
 }

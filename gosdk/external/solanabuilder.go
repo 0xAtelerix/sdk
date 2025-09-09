@@ -24,36 +24,40 @@ func NewSolanaTxBuilder() *SolanaTxBuilder {
 	}
 }
 
-func (b *SolanaTxBuilder) SetChainID(chainID uint64) ExternalTxBuilder {
+func (b *SolanaTxBuilder) SetChainID(chainID uint64) ExTxBuilder {
 	b.chainID = chainID
+
 	return b
 }
 
-func (b *SolanaTxBuilder) SetTo(address string) ExternalTxBuilder {
+func (b *SolanaTxBuilder) SetTo(address string) ExTxBuilder {
 	b.to = address
+
 	return b
 }
 
-func (b *SolanaTxBuilder) SetValue(value *big.Int) ExternalTxBuilder {
+func (b *SolanaTxBuilder) SetValue(value *big.Int) ExTxBuilder {
 	if value != nil {
 		b.value = new(big.Int).Set(value)
 	}
+
 	return b
 }
 
-func (b *SolanaTxBuilder) SetData(data []byte) ExternalTxBuilder {
+func (b *SolanaTxBuilder) SetData(data []byte) ExTxBuilder {
 	b.data = make([]byte, len(data))
 	copy(b.data, data)
+
 	return b
 }
 
-func (b *SolanaTxBuilder) Build(ctx context.Context) (*apptypes.ExternalTransaction, error) {
+func (b *SolanaTxBuilder) Build(_ context.Context) (*apptypes.ExternalTransaction, error) {
 	if b.chainID == 0 {
-		return nil, fmt.Errorf("chainID must be set")
+		return nil, ErrChainIDRequired
 	}
 
 	if b.to == "" {
-		return nil, fmt.Errorf("to address must be set")
+		return nil, ErrAddressRequired
 	}
 
 	// Create intent structure
@@ -83,6 +87,7 @@ func (b *SolanaTxBuilder) SetValueSOL(sol float64) *SolanaTxBuilder {
 	lamports := new(big.Float).Mul(big.NewFloat(sol), big.NewFloat(1e9)) // 1 SOL = 1e9 lamports
 	lamportsInt, _ := lamports.Int(nil)
 	b.value = lamportsInt
+
 	return b
 }
 
@@ -91,5 +96,6 @@ func (b *SolanaTxBuilder) SetValueLamports(lamports *big.Int) *SolanaTxBuilder {
 	if lamports != nil {
 		b.value = new(big.Int).Set(lamports)
 	}
+
 	return b
 }

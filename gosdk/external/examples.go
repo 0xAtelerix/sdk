@@ -18,13 +18,13 @@ func ExampleEVMTransfer() {
 		SetTo("0x742d35Cc8AAbc38b9b5d1c16e785b2Ce6b8E7264").
 		SetValue(weiValue).
 		Build(ctx)
-
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
+
 		return
 	}
 
-	fmt.Printf("EVM Transaction Created:\n")
+	fmt.Println("EVM Transaction Created:")
 	fmt.Printf("ChainID: %d\n", extTx.ChainID)
 	fmt.Printf("Tx Data: %s\n", string(extTx.Tx))
 }
@@ -47,13 +47,13 @@ func ExampleEVMContractCall() {
 		SetValue(big.NewInt(0)).                             // No ETH value
 		SetData(contractData).
 		Build(ctx)
-
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
+
 		return
 	}
 
-	fmt.Printf("EVM Contract Call Created:\n")
+	fmt.Println("EVM Contract Call Created:")
 	fmt.Printf("ChainID: %d\n", extTx.ChainID)
 	fmt.Printf("Tx Data: %s\n", string(extTx.Tx))
 }
@@ -70,13 +70,13 @@ func ExampleSolanaTransfer() {
 		SetTo("11111111111111111111111111111112"). // System program
 		SetValue(lamportsValue).
 		Build(ctx)
-
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
+
 		return
 	}
 
-	fmt.Printf("Solana Transaction Created:\n")
+	fmt.Println("Solana Transaction Created:")
 	fmt.Printf("ChainID: %d\n", extTx.ChainID)
 	fmt.Printf("Tx Data: %s\n", string(extTx.Tx))
 }
@@ -96,14 +96,14 @@ func ExampleChainTypeDetection() {
 		SetTo("0x742d35Cc8AAbc38b9b5d1c16e785b2Ce6b8E7264").
 		SetValue(big.NewInt(1000000000000000000)). // 1 ETH in wei
 		Build(ctx)
-
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
+
 		return
 	}
 
 	fmt.Printf("Auto-detected Chain Type: %d\n", chainType)
-	fmt.Printf("Transaction Created:\n")
+	fmt.Println("Transaction Created:")
 	fmt.Printf("ChainID: %d\n", extTx.ChainID)
 	fmt.Printf("Tx Data: %s\n", string(extTx.Tx))
 }
@@ -119,10 +119,22 @@ func ExampleMultipleChains() {
 		to      string
 		value   *big.Int
 	}{
-		{"Ethereum", 1, "0x742d35Cc8AAbc38b9b5d1c16e785b2Ce6b8E7264", big.NewInt(1000000000000000000)},
-		{"Polygon", 137, "0x742d35Cc8AAbc38b9b5d1c16e785b2Ce6b8E7264", big.NewInt(2000000000000000000)},
-		{"Arbitrum", 42161, "0x742d35Cc8AAbc38b9b5d1c16e785b2Ce6b8E7264", big.NewInt(500000000000000000)},
-		{"Solana", 101, "11111111111111111111111111111112", big.NewInt(1000000000)}, // 1 SOL in lamports
+		{
+			"Ethereum", 1, "0x742d35Cc8AAbc38b9b5d1c16e785b2Ce6b8E7264",
+			big.NewInt(1000000000000000000),
+		},
+		{
+			"Polygon", 137, "0x742d35Cc8AAbc38b9b5d1c16e785b2Ce6b8E7264",
+			big.NewInt(2000000000000000000),
+		},
+		{
+			"Arbitrum", 42161, "0x742d35Cc8AAbc38b9b5d1c16e785b2Ce6b8E7264",
+			big.NewInt(500000000000000000),
+		},
+		{
+			"Solana", 101, "11111111111111111111111111111112",
+			big.NewInt(1000000000),
+		}, // 1 SOL in lamports
 	}
 
 	for _, chain := range chains {
@@ -134,9 +146,9 @@ func ExampleMultipleChains() {
 			SetTo(chain.to).
 			SetValue(chain.value).
 			Build(ctx)
-
 		if err != nil {
 			fmt.Printf("Error creating %s transaction: %v\n", chain.name, err)
+
 			continue
 		}
 
