@@ -3,9 +3,9 @@ package gosdk
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
@@ -67,8 +67,7 @@ func (ews *EventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 		for _, rawEvent := range eventBatch.Events {
 			var evt apptypes.Event
 
-			//nolint:musttag // false-positive
-			if err := json.Unmarshal(rawEvent, &evt); err != nil {
+			if err := cbor.Unmarshal(rawEvent, &evt); err != nil {
 				return nil, fmt.Errorf("failed to decode event: %w", err)
 			}
 
@@ -123,7 +122,7 @@ func (ews *EventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 			var parsedTxs []appTx
 			for _, rawTx := range txsRaw.RawTxs {
 				var tx appTx
-				if err := json.Unmarshal(rawTx, &tx); err != nil {
+				if err := cbor.Unmarshal(rawTx, &tx); err != nil {
 					return nil, fmt.Errorf("failed to unmarshal tx: %w", err)
 				}
 

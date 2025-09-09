@@ -1,9 +1,8 @@
-package gosdk
+package receipt
 
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -17,9 +16,9 @@ import (
 
 // TestReceipt is a mock implementation of apptypes.Receipt for testing
 type TestReceipt struct {
-	Hash     [32]byte `json:"hash"`
-	Data     string   `json:"data"`
-	ErrorMsg string   `json:"error_msg,omitempty"`
+	Hash     [32]byte `json:"hash"                cbor:"1,keyasint"`
+	Data     string   `json:"data"                cbor:"2,keyasint"`
+	ErrorMsg string   `json:"error_msg,omitempty" cbor:"3,keyasint,omitempty"`
 }
 
 func (r *TestReceipt) TxHash() [32]byte {
@@ -32,14 +31,6 @@ func (r *TestReceipt) Status() apptypes.TxReceiptStatus {
 	}
 
 	return apptypes.ReceiptConfirmed
-}
-
-func (r *TestReceipt) Marshal() ([]byte, error) {
-	return json.Marshal(r)
-}
-
-func (r *TestReceipt) Unmarshal(data []byte) error {
-	return json.Unmarshal(data, r)
 }
 
 func (r *TestReceipt) Error() string {
@@ -73,7 +64,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 		receipt := createTestReceipt("test-receipt-1", "")
 
 		err := db.Update(context.Background(), func(tx kv.RwTx) error {
-			return storeReceipt(tx, receipt)
+			return StoreReceipt(tx, receipt)
 		})
 		require.NoError(t, err)
 
@@ -85,7 +76,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 
 			var getErr error
 
-			retrievedReceipt, getErr = GetReceipt(tx, txHash[:], &TestReceipt{})
+			retrievedReceipt, getErr = getReceipt(tx, txHash[:], &TestReceipt{})
 
 			return getErr
 		})
@@ -108,7 +99,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 		// Store all receipts
 		err := db.Update(context.Background(), func(tx kv.RwTx) error {
 			for _, receipt := range receipts {
-				if err := storeReceipt(tx, receipt); err != nil {
+				if err := StoreReceipt(tx, receipt); err != nil {
 					return err
 				}
 			}
@@ -127,7 +118,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 
 				txHash := originalReceipt.TxHash()
 
-				retrievedReceipt, getErr = GetReceipt(tx, txHash[:], &TestReceipt{})
+				retrievedReceipt, getErr = getReceipt(tx, txHash[:], &TestReceipt{})
 				if getErr != nil {
 					return getErr
 				}
@@ -148,7 +139,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 		err := db.View(context.Background(), func(tx kv.Tx) error {
 			var receipt TestReceipt
 
-			_, err := GetReceipt(tx, nonExistentHash[:], &receipt)
+			_, err := getReceipt(tx, nonExistentHash[:], &receipt)
 			// Should return an error for non-existent receipt
 			assert.Error(t, err)
 
@@ -156,67 +147,6 @@ func TestStoreAndGetReceipt(t *testing.T) {
 		})
 		require.NoError(t, err)
 	})
-
-	t.Run("store receipt with marshal error", func(t *testing.T) {
-		// Create a receipt that will fail to marshal
-		badReceipt := &BadTestReceipt{
-			Hash: sha256.Sum256([]byte("bad-receipt")),
-		}
-
-		err := db.Update(context.Background(), func(tx kv.RwTx) error {
-			return storeReceipt(tx, badReceipt)
-		})
-		// Should return an error due to marshal failure
-		assert.Error(t, err)
-	})
-
-	t.Run("get receipt with unmarshal error", func(t *testing.T) {
-		// Store valid data but try to unmarshal into bad receipt
-		receipt := createTestReceipt("valid-receipt", "")
-
-		err := db.Update(context.Background(), func(tx kv.RwTx) error {
-			return storeReceipt(tx, receipt)
-		})
-		require.NoError(t, err)
-
-		// Try to retrieve into a bad receipt type
-		err = db.View(context.Background(), func(tx kv.Tx) error {
-			var badReceipt BadTestReceipt
-
-			txHash := receipt.TxHash()
-			_, getErr := GetReceipt(tx, txHash[:], &badReceipt)
-			// Should return an error due to unmarshal failure
-			assert.Error(t, getErr)
-
-			return nil
-		})
-		require.NoError(t, err)
-	})
-}
-
-// BadTestReceipt is a receipt type that fails to marshal/unmarshal for testing error cases
-type BadTestReceipt struct {
-	Hash [32]byte
-}
-
-func (r *BadTestReceipt) TxHash() [32]byte {
-	return r.Hash
-}
-
-func (*BadTestReceipt) Status() apptypes.TxReceiptStatus {
-	return apptypes.ReceiptFailed
-}
-
-func (*BadTestReceipt) Marshal() ([]byte, error) {
-	return nil, assert.AnError // Always return an error
-}
-
-func (*BadTestReceipt) Unmarshal(_ []byte) error {
-	return assert.AnError // Always return an error
-}
-
-func (*BadTestReceipt) Error() string {
-	return ""
 }
 
 func TestReceiptBatchOperations(t *testing.T) {
@@ -245,7 +175,7 @@ func TestReceiptBatchOperations(t *testing.T) {
 		// Store all receipts in a single transaction
 		err := db.Update(context.Background(), func(tx kv.RwTx) error {
 			for _, receipt := range receipts {
-				if err := storeReceipt(tx, receipt); err != nil {
+				if err := StoreReceipt(tx, receipt); err != nil {
 					return err
 				}
 			}
@@ -264,7 +194,7 @@ func TestReceiptBatchOperations(t *testing.T) {
 
 				txHash := originalReceipt.TxHash()
 
-				retrievedReceipt, getErr = GetReceipt(tx, txHash[:], &TestReceipt{})
+				retrievedReceipt, getErr = getReceipt(tx, txHash[:], &TestReceipt{})
 				if getErr != nil {
 					return getErr
 				}
@@ -296,7 +226,7 @@ func BenchmarkStoreReceipt(b *testing.B) {
 			// Create a unique receipt for each iteration
 			testReceipt := createTestReceipt("benchmark-receipt-"+string(rune(i)), "")
 
-			return storeReceipt(tx, testReceipt)
+			return StoreReceipt(tx, testReceipt)
 		})
 		require.NoError(b, err)
 	}
@@ -316,7 +246,7 @@ func BenchmarkGetReceipt(b *testing.B) {
 
 	// Store the receipt first
 	err = db.Update(context.Background(), func(tx kv.RwTx) error {
-		return storeReceipt(tx, receipt)
+		return StoreReceipt(tx, receipt)
 	})
 	require.NoError(b, err)
 
@@ -325,7 +255,7 @@ func BenchmarkGetReceipt(b *testing.B) {
 	for range b.N {
 		err := db.View(context.Background(), func(tx kv.Tx) error {
 			txHash := receipt.TxHash()
-			_, err := GetReceipt(tx, txHash[:], &TestReceipt{})
+			_, err := getReceipt(tx, txHash[:], &TestReceipt{})
 
 			return err
 		})
@@ -350,7 +280,7 @@ func TestReceiptErrorHandling(t *testing.T) {
 		receipt := createTestReceipt("unicode-error", specialErrorMsg)
 
 		err := db.Update(context.Background(), func(tx kv.RwTx) error {
-			return storeReceipt(tx, receipt)
+			return StoreReceipt(tx, receipt)
 		})
 		require.NoError(t, err)
 
@@ -358,7 +288,7 @@ func TestReceiptErrorHandling(t *testing.T) {
 		err = db.View(context.Background(), func(tx kv.Tx) error {
 			txHash := receipt.TxHash()
 
-			retrievedReceipt, getErr := GetReceipt(tx, txHash[:], &TestReceipt{})
+			retrievedReceipt, getErr := getReceipt(tx, txHash[:], &TestReceipt{})
 			if getErr != nil {
 				return getErr
 			}
@@ -379,7 +309,7 @@ func TestReceiptErrorHandling(t *testing.T) {
 		receipt := createTestReceipt("long-error", longError)
 
 		err := db.Update(context.Background(), func(tx kv.RwTx) error {
-			return storeReceipt(tx, receipt)
+			return StoreReceipt(tx, receipt)
 		})
 		require.NoError(t, err)
 
@@ -387,7 +317,7 @@ func TestReceiptErrorHandling(t *testing.T) {
 		err = db.View(context.Background(), func(tx kv.Tx) error {
 			txHash := receipt.TxHash()
 
-			retrievedReceipt, getErr := GetReceipt(tx, txHash[:], &TestReceipt{})
+			retrievedReceipt, getErr := getReceipt(tx, txHash[:], &TestReceipt{})
 			if getErr != nil {
 				return getErr
 			}

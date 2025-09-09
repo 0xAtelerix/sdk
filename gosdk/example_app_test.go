@@ -4,7 +4,6 @@ package gosdk
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"os"
 	"strconv"
 	"time"
@@ -37,14 +36,6 @@ func (ExampleTransaction[R]) Process(
 }
 
 type ExampleReceipt struct{}
-
-func (r ExampleReceipt) Marshal() ([]byte, error) {
-	return json.Marshal(r)
-}
-
-func (r ExampleReceipt) Unmarshal(data []byte) error {
-	return json.Unmarshal(data, &r)
-}
 
 func (ExampleReceipt) TxHash() [32]byte {
 	return [32]byte{}
@@ -83,14 +74,6 @@ func (*ExampleBlock) StateRoot() [32]byte {
 
 func (*ExampleBlock) Bytes() []byte {
 	return []byte{}
-}
-
-func (*ExampleBlock) Marshal() ([]byte, error) {
-	return nil, nil
-}
-
-func (*ExampleBlock) Unmarshal([]byte) error {
-	return nil
 }
 
 func ExampleAppchain() {

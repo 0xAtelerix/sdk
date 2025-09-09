@@ -3,10 +3,10 @@ package gosdk
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/rs/zerolog"
 
@@ -91,8 +91,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 		for _, rawEvent := range eventBatch.Events {
 			var evt apptypes.Event
 
-			//nolint:musttag // false-positive
-			if err := json.Unmarshal(rawEvent, &evt); err != nil {
+			if err := cbor.Unmarshal(rawEvent, &evt); err != nil {
 				return nil, fmt.Errorf("failed to decode event: %w", err)
 			}
 
@@ -215,7 +214,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 			for _, rawTx := range txsRaw {
 				var tx appTx
-				if err := json.Unmarshal(rawTx, &tx); err != nil {
+				if err := cbor.Unmarshal(rawTx, &tx); err != nil {
 					ews.logger.Error().
 						Err(err).
 						Str("json", string(rawTx)).

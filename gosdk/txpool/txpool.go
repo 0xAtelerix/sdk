@@ -3,9 +3,9 @@ package txpool
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
@@ -40,8 +40,8 @@ func NewTxPool[T apptypes.AppTransaction[R], R apptypes.Receipt](db kv.RwDB) *Tx
 // AddTransaction добавляет транзакцию (generic)
 func (p *TxPool[T, R]) AddTransaction(ctx context.Context, tx T) error {
 	return p.db.Update(ctx, func(txn kv.RwTx) error {
-		// Кодируем транзакцию в JSON
-		data, err := json.Marshal(tx)
+		// Кодируем транзакцию в cbor
+		data, err := cbor.Marshal(tx)
 		if err != nil {
 			return err
 		}
@@ -68,8 +68,8 @@ func (p *TxPool[T, R]) GetTransaction(ctx context.Context, hash []byte) (tx T, e
 		return tx, err
 	}
 
-	// Декодируем JSON в объект T
-	err = json.Unmarshal(txData, &tx)
+	// Декодируем cbor в объект T
+	err = cbor.Unmarshal(txData, &tx)
 	if err != nil {
 		return tx, fmt.Errorf(
 			"error while unmarshal getTx result: %w, %d - %q, %T",
@@ -104,7 +104,7 @@ func (p *TxPool[T, R]) GetPendingTransactions(ctx context.Context) ([]T, error) 
 		for k, v, curErr := it.First(); k != nil && curErr == nil; k, v, curErr = it.Next() {
 			var tx T
 
-			curErr = json.Unmarshal(v, &tx)
+			curErr = cbor.Unmarshal(v, &tx)
 			if curErr != nil {
 				continue
 			}
@@ -162,7 +162,7 @@ func (p *TxPool[T, R]) CreateTransactionBatch(ctx context.Context) ([]byte, [][]
 		for _, tx := range transactions {
 			var typedTx T
 
-			err = json.Unmarshal(tx, &typedTx)
+			err = cbor.Unmarshal(tx, &typedTx)
 			if err != nil {
 				return fmt.Errorf("can't serialize tx from txpool: %w", err)
 			}
