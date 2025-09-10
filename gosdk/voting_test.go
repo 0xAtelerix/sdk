@@ -17,9 +17,9 @@ func block(c, n uint64, h0 byte) apptypes.ExternalBlock {
 	return apptypes.ExternalBlock{ChainID: c, BlockNumber: n, BlockHash: h}
 }
 
-// --- Threshold() tests (ceil version) ---
-
 func TestThreshold_ZeroTotal_ReturnsZero(t *testing.T) {
+	t.Parallel()
+
 	got := Threshold(nil)
 	require.True(t, got.IsZero())
 
@@ -28,6 +28,8 @@ func TestThreshold_ZeroTotal_ReturnsZero(t *testing.T) {
 }
 
 func TestThreshold_CeilTwoThirdsPlusOne(t *testing.T) {
+	t.Parallel()
+
 	// table: total -> ceil(2*total/3) + 1
 	cases := []struct {
 		total uint64
@@ -55,6 +57,8 @@ func TestThreshold_CeilTwoThirdsPlusOne(t *testing.T) {
 // --- NewVoting / NewVotingFromValidatorSet ---
 
 func TestNewVoting_StoresCloneAndThreshold(t *testing.T) {
+	t.Parallel()
+
 	total := uint256.NewInt(10)
 	v := NewVoting[apptypes.ExternalBlock](total)
 
@@ -71,6 +75,8 @@ func TestNewVoting_StoresCloneAndThreshold(t *testing.T) {
 }
 
 func TestNewVotingFromValidatorSet_SumsStakes(t *testing.T) {
+	t.Parallel()
+
 	vs := &ValidatorSet{
 		Set: map[ValidatorID]Stake{
 			1: 100,
@@ -91,6 +97,8 @@ func TestNewVotingFromValidatorSet_SumsStakes(t *testing.T) {
 // --- AddVote / GetVotes ---
 
 func TestAddVote_And_GetVotes(t *testing.T) {
+	t.Parallel()
+
 	v := NewVoting[apptypes.ExternalBlock](uint256.NewInt(9)) // threshold = ceil(6)+1=7
 	b := block(1, 100, 0xAA)
 
@@ -117,6 +125,8 @@ func TestAddVote_And_GetVotes(t *testing.T) {
 }
 
 func TestAddVote_ZeroPower_NoOp(t *testing.T) {
+	t.Parallel()
+
 	v := NewVoting[apptypes.ExternalBlock](uint256.NewInt(5))
 	b := block(2, 42, 0x01)
 
@@ -127,11 +137,15 @@ func TestAddVote_ZeroPower_NoOp(t *testing.T) {
 // --- Finalized ---
 
 func TestFinalizedBlocks_ZeroThreshold_ReturnsNil(t *testing.T) {
+	t.Parallel()
+
 	v := NewVoting[apptypes.ExternalBlock](uint256.NewInt(0)) // threshold=0
 	require.Nil(t, v.Finalized())
 }
 
 func TestFinalizedBlocks_ReturnsAllMeetingThreshold(t *testing.T) {
+	t.Parallel()
+
 	v := NewVoting[apptypes.ExternalBlock](uint256.NewInt(10)) // threshold = ceil(6.66)+1 = 8
 	// chain 1
 	b1 := block(1, 100, 0x01)
@@ -181,6 +195,8 @@ func TestFinalizedBlocks_ReturnsAllMeetingThreshold(t *testing.T) {
 }
 
 func TestFinalizedBlocks_MultipleChainsAndBlocks(t *testing.T) {
+	t.Parallel()
+
 	// total = 6 -> ceil(4)+1 = 5
 	v := NewVoting[apptypes.ExternalBlock](uint256.NewInt(6))
 
@@ -236,6 +252,8 @@ func TestFinalizedBlocks_MultipleChainsAndBlocks(t *testing.T) {
 // --- GetVotes returns a clone (immutability) ---
 
 func TestGetVotes_ReturnsClone_NotAliased(t *testing.T) {
+	t.Parallel()
+
 	v := NewVoting[apptypes.ExternalBlock](uint256.NewInt(9))
 	b := block(3, 33, 0xCC)
 	v.AddVote(b, uint256.NewInt(4))

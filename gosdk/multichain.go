@@ -103,7 +103,7 @@ func (sa *MultichainStateAccess) EthBlock(
 		if err != nil {
 			return err
 		}
-		// todo fixme rlp or faster encoding
+
 		return rlp.DecodeBytes(v, &ethBlock)
 	})
 	if err != nil {
@@ -155,7 +155,7 @@ func (sa *MultichainStateAccess) EthReceipts(
 		k, v, err := c.Seek(key)
 		for ; err == nil && len(k) == 44 && bytes.Equal(key[8:8+32], k[8:8+32]); k, v, err = c.Next() {
 			r := gethtypes.Receipt{}
-			// todo fixme rlp or faster encoding
+
 			err = rlp.DecodeBytes(v, &r)
 			if err != nil {
 				return err

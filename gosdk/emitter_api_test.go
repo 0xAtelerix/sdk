@@ -32,6 +32,8 @@ import (
 )
 
 func TestEmitterCall(t *testing.T) {
+	t.Parallel()
+
 	dbPath := t.TempDir()
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -264,6 +266,8 @@ func startGRPCServer[apptx apptypes.AppTransaction[R], R apptypes.Receipt](
 }
 
 func TestEmitterCall_PropertyBased(t *testing.T) {
+	t.Parallel()
+
 	rapid.Check(t, func(tr *rapid.T) {
 		t.Run(tr.Name(), func(t *testing.T) {
 			dbPath := t.TempDir()

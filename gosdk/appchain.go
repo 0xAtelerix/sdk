@@ -491,9 +491,17 @@ func (a *Appchain[STI, appTx, R, AppBlock]) RunEmitterAPI(ctx context.Context) {
 }
 
 func (a *Appchain[STI, appTx, R, AppBlock]) Shutdown() {
-	a.multichainDB.Close()
-	a.TxBatchDB.Close()
-	a.AppchainDB.Close()
+	if a.multichainDB != nil {
+		a.multichainDB.Close()
+	}
+
+	if a.TxBatchDB != nil {
+		a.TxBatchDB.Close()
+	}
+
+	if a.AppchainDB != nil {
+		a.AppchainDB.Close()
+	}
 }
 
 func WriteBlock(rwtx kv.RwTx, blockNumber uint64, blockBytes []byte) error {

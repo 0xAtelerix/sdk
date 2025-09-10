@@ -24,6 +24,10 @@ type MdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 	logger      *zerolog.Logger
 	subscriber  *Subscriber
 	appchainDB  kv.Tx
+
+	valset            *ValidatorSet
+	votingBlocks      *Voting[apptypes.ExternalBlock] // TODO add persistency - store unfinished
+	votingCheckpoints *Voting[apptypes.Checkpoint]    // TODO add persistency - store unfinished
 }
 
 type EventStreamWrapperConstructor[appTx apptypes.AppTransaction[R], R apptypes.Receipt] func(
@@ -107,8 +111,6 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 		tParseEvt := time.Now()
 
-		// TODO: add checkpoint loop
-
 		for _, rawEvent := range eventBatch.Events {
 			var evt apptypes.Event
 
@@ -186,8 +188,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 				})
 			}
 
-			// votingBlocks. BaseEvent Creator+Epoch
-			// if don't have epoch data - block and wait
+			// votingBlocks
 			for _, extBlock := range evt.BlockVotes {
 				votingBlocks.AddVote(
 					extBlock,

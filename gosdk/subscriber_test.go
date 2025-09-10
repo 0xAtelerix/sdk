@@ -29,6 +29,8 @@ func mkSol(b byte) SolanaAddress {
 }
 
 func Test_cmpAddr_Ethereum(t *testing.T) {
+	t.Parallel()
+
 	a := mkEth(1)
 	b := mkEth(2)
 	c := mkEth(1)
@@ -39,6 +41,8 @@ func Test_cmpAddr_Ethereum(t *testing.T) {
 }
 
 func Test_cmpAddr_Solana(t *testing.T) {
+	t.Parallel()
+
 	a := mkSol(1)
 	b := mkSol(2)
 	c := mkSol(1)
@@ -58,6 +62,8 @@ func newSubscriber() *Subscriber {
 }
 
 func Test_sortChainAddresses_Ethereum(t *testing.T) {
+	t.Parallel()
+
 	items := []ChainAddresses[EthereumAddress]{
 		{chainID: 5, addresses: []EthereumAddress{mkEth(3), mkEth(1), mkEth(2)}},
 		{chainID: 1, addresses: []EthereumAddress{mkEth(2), mkEth(1)}},
@@ -76,6 +82,8 @@ func Test_sortChainAddresses_Ethereum(t *testing.T) {
 }
 
 func Test_sortChainAddresses_Solana(t *testing.T) {
+	t.Parallel()
+
 	items := []ChainAddresses[SolanaAddress]{
 		{chainID: 42, addresses: []SolanaAddress{mkSol(7), mkSol(3), mkSol(3), mkSol(4)}},
 		{chainID: 9, addresses: []SolanaAddress{mkSol(2), mkSol(1)}},
@@ -90,6 +98,8 @@ func Test_sortChainAddresses_Solana(t *testing.T) {
 }
 
 func Test_collectChainAddresses_SetsToSlice_Ethereum(t *testing.T) {
+	t.Parallel()
+
 	//nolint:exhaustive // it's a config map for a test
 	m := map[ChainType]map[EthereumAddress]struct{}{
 		10: {
@@ -112,6 +122,8 @@ func Test_collectChainAddresses_SetsToSlice_Ethereum(t *testing.T) {
 }
 
 func Test_collectChainAddresses_SetsToSlice_Solana(t *testing.T) {
+	t.Parallel()
+
 	//nolint:exhaustive // it's a config map for a test
 	m := map[ChainType]map[SolanaAddress]struct{}{
 		5: {
@@ -128,6 +140,8 @@ func Test_collectChainAddresses_SetsToSlice_Solana(t *testing.T) {
 }
 
 func Test_bytesOf_Ethereum(t *testing.T) {
+	t.Parallel()
+
 	a := mkEth(0xAB)
 	b := bytesOf[EthereumAddress](a)
 
@@ -140,6 +154,8 @@ func Test_bytesOf_Ethereum(t *testing.T) {
 }
 
 func Test_bytesOf_Solana(t *testing.T) {
+	t.Parallel()
+
 	a := mkSol(0xCD)
 	b := bytesOf[SolanaAddress](a)
 
@@ -151,6 +167,8 @@ func Test_bytesOf_Solana(t *testing.T) {
 }
 
 func Test_SubscribeEthContract_And_IsEthSubscription(t *testing.T) {
+	t.Parallel()
+
 	s := newSubscriber()
 
 	chainID := ChainType(1)
@@ -167,6 +185,8 @@ func Test_SubscribeEthContract_And_IsEthSubscription(t *testing.T) {
 }
 
 func Test_UnsubscribeEthContract_RemovesFromActive_And_MarksDeleted(t *testing.T) {
+	t.Parallel()
+
 	s := newSubscriber()
 	chainID := ChainType(2)
 	contract := mkEth(0x22)
@@ -199,6 +219,8 @@ func Test_UnsubscribeEthContract_RemovesFromActive_And_MarksDeleted(t *testing.T
 }
 
 func Test_IsSolanaSubscription(t *testing.T) {
+	t.Parallel()
+
 	s := newSubscriber()
 
 	chainID := ChainType(9)
@@ -213,6 +235,8 @@ func Test_IsSolanaSubscription(t *testing.T) {
 }
 
 func Test_UnsubscribeSolanaAddress_RemovesFromActive_And_MarksDeleted(t *testing.T) {
+	t.Parallel()
+
 	s := newSubscriber()
 
 	addr := mkSol(0x33)
@@ -308,6 +332,8 @@ func readAllSubscriptions(
 }
 
 func Test_Store_Persistency_WriteAndReadBack(t *testing.T) {
+	t.Parallel()
+
 	db := openTestDB(t)
 	defer db.Close()
 
@@ -372,6 +398,8 @@ func Test_Store_Persistency_WriteAndReadBack(t *testing.T) {
 }
 
 func Test_Store_Persistency_DeleteThenUpsert(t *testing.T) {
+	t.Parallel()
+
 	db := openTestDB(t)
 	defer db.Close()
 
@@ -412,6 +440,8 @@ func Test_Store_Persistency_DeleteThenUpsert(t *testing.T) {
 }
 
 func Test_Store_Persistency_DeleteWholeChainThenReAdd(t *testing.T) {
+	t.Parallel()
+
 	db := openTestDB(t)
 	defer db.Close()
 
