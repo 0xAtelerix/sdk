@@ -3,6 +3,7 @@ package external
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 )
 
@@ -34,6 +35,7 @@ func TestBasicBuilder(t *testing.T) {
 
 	// Verify payload integrity
 	var receivedPayload map[string]interface{}
+
 	err = json.Unmarshal(ethTx.Tx, &receivedPayload)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal transaction payload: %v", err)
@@ -54,7 +56,11 @@ func TestChainHelperMethods(t *testing.T) {
 		expectedID  uint64
 	}{
 		{"Ethereum", func() *ExTxBuilder { return NewExTxBuilder().Ethereum() }, 1},
-		{"EthereumSepolia", func() *ExTxBuilder { return NewExTxBuilder().EthereumSepolia() }, 11155111},
+		{
+			"EthereumSepolia",
+			func() *ExTxBuilder { return NewExTxBuilder().EthereumSepolia() },
+			11155111,
+		},
 		{"Polygon", func() *ExTxBuilder { return NewExTxBuilder().Polygon() }, 137},
 		{"PolygonAmoy", func() *ExTxBuilder { return NewExTxBuilder().PolygonAmoy() }, 80002},
 		{"BSC", func() *ExTxBuilder { return NewExTxBuilder().BSC() }, 56},
@@ -73,7 +79,12 @@ func TestChainHelperMethods(t *testing.T) {
 			}
 
 			if tx.ChainID != test.expectedID {
-				t.Errorf("Expected ChainID %d for %s, got %d", test.expectedID, test.name, tx.ChainID)
+				t.Errorf(
+					"Expected ChainID %d for %s, got %d",
+					test.expectedID,
+					test.name,
+					tx.ChainID,
+				)
 			}
 		})
 	}
@@ -127,12 +138,11 @@ func TestValidation(t *testing.T) {
 	_, err := NewExTxBuilder().
 		SetPayload([]byte(`{"test": "payload"}`)).
 		Build(ctx)
-
 	if err == nil {
 		t.Error("Expected error for missing chainID, got nil")
 	}
 
-	if err != ErrChainIDRequired {
+	if !errors.Is(err, ErrChainIDRequired) {
 		t.Errorf("Expected ErrChainIDRequired, got %v", err)
 	}
 
@@ -141,7 +151,6 @@ func TestValidation(t *testing.T) {
 		SetChainID(1).
 		SetPayload([]byte(`{"test": "payload"}`)).
 		Build(ctx)
-
 	if err != nil {
 		t.Errorf("Unexpected error for valid transaction: %v", err)
 	}
@@ -180,6 +189,7 @@ func TestAdvancedPayloads(t *testing.T) {
 	}
 
 	var receivedDefiPayload map[string]interface{}
+
 	err = json.Unmarshal(defiTx.Tx, &receivedDefiPayload)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal DeFi payload: %v", err)
@@ -190,7 +200,11 @@ func TestAdvancedPayloads(t *testing.T) {
 	}
 
 	if receivedDefiPayload["protocol"] != defiPayload["protocol"] {
-		t.Errorf("Expected protocol %s, got %s", defiPayload["protocol"], receivedDefiPayload["protocol"])
+		t.Errorf(
+			"Expected protocol %s, got %s",
+			defiPayload["protocol"],
+			receivedDefiPayload["protocol"],
+		)
 	}
 }
 
@@ -227,6 +241,7 @@ func TestGameNFTPayload(t *testing.T) {
 	}
 
 	var receivedGamePayload map[string]interface{}
+
 	err = json.Unmarshal(gameTx.Tx, &receivedGamePayload)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal game payload: %v", err)
@@ -237,7 +252,11 @@ func TestGameNFTPayload(t *testing.T) {
 	}
 
 	if receivedGamePayload["assetId"] != gamePayload["assetId"] {
-		t.Errorf("Expected assetId %s, got %s", gamePayload["assetId"], receivedGamePayload["assetId"])
+		t.Errorf(
+			"Expected assetId %s, got %s",
+			gamePayload["assetId"],
+			receivedGamePayload["assetId"],
+		)
 	}
 }
 
@@ -269,17 +288,22 @@ func TestMultiChainWorkflow(t *testing.T) {
 			tx, err := chain.builder().
 				SetPayload(payloadBytes).
 				Build(ctx)
-
 			if err != nil {
 				t.Fatalf("Error creating %s transaction: %v", chain.name, err)
 			}
 
 			if tx.ChainID != chain.expected {
-				t.Errorf("Expected ChainID %d for %s, got %d", chain.expected, chain.name, tx.ChainID)
+				t.Errorf(
+					"Expected ChainID %d for %s, got %d",
+					chain.expected,
+					chain.name,
+					tx.ChainID,
+				)
 			}
 
 			// Verify payload integrity across chains
 			var receivedPayload map[string]interface{}
+
 			err = json.Unmarshal(tx.Tx, &receivedPayload)
 			if err != nil {
 				t.Fatalf("Failed to unmarshal payload for %s: %v", chain.name, err)
@@ -313,7 +337,6 @@ func TestCustomChain(t *testing.T) {
 		SetChainID(999999).
 		SetPayload(payloadBytes).
 		Build(ctx)
-
 	if err != nil {
 		t.Fatalf("Failed to create custom chain transaction: %v", err)
 	}
@@ -323,6 +346,7 @@ func TestCustomChain(t *testing.T) {
 	}
 
 	var receivedPayload map[string]interface{}
+
 	err = json.Unmarshal(tx.Tx, &receivedPayload)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal custom payload: %v", err)
@@ -333,7 +357,11 @@ func TestCustomChain(t *testing.T) {
 	}
 
 	if receivedPayload["version"] != customPayload["version"] {
-		t.Errorf("Expected version %s, got %s", customPayload["version"], receivedPayload["version"])
+		t.Errorf(
+			"Expected version %s, got %s",
+			customPayload["version"],
+			receivedPayload["version"],
+		)
 	}
 }
 
@@ -354,7 +382,11 @@ func TestTestnetWorkflow(t *testing.T) {
 		builder  func() *ExTxBuilder
 		expected uint64
 	}{
-		{"EthereumSepolia", func() *ExTxBuilder { return NewExTxBuilder().EthereumSepolia() }, 11155111},
+		{
+			"EthereumSepolia",
+			func() *ExTxBuilder { return NewExTxBuilder().EthereumSepolia() },
+			11155111,
+		},
 		{"PolygonAmoy", func() *ExTxBuilder { return NewExTxBuilder().PolygonAmoy() }, 80002},
 		{"BSCTestnet", func() *ExTxBuilder { return NewExTxBuilder().BSCTestnet() }, 97},
 		{"SolanaDevnet", func() *ExTxBuilder { return NewExTxBuilder().SolanaDevnet() }, 901},
@@ -365,13 +397,17 @@ func TestTestnetWorkflow(t *testing.T) {
 			tx, err := testnet.builder().
 				SetPayload(payloadBytes).
 				Build(ctx)
-
 			if err != nil {
 				t.Fatalf("Error deploying to %s: %v", testnet.name, err)
 			}
 
 			if tx.ChainID != testnet.expected {
-				t.Errorf("Expected ChainID %d for %s, got %d", testnet.expected, testnet.name, tx.ChainID)
+				t.Errorf(
+					"Expected ChainID %d for %s, got %d",
+					testnet.expected,
+					testnet.name,
+					tx.ChainID,
+				)
 			}
 		})
 	}
