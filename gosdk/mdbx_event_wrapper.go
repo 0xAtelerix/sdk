@@ -121,6 +121,10 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 			// FIXME: epoch change, update valset accordingly
 			for valset == nil {
+				if notFoundCycleValset != 0 {
+					time.Sleep(time.Millisecond * 50)
+				}
+
 				notFoundCycleValset++
 
 				ews.logger.Debug().
@@ -162,8 +166,6 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 				votingBlocks = NewVotingFromValidatorSet[apptypes.ExternalBlock](valset)
 				votingCheckpoints = NewVotingFromValidatorSet[apptypes.Checkpoint](valset)
-
-				time.Sleep(time.Millisecond * 50)
 			}
 
 			for _, batch := range evt.TxPool {
