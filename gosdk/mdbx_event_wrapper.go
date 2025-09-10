@@ -18,16 +18,14 @@ import (
 )
 
 type MdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
-	eventReader *EventReader
-	txReader    kv.RoDB
-	chainID     uint32
-	logger      *zerolog.Logger
-	subscriber  *Subscriber
-	appchainDB  kv.Tx
-
-	valset            *ValidatorSet
-	votingBlocks      *Voting[apptypes.ExternalBlock] // TODO add persistency - store unfinished
-	votingCheckpoints *Voting[apptypes.Checkpoint]    // TODO add persistency - store unfinished
+	eventReader       *EventReader
+	txReader          kv.RoDB
+	chainID           uint32
+	logger            *zerolog.Logger
+	subscriber        *Subscriber
+	appchainDB        kv.Tx
+	votingBlocks      *Voting[apptypes.ExternalBlock]
+	votingCheckpoints *Voting[apptypes.Checkpoint]
 }
 
 type EventStreamWrapperConstructor[appTx apptypes.AppTransaction[R], R apptypes.Receipt] func(
@@ -38,6 +36,8 @@ type EventStreamWrapperConstructor[appTx apptypes.AppTransaction[R], R apptypes.
 	logger *zerolog.Logger,
 	appchainTx kv.Tx,
 	subscriber *Subscriber,
+	votingBlocks *Voting[apptypes.ExternalBlock],
+	votingCheckpoints *Voting[apptypes.Checkpoint],
 ) (Streamer[appTx, R], error)
 
 func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
@@ -48,6 +48,8 @@ func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Rece
 	logger *zerolog.Logger,
 	appchainDB kv.Tx,
 	subscriber *Subscriber,
+	votingBlocks *Voting[apptypes.ExternalBlock],
+	votingCheckpoints *Voting[apptypes.Checkpoint],
 ) (*MdbxEventStreamWrapper[appTx, R], error) {
 	eventReader, err := NewEventReader(eventsPath, eventStartPos)
 	if err != nil {
@@ -55,12 +57,14 @@ func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Rece
 	}
 
 	return &MdbxEventStreamWrapper[appTx, R]{
-		eventReader: eventReader,
-		txReader:    txBatchDB,
-		chainID:     chainID,
-		logger:      logger,
-		subscriber:  subscriber,
-		appchainDB:  appchainDB,
+		eventReader:       eventReader,
+		txReader:          txBatchDB,
+		chainID:           chainID,
+		logger:            logger,
+		subscriber:        subscriber,
+		appchainDB:        appchainDB,
+		votingBlocks:      votingBlocks,
+		votingCheckpoints: votingCheckpoints,
 	}, nil
 }
 
@@ -88,11 +92,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 	var result []apptypes.Batch[appTx, R] //nolint:prealloc // hard to predict also many cases will be with empty batches
 
 	// getting the valset for the epoch
-	var (
-		valset            *ValidatorSet
-		votingBlocks      *Voting[apptypes.ExternalBlock]
-		votingCheckpoints *Voting[apptypes.Checkpoint]
-	)
+	var valset *ValidatorSet
 
 	for _, eventBatch := range eventBatches {
 		ews.logger.Debug().
@@ -172,8 +172,8 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 					continue
 				}
 
-				votingBlocks = NewVotingFromValidatorSet[apptypes.ExternalBlock](valset)
-				votingCheckpoints = NewVotingFromValidatorSet[apptypes.Checkpoint](valset)
+				ews.votingBlocks.SetValset(valset)
+				ews.votingCheckpoints.SetValset(valset)
 			}
 
 			for _, batch := range evt.TxPool {
@@ -190,16 +190,20 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 			// votingBlocks
 			for _, extBlock := range evt.BlockVotes {
-				votingBlocks.AddVote(
+				ews.votingBlocks.AddVote(
 					extBlock,
 					uint256.NewInt(uint64(valset.GetStake(ValidatorID(evt.Base.Creator)))),
+					evt.Base.Epoch,
+					evt.Base.Creator,
 				)
 			}
 
 			for _, checkpoint := range evt.Appchains {
-				votingCheckpoints.AddVote(
+				ews.votingCheckpoints.AddVote(
 					checkpoint,
 					uint256.NewInt(uint64(valset.GetStake(ValidatorID(evt.Base.Creator)))),
+					evt.Base.Epoch,
+					evt.Base.Creator,
 				)
 			}
 		}
@@ -332,8 +336,8 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 		result = append(result, apptypes.Batch[appTx, R]{
 			Atropos:        eventBatch.Atropos,
 			Transactions:   allParsedTxs,
-			ExternalBlocks: votingBlocks.Finalized(),
-			Checkpoints:    votingCheckpoints.Finalized(),
+			ExternalBlocks: ews.votingBlocks.PopFinalized(),
+			Checkpoints:    ews.votingCheckpoints.PopFinalized(),
 			EndOffset:      eventBatch.EndOffset,
 		})
 	}

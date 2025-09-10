@@ -55,6 +55,14 @@ type ExternalBlock struct {
 	BlockHash   [32]byte
 }
 
+func MakeExternalBlock(chainID uint64, blockNumber uint64, blockHash [32]byte) ExternalBlock {
+	return ExternalBlock{
+		ChainID:     chainID,
+		BlockNumber: blockNumber,
+		BlockHash:   blockHash,
+	}
+}
+
 func (e ExternalBlock) GetEntityID() ExternalID {
 	return ExternalID(e)
 }
@@ -143,6 +151,14 @@ type Checkpoint struct {
 	BlockHash                [32]byte `json:"blockHash"`
 	StateRoot                [32]byte `json:"stateRoot"`
 	ExternalTransactionsRoot [32]byte `json:"externalTransactionsRoot"`
+}
+
+func MakeCheckpoint(chainID uint64, blockNumber uint64, blockHash [32]byte) Checkpoint {
+	return Checkpoint{
+		ChainID:     chainID,
+		BlockNumber: blockNumber,
+		BlockHash:   blockHash,
+	}
 }
 
 func (c Checkpoint) GetEntityID() ExternalID {

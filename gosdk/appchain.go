@@ -183,6 +183,16 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 		return err
 	}
 
+	votingBlocks, err := NewVotingFromStorage(roTx, apptypes.MakeExternalBlock, nil)
+	if err != nil {
+		return err
+	}
+
+	votingCheckpoints, err := NewVotingFromStorage(roTx, apptypes.MakeCheckpoint, nil)
+	if err != nil {
+		return err
+	}
+
 	if streamConstructor == nil {
 		logger.Info().Msg("NewMdbxEventStreamWrapper")
 		eventStream, err = NewMdbxEventStreamWrapper[appTx, R](
@@ -193,6 +203,8 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 			logger,
 			roTx,
 			a.subscriber,
+			votingBlocks,
+			votingCheckpoints,
 		)
 	} else {
 		eventStream, err = streamConstructor(filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
@@ -202,6 +214,8 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 			logger,
 			roTx,
 			a.subscriber,
+			votingBlocks,
+			votingCheckpoints,
 		)
 	}
 
@@ -386,6 +400,21 @@ runFor:
 					logger.Error().Err(err).Msg("Failed to write snapshot pos")
 
 					return fmt.Errorf("failed to write snapshot pos: %w", err)
+				}
+
+				// write voting
+				err = votingBlocks.StoreProgress(rwtx)
+				if err != nil {
+					logger.Error().Err(err).Msg("Failed to store progress block")
+
+					return fmt.Errorf("failed to store progress block: %w", err)
+				}
+
+				err = votingCheckpoints.StoreProgress(rwtx)
+				if err != nil {
+					logger.Error().Err(err).Msg("Failed to store progress checkpoint")
+
+					return fmt.Errorf("failed to store progress checkpoint: %w", err)
 				}
 
 				err = rwtx.Commit()

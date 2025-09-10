@@ -13,4 +13,7 @@ const (
 	ErrNoReceipts     = SDKError("no receipts found")
 
 	ErrWrongBlock = SDKError("wrong block hash")
+
+	ErrUnsupportedEntityType = SDKError("unsupported entity type")
+	ErrMalformedKey          = SDKError("malformed key")
 )

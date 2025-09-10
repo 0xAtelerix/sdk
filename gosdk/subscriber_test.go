@@ -275,7 +275,7 @@ func openTestDB(t *testing.T) kv.RwDB {
 		Path(t.TempDir()).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return kv.TableCfg{
-				subscriptionBucket: {},
+				SubscriptionBucket: {},
 			}
 		}).
 		Open()
@@ -294,7 +294,7 @@ func readAllSubscriptions(
 	gotEth := make(map[ChainType]map[EthereumAddress]struct{})
 	gotSol := make(map[ChainType]map[SolanaAddress]struct{})
 
-	err := tx.ForEach(subscriptionBucket, nil, func(k, v []byte) error {
+	err := tx.ForEach(SubscriptionBucket, nil, func(k, v []byte) error {
 		chain := ChainType(binary.BigEndian.Uint64(k))
 
 		if IsEvmChain(chain) {

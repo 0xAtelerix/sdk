@@ -245,7 +245,7 @@ func loadAllSubscriptions(tx kv.Tx) (
 	evm := make(map[ChainType]map[EthereumAddress]struct{})
 	sol := make(map[ChainType]map[SolanaAddress]struct{})
 
-	err := tx.ForEach(subscriptionBucket, nil, func(chainIDBytes, addrBytes []byte) error {
+	err := tx.ForEach(SubscriptionBucket, nil, func(chainIDBytes, addrBytes []byte) error {
 		chainID := ChainType(binary.BigEndian.Uint64(chainIDBytes))
 
 		if IsEvmChain(chainID) {
@@ -296,7 +296,7 @@ func putChainAddresses[T Address](tx kv.RwTx, chainID ChainType, addrs []T) erro
 	binary.BigEndian.PutUint64(key[:], uint64(chainID))
 
 	if len(addrs) == 0 {
-		return tx.Delete(subscriptionBucket, key[:])
+		return tx.Delete(SubscriptionBucket, key[:])
 	}
 
 	data, err := cbor.Marshal(addrs)
@@ -304,7 +304,7 @@ func putChainAddresses[T Address](tx kv.RwTx, chainID ChainType, addrs []T) erro
 		return err
 	}
 
-	return tx.Put(subscriptionBucket, key[:], data)
+	return tx.Put(SubscriptionBucket, key[:], data)
 }
 
 func bytesOf[T Address](a T) []byte {
