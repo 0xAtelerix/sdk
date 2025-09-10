@@ -121,6 +121,12 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 			// FIXME: epoch change, update valset accordingly
 			for valset == nil {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				default:
+				}
+
 				if notFoundCycleValset != 0 {
 					time.Sleep(time.Millisecond * 50)
 				}
@@ -211,6 +217,12 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 		var notFoundCycle uint64
 
 		for numOfFound := 0; numOfFound < len(txBatches); {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+			}
+
 			if numOfFound != 0 {
 				time.Sleep(time.Millisecond * 50)
 
