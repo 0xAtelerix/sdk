@@ -44,7 +44,7 @@ func SolanaExample() {
 		log.Fatal("Failed to create Solana external transaction:", err)
 	}
 
-	fmt.Printf("Solana External Transaction Created:\n")
+	fmt.Println("Solana External Transaction Created:")
 	fmt.Printf("  Chain ID: %d (Solana Mainnet)\n", tx.ChainID)
 	fmt.Printf("  Payload Size: %d bytes\n", len(tx.Tx))
 
@@ -56,7 +56,7 @@ func SolanaExample() {
 		log.Fatal("Failed to decode Solana transfer:", err)
 	}
 
-	fmt.Printf("Decoded Solana Transfer:\n")
+	fmt.Println("Decoded Solana Transfer:")
 	fmt.Printf("  To: %s\n", decoded.To)
 	fmt.Printf("  Amount: %d lamports (%.2f SOL)\n", decoded.Amount, float64(decoded.Amount)/1e9)
 	fmt.Printf("  Token: %s\n", decoded.Token)
@@ -72,7 +72,7 @@ func MultiChainExample() {
 	fmt.Println("\n=== Multi-Chain: EVM + Solana Example ===")
 
 	// Same logical operation, different encoding formats
-	evmPayload := map[string]interface{}{
+	evmPayload := map[string]any{
 		"action": "transfer",
 		"to":     "0x742d35Cc6493C35b1234567890abcdef",
 		"amount": "1000000000000000000", // 1 ETH
@@ -85,7 +85,13 @@ func MultiChainExample() {
 	}
 
 	// Deploy to EVM chains
-	evmData, _ := json.Marshal(evmPayload)
+	evmData, err := json.Marshal(evmPayload)
+	if err != nil {
+		log.Printf("Failed to marshal EVM payload: %v", err)
+
+		return
+	}
+
 	evmChains := []struct {
 		name    string
 		builder func() *external.ExTxBuilder
@@ -98,11 +104,11 @@ func MultiChainExample() {
 	fmt.Println("EVM Deployments:")
 
 	for _, chain := range evmChains {
-		tx, err := chain.builder().
+		tx, chainErr := chain.builder().
 			SetPayload(evmData).
 			Build(ctx)
-		if err != nil {
-			log.Printf("Failed %s: %v", chain.name, err)
+		if chainErr != nil {
+			log.Printf("Failed %s: %v", chain.name, chainErr)
 
 			continue
 		}
@@ -111,7 +117,12 @@ func MultiChainExample() {
 	}
 
 	// Deploy to Solana
-	solanaData, _ := json.Marshal(solanaPayload)
+	solanaData, err := json.Marshal(solanaPayload)
+	if err != nil {
+		log.Printf("Failed to marshal Solana payload: %v", err)
+
+		return
+	}
 
 	solanaTx, err := external.NewExTxBuilder().
 		SolanaMainnet().

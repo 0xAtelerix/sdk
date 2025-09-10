@@ -10,7 +10,7 @@ import (
 func TestBasicBuilder(t *testing.T) {
 	ctx := context.Background()
 
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"to":    "0x742d35Cc8AAbc38b9b5d1c16e785b2Ce6b8E7264",
 		"value": "1000000000000000000",
 	}
@@ -34,7 +34,7 @@ func TestBasicBuilder(t *testing.T) {
 	}
 
 	// Verify payload integrity
-	var receivedPayload map[string]interface{}
+	var receivedPayload map[string]any
 
 	err = json.Unmarshal(ethTx.Tx, &receivedPayload)
 	if err != nil {
@@ -93,7 +93,7 @@ func TestChainHelperMethods(t *testing.T) {
 func TestSolanaTransactions(t *testing.T) {
 	ctx := context.Background()
 
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"to":       "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
 		"lamports": "1000000000",
 		"program":  "11111111111111111111111111111112",
@@ -164,7 +164,7 @@ func TestAdvancedPayloads(t *testing.T) {
 	ctx := context.Background()
 
 	// Test DeFi swap payload
-	defiPayload := map[string]interface{}{
+	defiPayload := map[string]any{
 		"action":       "swap",
 		"protocol":     "uniswap_v3",
 		"tokenIn":      "0xA0b86a33E6441c9fa6e8Ee5B1234567890abcdef",
@@ -188,7 +188,7 @@ func TestAdvancedPayloads(t *testing.T) {
 		t.Fatalf("Failed to build DeFi transaction: %v", err)
 	}
 
-	var receivedDefiPayload map[string]interface{}
+	var receivedDefiPayload map[string]any
 
 	err = json.Unmarshal(defiTx.Tx, &receivedDefiPayload)
 	if err != nil {
@@ -211,13 +211,13 @@ func TestAdvancedPayloads(t *testing.T) {
 func TestGameNFTPayload(t *testing.T) {
 	ctx := context.Background()
 
-	gamePayload := map[string]interface{}{
+	gamePayload := map[string]any{
 		"action":    "mint",
 		"gameId":    "atelerix-rpg",
 		"playerId":  "player_12345",
 		"assetType": "nft",
 		"assetId":   "legendary_sword_001",
-		"attributes": map[string]interface{}{
+		"attributes": map[string]any{
 			"rarity":       "legendary",
 			"damage":       "150",
 			"durability":   "100",
@@ -240,7 +240,7 @@ func TestGameNFTPayload(t *testing.T) {
 		t.Fatalf("Failed to build game transaction: %v", err)
 	}
 
-	var receivedGamePayload map[string]interface{}
+	var receivedGamePayload map[string]any
 
 	err = json.Unmarshal(gameTx.Tx, &receivedGamePayload)
 	if err != nil {
@@ -263,7 +263,7 @@ func TestGameNFTPayload(t *testing.T) {
 func TestMultiChainWorkflow(t *testing.T) {
 	ctx := context.Background()
 
-	swapPayload := map[string]interface{}{
+	swapPayload := map[string]any{
 		"action":       "swap",
 		"tokenIn":      "0xA0b86a33E6441c9fa6e8Ee5B1234567890abcdef",
 		"tokenOut":     "0xdAC17F958D2ee523a2206206994597C13D831ec7",
@@ -271,7 +271,10 @@ func TestMultiChainWorkflow(t *testing.T) {
 		"minAmountOut": "990000000",
 	}
 
-	payloadBytes, _ := json.Marshal(swapPayload)
+	payloadBytes, err := json.Marshal(swapPayload)
+	if err != nil {
+		t.Fatalf("Failed to marshal swap payload: %v", err)
+	}
 
 	chains := []struct {
 		name     string
@@ -302,7 +305,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 			}
 
 			// Verify payload integrity across chains
-			var receivedPayload map[string]interface{}
+			var receivedPayload map[string]any
 
 			err = json.Unmarshal(tx.Tx, &receivedPayload)
 			if err != nil {
@@ -319,18 +322,21 @@ func TestMultiChainWorkflow(t *testing.T) {
 func TestCustomChain(t *testing.T) {
 	ctx := context.Background()
 
-	customPayload := map[string]interface{}{
+	customPayload := map[string]any{
 		"action":        "custom_operation",
 		"appchain_data": "custom_encoding_here",
 		"version":       "1.0",
-		"metadata": map[string]interface{}{
+		"metadata": map[string]any{
 			"timestamp":   "2024-01-01T00:00:00Z",
 			"priority":    "high",
 			"retry_count": 3,
 		},
 	}
 
-	payloadBytes, _ := json.Marshal(customPayload)
+	payloadBytes, err := json.Marshal(customPayload)
+	if err != nil {
+		t.Fatalf("Failed to marshal custom payload: %v", err)
+	}
 
 	// Test custom chain with explicit chainID
 	tx, err := NewExTxBuilder().
@@ -345,7 +351,7 @@ func TestCustomChain(t *testing.T) {
 		t.Errorf("Expected ChainID 999999, got %d", tx.ChainID)
 	}
 
-	var receivedPayload map[string]interface{}
+	var receivedPayload map[string]any
 
 	err = json.Unmarshal(tx.Tx, &receivedPayload)
 	if err != nil {
@@ -353,7 +359,7 @@ func TestCustomChain(t *testing.T) {
 	}
 
 	if receivedPayload["action"] != customPayload["action"] {
-		t.Errorf("Custom payload corrupted")
+		t.Error("Custom payload corrupted")
 	}
 
 	if receivedPayload["version"] != customPayload["version"] {
@@ -368,14 +374,17 @@ func TestCustomChain(t *testing.T) {
 func TestTestnetWorkflow(t *testing.T) {
 	ctx := context.Background()
 
-	deployPayload := map[string]interface{}{
+	deployPayload := map[string]any{
 		"action":   "deploy",
 		"bytecode": "0x608060405234801561001057600080fd5b50...",
 		"args":     []string{"Atelerix Token", "ATX", "18"},
 		"gasLimit": "2000000",
 	}
 
-	payloadBytes, _ := json.Marshal(deployPayload)
+	payloadBytes, err := json.Marshal(deployPayload)
+	if err != nil {
+		t.Fatalf("Failed to marshal deploy payload: %v", err)
+	}
 
 	testnets := []struct {
 		name     string

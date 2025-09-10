@@ -10,6 +10,11 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+// Errors for ABI decoding.
+var (
+	ErrDataTooShort = errors.New("data too short")
+)
+
 // TransferData represents a token transfer operation
 type TransferData struct {
 	To     common.Address
@@ -81,7 +86,7 @@ func (e *Encoder) EncodeTransfer(data TransferData) ([]byte, error) {
 func (e *Encoder) DecodeTransfer(data []byte) (TransferData, error) {
 	// Remove method selector (first 4 bytes)
 	if len(data) < 4 {
-		return TransferData{}, errors.New("data too short")
+		return TransferData{}, ErrDataTooShort
 	}
 
 	values, err := e.transferABI.Methods["processTransfer"].Inputs.Unpack(data[4:])
@@ -107,7 +112,7 @@ func (e *Encoder) EncodeSwap(data SwapData) ([]byte, error) {
 func (e *Encoder) DecodeSwap(data []byte) (SwapData, error) {
 	// Remove method selector (first 4 bytes)
 	if len(data) < 4 {
-		return SwapData{}, errors.New("data too short")
+		return SwapData{}, ErrDataTooShort
 	}
 
 	values, err := e.swapABI.Methods["processSwap"].Inputs.Unpack(data[4:])
