@@ -125,13 +125,13 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 				ews.logger.Debug().
 					Int("notFoundCycleValset", notFoundCycleValset).
-					Fields(valset).
+					Interface("validator set", valset).
 					Msg("timed out waiting for valset")
 
 				if notFoundCycleValset%(1000/50) == 0 {
 					ews.logger.Warn().
 						Int("notFoundCycleValset", notFoundCycleValset).
-						Fields(valset).
+						Interface("validator set", valset).
 						Msg("timed out waiting for valset")
 				}
 

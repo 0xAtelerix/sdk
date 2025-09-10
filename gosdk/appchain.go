@@ -27,9 +27,9 @@ import (
 )
 
 func WithRootCalculator[STI StateTransitionInterface[AppTx, R],
-	AppTx apptypes.AppTransaction[R],
-	R apptypes.Receipt,
-	AppBlock apptypes.AppchainBlock](rc apptypes.RootCalculator) func(a *Appchain[STI, AppTx, R, AppBlock]) {
+AppTx apptypes.AppTransaction[R],
+R apptypes.Receipt,
+AppBlock apptypes.AppchainBlock](rc apptypes.RootCalculator) func(a *Appchain[STI, AppTx, R, AppBlock]) {
 	return func(a *Appchain[STI, AppTx, R, AppBlock]) {
 		a.rootCalculator = rc
 	}
@@ -60,9 +60,9 @@ func MakeAppchainConfig(chainID uint64) AppchainConfig {
 }
 
 func NewAppchain[STI StateTransitionInterface[AppTx, R],
-	AppTx apptypes.AppTransaction[R],
-	R apptypes.Receipt,
-	AppBlock apptypes.AppchainBlock](
+AppTx apptypes.AppTransaction[R],
+R apptypes.Receipt,
+AppBlock apptypes.AppchainBlock](
 	sti STI,
 	blockBuilder apptypes.AppchainBlockConstructor[AppTx, R, AppBlock],
 	txpool apptypes.TxPoolInterface[AppTx, R],
@@ -207,6 +207,8 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to create event stream")
+
+		roTx.Rollback()
 
 		return fmt.Errorf("failed to create event stream: %w", err)
 	}
