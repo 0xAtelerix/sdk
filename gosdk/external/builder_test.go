@@ -3,226 +3,432 @@ package external
 import (
 	"context"
 	"encoding/json"
-	"math/big"
 	"testing"
 )
 
-func TestEVMTxBuilder(t *testing.T) {
+func TestBasicBuilder(t *testing.T) {
 	ctx := context.Background()
 
-	// Test basic EVM transaction
-	extTx, err := NewEVMTxBuilder().
-		SetChainID(1).
-		SetTo("0x742d35Cc8AAbc38b9b5d1c16e785b2Ce6b8E7264").
-		SetValue(big.NewInt(1000000000000000000)). // 1 ETH
+	payload := map[string]interface{}{
+		"to":    "0x742d35Cc8AAbc38b9b5d1c16e785b2Ce6b8E7264",
+		"value": "1000000000000000000",
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("Failed to marshal payload: %v", err)
+	}
+
+	// Test Ethereum transaction
+	ethTx, err := NewExTxBuilder().
+		Ethereum().
+		SetPayload(payloadBytes).
 		Build(ctx)
 	if err != nil {
-		t.Fatalf("Failed to build EVM transaction: %v", err)
+		t.Fatalf("Failed to build Ethereum transaction: %v", err)
 	}
 
-	if extTx.ChainID != 1 {
-		t.Errorf("Expected ChainID 1, got %d", extTx.ChainID)
+	if ethTx.ChainID != 1 {
+		t.Errorf("Expected ChainID 1, got %d", ethTx.ChainID)
 	}
 
-	// Verify the transaction data can be unmarshaled
-	var intent BaseTxIntent
-
-	err = json.Unmarshal(extTx.Tx, &intent)
+	// Verify payload integrity
+	var receivedPayload map[string]interface{}
+	err = json.Unmarshal(ethTx.Tx, &receivedPayload)
 	if err != nil {
-		t.Fatalf("Failed to unmarshal transaction data: %v", err)
+		t.Fatalf("Failed to unmarshal transaction payload: %v", err)
 	}
 
-	if intent.ChainID != 1 {
-		t.Errorf("Expected intent ChainID 1, got %d", intent.ChainID)
-	}
-
-	if intent.To != "0x742d35Cc8AAbc38b9b5d1c16e785b2Ce6b8E7264" {
-		t.Errorf(
-			"Expected to address 0x742d35Cc8AAbc38b9b5d1c16e785b2Ce6b8E7264, got %s",
-			intent.To,
-		)
-	}
-
-	if intent.Value != "1000000000000000000" {
-		t.Errorf("Expected value 1000000000000000000, got %s", intent.Value)
+	if receivedPayload["to"] != payload["to"] {
+		t.Errorf("Expected to address %s, got %s", payload["to"], receivedPayload["to"])
 	}
 }
 
-func TestSolanaTxBuilder(t *testing.T) {
+func TestChainHelperMethods(t *testing.T) {
 	ctx := context.Background()
+	payload := []byte(`{"test": "payload"}`)
 
-	// Test basic Solana transaction
-	extTx, err := NewSolanaTxBuilder().
-		SetChainID(101).
-		SetTo("11111111111111111111111111111112").
-		SetValue(big.NewInt(1000000000)). // 1 SOL
-		Build(ctx)
-	if err != nil {
-		t.Fatalf("Failed to build Solana transaction: %v", err)
-	}
-
-	if extTx.ChainID != 101 {
-		t.Errorf("Expected ChainID 101, got %d", extTx.ChainID)
-	}
-
-	// Verify the transaction data can be unmarshaled
-	var intent BaseTxIntent
-
-	err = json.Unmarshal(extTx.Tx, &intent)
-	if err != nil {
-		t.Fatalf("Failed to unmarshal transaction data: %v", err)
-	}
-
-	if intent.ChainID != 101 {
-		t.Errorf("Expected intent ChainID 101, got %d", intent.ChainID)
-	}
-
-	if intent.To != "11111111111111111111111111111112" {
-		t.Errorf("Expected to address 11111111111111111111111111111112, got %s", intent.To)
-	}
-
-	if intent.Value != "1000000000" {
-		t.Errorf("Expected value 1000000000, got %s", intent.Value)
-	}
-}
-
-func TestEVMHelperMethods(t *testing.T) {
-	builder := NewEVMTxBuilder()
-
-	// Test SetValueEther
-	builder.SetValueEther(1.5)
-
-	expected := new(big.Int).Mul(big.NewInt(15), big.NewInt(1e17)) // 1.5 ETH in wei
-	if builder.value.Cmp(expected) != 0 {
-		t.Errorf("SetValueEther: expected %s, got %s", expected.String(), builder.value.String())
-	}
-
-	// Test chain configurations
-	ethBuilder := builder.Ethereum()
-
-	if ethBuilder.chainID != 1 {
-		t.Errorf("Ethereum(): expected chainID 1, got %d", ethBuilder.chainID)
-	}
-
-	polygonBuilder := NewEVMTxBuilder().Polygon()
-
-	if polygonBuilder.chainID != 137 {
-		t.Errorf("Polygon(): expected chainID 137, got %d", polygonBuilder.chainID)
-	}
-}
-
-func TestSolanaHelperMethods(t *testing.T) {
-	builder := NewSolanaTxBuilder()
-
-	// Test SetValueSOL
-	builder.SetValueSOL(1.5)
-
-	expected := new(big.Int).Mul(big.NewInt(15), big.NewInt(1e8)) // 1.5 SOL in lamports
-	if builder.value.Cmp(expected) != 0 {
-		t.Errorf("SetValueSOL: expected %s, got %s", expected.String(), builder.value.String())
-	}
-
-	// Test manual chain ID setting (no more network helper methods)
-	builder.SetChainID(101) // Mainnet
-
-	if builder.chainID != 101 {
-		t.Errorf("SetChainID(101): expected chainID 101, got %d", builder.chainID)
-	}
-
-	testnetBuilder := NewSolanaTxBuilder()
-	testnetBuilder.SetChainID(102) // Testnet
-
-	if testnetBuilder.chainID != 102 {
-		t.Errorf("SetChainID(102): expected chainID 102, got %d", testnetBuilder.chainID)
-	}
-}
-
-func TestFactoryFunction(t *testing.T) {
-	ctx := context.Background()
-
-	// Test EVM builder creation
-	evmBuilder := NewExternalTxBuilder(ChainTypeEVM)
-
-	extTx, err := evmBuilder.
-		SetChainID(1).
-		SetTo("0x742d35Cc8AAbc38b9b5d1c16e785b2Ce6b8E7264").
-		SetValue(big.NewInt(1000000000000000000)).
-		Build(ctx)
-	if err != nil {
-		t.Fatalf("Failed to build EVM transaction via factory: %v", err)
-	}
-
-	if extTx.ChainID != 1 {
-		t.Errorf("Expected ChainID 1, got %d", extTx.ChainID)
-	}
-
-	// Test Solana builder creation
-	solanaBuilder := NewExternalTxBuilder(ChainTypeSolana)
-
-	extTx2, err := solanaBuilder.
-		SetChainID(101).
-		SetTo("11111111111111111111111111111112").
-		SetValue(big.NewInt(1000000000)).
-		Build(ctx)
-	if err != nil {
-		t.Fatalf("Failed to build Solana transaction via factory: %v", err)
-	}
-
-	if extTx2.ChainID != 101 {
-		t.Errorf("Expected ChainID 101, got %d", extTx2.ChainID)
-	}
-}
-
-func TestValidationErrors(t *testing.T) {
-	ctx := context.Background()
-
-	// Test missing chainID
-	_, err := NewEVMTxBuilder().
-		SetTo("0x742d35Cc8AAbc38b9b5d1c16e785b2Ce6b8E7264").
-		SetValue(big.NewInt(1000000000000000000)).
-		Build(ctx)
-	if err == nil {
-		t.Error("Expected error for missing chainID")
-	}
-
-	// Test that empty 'to' address is allowed for contract deployment
-	extTx, err := NewEVMTxBuilder().
-		SetChainID(1).
-		SetValue(big.NewInt(0)).
-		SetData([]byte{0x60, 0x80, 0x60, 0x40}). // Contract bytecode
-		Build(ctx)
-	if err != nil {
-		t.Errorf("Expected contract deployment to work with empty 'to', got error: %v", err)
-	}
-
-	if extTx == nil {
-		t.Error("Expected successful contract deployment transaction")
-	}
-}
-
-func TestChainTypeDetection(t *testing.T) {
 	tests := []struct {
-		chainID  uint64
-		expected ChainType
-		desc     string
+		name        string
+		builderFunc func() *ExTxBuilder
+		expectedID  uint64
 	}{
-		{1, ChainTypeEVM, "Ethereum"},
-		{137, ChainTypeEVM, "Polygon"},
-		{101, ChainTypeSolana, "Solana mainnet"},
-		{102, ChainTypeSolana, "Solana testnet"},
-		{103, ChainTypeSolana, "Solana devnet"},
-		{42161, ChainTypeEVM, "Arbitrum"},
-		{10, ChainTypeEVM, "Optimism"},
-		{56, ChainTypeEVM, "BSC"},
+		{"Ethereum", func() *ExTxBuilder { return NewExTxBuilder().Ethereum() }, 1},
+		{"EthereumSepolia", func() *ExTxBuilder { return NewExTxBuilder().EthereumSepolia() }, 11155111},
+		{"Polygon", func() *ExTxBuilder { return NewExTxBuilder().Polygon() }, 137},
+		{"PolygonAmoy", func() *ExTxBuilder { return NewExTxBuilder().PolygonAmoy() }, 80002},
+		{"BSC", func() *ExTxBuilder { return NewExTxBuilder().BSC() }, 56},
+		{"BSCTestnet", func() *ExTxBuilder { return NewExTxBuilder().BSCTestnet() }, 97},
+		{"SolanaMainnet", func() *ExTxBuilder { return NewExTxBuilder().SolanaMainnet() }, 900},
+		{"SolanaDevnet", func() *ExTxBuilder { return NewExTxBuilder().SolanaDevnet() }, 901},
 	}
 
 	for _, test := range tests {
-		result := GetChainType(test.chainID)
-		if result != test.expected {
-			t.Errorf(
-				"%s (ChainID %d): expected %d, got %d",
-				test.desc, test.chainID, test.expected, result,
-			)
-		}
+		t.Run(test.name, func(t *testing.T) {
+			tx, err := test.builderFunc().
+				SetPayload(payload).
+				Build(ctx)
+			if err != nil {
+				t.Fatalf("Failed to build %s transaction: %v", test.name, err)
+			}
+
+			if tx.ChainID != test.expectedID {
+				t.Errorf("Expected ChainID %d for %s, got %d", test.expectedID, test.name, tx.ChainID)
+			}
+		})
+	}
+}
+
+func TestSolanaTransactions(t *testing.T) {
+	ctx := context.Background()
+
+	payload := map[string]interface{}{
+		"to":       "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+		"lamports": "1000000000",
+		"program":  "11111111111111111111111111111112",
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("Failed to marshal payload: %v", err)
+	}
+
+	// Test Solana mainnet
+	mainnetTx, err := NewExTxBuilder().
+		SolanaMainnet().
+		SetPayload(payloadBytes).
+		Build(ctx)
+	if err != nil {
+		t.Fatalf("Failed to build Solana mainnet transaction: %v", err)
+	}
+
+	if mainnetTx.ChainID != 900 {
+		t.Errorf("Expected ChainID 900 for Solana mainnet, got %d", mainnetTx.ChainID)
+	}
+
+	// Test Solana devnet
+	devnetTx, err := NewExTxBuilder().
+		SolanaDevnet().
+		SetPayload(payloadBytes).
+		Build(ctx)
+	if err != nil {
+		t.Fatalf("Failed to build Solana devnet transaction: %v", err)
+	}
+
+	if devnetTx.ChainID != 901 {
+		t.Errorf("Expected ChainID 901 for Solana devnet, got %d", devnetTx.ChainID)
+	}
+}
+
+func TestValidation(t *testing.T) {
+	ctx := context.Background()
+
+	// Test missing chainID
+	_, err := NewExTxBuilder().
+		SetPayload([]byte(`{"test": "payload"}`)).
+		Build(ctx)
+
+	if err == nil {
+		t.Error("Expected error for missing chainID, got nil")
+	}
+
+	if err != ErrChainIDRequired {
+		t.Errorf("Expected ErrChainIDRequired, got %v", err)
+	}
+
+	// Test valid transaction
+	tx, err := NewExTxBuilder().
+		SetChainID(1).
+		SetPayload([]byte(`{"test": "payload"}`)).
+		Build(ctx)
+
+	if err != nil {
+		t.Errorf("Unexpected error for valid transaction: %v", err)
+	}
+
+	if tx.ChainID != 1 {
+		t.Errorf("Expected ChainID 1, got %d", tx.ChainID)
+	}
+}
+
+func TestAdvancedPayloads(t *testing.T) {
+	ctx := context.Background()
+
+	// Test DeFi swap payload
+	defiPayload := map[string]interface{}{
+		"action":       "swap",
+		"protocol":     "uniswap_v3",
+		"tokenIn":      "0xA0b86a33E6441c9fa6e8Ee5B1234567890abcdef",
+		"tokenOut":     "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+		"amountIn":     "5000000000000000000",
+		"minAmountOut": "4950000000",
+		"deadline":     1699564800,
+		"slippage":     "100", // 1%
+	}
+
+	defiBytes, err := json.Marshal(defiPayload)
+	if err != nil {
+		t.Fatalf("Failed to marshal DeFi payload: %v", err)
+	}
+
+	defiTx, err := NewExTxBuilder().
+		Ethereum().
+		SetPayload(defiBytes).
+		Build(ctx)
+	if err != nil {
+		t.Fatalf("Failed to build DeFi transaction: %v", err)
+	}
+
+	var receivedDefiPayload map[string]interface{}
+	err = json.Unmarshal(defiTx.Tx, &receivedDefiPayload)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal DeFi payload: %v", err)
+	}
+
+	if receivedDefiPayload["action"] != defiPayload["action"] {
+		t.Errorf("Expected action %s, got %s", defiPayload["action"], receivedDefiPayload["action"])
+	}
+
+	if receivedDefiPayload["protocol"] != defiPayload["protocol"] {
+		t.Errorf("Expected protocol %s, got %s", defiPayload["protocol"], receivedDefiPayload["protocol"])
+	}
+}
+
+func TestGameNFTPayload(t *testing.T) {
+	ctx := context.Background()
+
+	gamePayload := map[string]interface{}{
+		"action":    "mint",
+		"gameId":    "atelerix-rpg",
+		"playerId":  "player_12345",
+		"assetType": "nft",
+		"assetId":   "legendary_sword_001",
+		"attributes": map[string]interface{}{
+			"rarity":       "legendary",
+			"damage":       "150",
+			"durability":   "100",
+			"enchantments": []string{"fire", "sharpness"},
+			"level":        "50",
+		},
+		"recipient": "0x742d35Cc6493C35b1234567890abcdef",
+	}
+
+	gameBytes, err := json.Marshal(gamePayload)
+	if err != nil {
+		t.Fatalf("Failed to marshal game payload: %v", err)
+	}
+
+	gameTx, err := NewExTxBuilder().
+		Polygon(). // Gaming often uses Polygon for low fees
+		SetPayload(gameBytes).
+		Build(ctx)
+	if err != nil {
+		t.Fatalf("Failed to build game transaction: %v", err)
+	}
+
+	var receivedGamePayload map[string]interface{}
+	err = json.Unmarshal(gameTx.Tx, &receivedGamePayload)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal game payload: %v", err)
+	}
+
+	if receivedGamePayload["gameId"] != gamePayload["gameId"] {
+		t.Errorf("Expected gameId %s, got %s", gamePayload["gameId"], receivedGamePayload["gameId"])
+	}
+
+	if receivedGamePayload["assetId"] != gamePayload["assetId"] {
+		t.Errorf("Expected assetId %s, got %s", gamePayload["assetId"], receivedGamePayload["assetId"])
+	}
+}
+
+func TestMultiChainWorkflow(t *testing.T) {
+	ctx := context.Background()
+
+	swapPayload := map[string]interface{}{
+		"action":       "swap",
+		"tokenIn":      "0xA0b86a33E6441c9fa6e8Ee5B1234567890abcdef",
+		"tokenOut":     "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+		"amountIn":     "1000000000000000000",
+		"minAmountOut": "990000000",
+	}
+
+	payloadBytes, _ := json.Marshal(swapPayload)
+
+	chains := []struct {
+		name     string
+		builder  func() *ExTxBuilder
+		expected uint64
+	}{
+		{"Ethereum", func() *ExTxBuilder { return NewExTxBuilder().Ethereum() }, 1},
+		{"Polygon", func() *ExTxBuilder { return NewExTxBuilder().Polygon() }, 137},
+		{"BSC", func() *ExTxBuilder { return NewExTxBuilder().BSC() }, 56},
+	}
+
+	for _, chain := range chains {
+		t.Run(chain.name, func(t *testing.T) {
+			tx, err := chain.builder().
+				SetPayload(payloadBytes).
+				Build(ctx)
+
+			if err != nil {
+				t.Fatalf("Error creating %s transaction: %v", chain.name, err)
+			}
+
+			if tx.ChainID != chain.expected {
+				t.Errorf("Expected ChainID %d for %s, got %d", chain.expected, chain.name, tx.ChainID)
+			}
+
+			// Verify payload integrity across chains
+			var receivedPayload map[string]interface{}
+			err = json.Unmarshal(tx.Tx, &receivedPayload)
+			if err != nil {
+				t.Fatalf("Failed to unmarshal payload for %s: %v", chain.name, err)
+			}
+
+			if receivedPayload["action"] != swapPayload["action"] {
+				t.Errorf("Payload corrupted for %s chain", chain.name)
+			}
+		})
+	}
+}
+
+func TestCustomChain(t *testing.T) {
+	ctx := context.Background()
+
+	customPayload := map[string]interface{}{
+		"action":        "custom_operation",
+		"appchain_data": "custom_encoding_here",
+		"version":       "1.0",
+		"metadata": map[string]interface{}{
+			"timestamp":   "2024-01-01T00:00:00Z",
+			"priority":    "high",
+			"retry_count": 3,
+		},
+	}
+
+	payloadBytes, _ := json.Marshal(customPayload)
+
+	// Test custom chain with explicit chainID
+	tx, err := NewExTxBuilder().
+		SetChainID(999999).
+		SetPayload(payloadBytes).
+		Build(ctx)
+
+	if err != nil {
+		t.Fatalf("Failed to create custom chain transaction: %v", err)
+	}
+
+	if tx.ChainID != 999999 {
+		t.Errorf("Expected ChainID 999999, got %d", tx.ChainID)
+	}
+
+	var receivedPayload map[string]interface{}
+	err = json.Unmarshal(tx.Tx, &receivedPayload)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal custom payload: %v", err)
+	}
+
+	if receivedPayload["action"] != customPayload["action"] {
+		t.Errorf("Custom payload corrupted")
+	}
+
+	if receivedPayload["version"] != customPayload["version"] {
+		t.Errorf("Expected version %s, got %s", customPayload["version"], receivedPayload["version"])
+	}
+}
+
+func TestTestnetWorkflow(t *testing.T) {
+	ctx := context.Background()
+
+	deployPayload := map[string]interface{}{
+		"action":   "deploy",
+		"bytecode": "0x608060405234801561001057600080fd5b50...",
+		"args":     []string{"Atelerix Token", "ATX", "18"},
+		"gasLimit": "2000000",
+	}
+
+	payloadBytes, _ := json.Marshal(deployPayload)
+
+	testnets := []struct {
+		name     string
+		builder  func() *ExTxBuilder
+		expected uint64
+	}{
+		{"EthereumSepolia", func() *ExTxBuilder { return NewExTxBuilder().EthereumSepolia() }, 11155111},
+		{"PolygonAmoy", func() *ExTxBuilder { return NewExTxBuilder().PolygonAmoy() }, 80002},
+		{"BSCTestnet", func() *ExTxBuilder { return NewExTxBuilder().BSCTestnet() }, 97},
+		{"SolanaDevnet", func() *ExTxBuilder { return NewExTxBuilder().SolanaDevnet() }, 901},
+	}
+
+	for _, testnet := range testnets {
+		t.Run(testnet.name, func(t *testing.T) {
+			tx, err := testnet.builder().
+				SetPayload(payloadBytes).
+				Build(ctx)
+
+			if err != nil {
+				t.Fatalf("Error deploying to %s: %v", testnet.name, err)
+			}
+
+			if tx.ChainID != testnet.expected {
+				t.Errorf("Expected ChainID %d for %s, got %d", testnet.expected, testnet.name, tx.ChainID)
+			}
+		})
+	}
+}
+
+func TestPayloadCopying(t *testing.T) {
+	ctx := context.Background()
+
+	originalPayload := []byte(`{"sensitive": "data"}`)
+
+	tx, err := NewExTxBuilder().
+		Ethereum().
+		SetPayload(originalPayload).
+		Build(ctx)
+	if err != nil {
+		t.Fatalf("Failed to build transaction: %v", err)
+	}
+
+	// Modify original payload to ensure it was copied
+	originalPayload[0] = 'X'
+
+	// Transaction should still have original data
+	if string(tx.Tx) == string(originalPayload) {
+		t.Error("Payload was not properly copied - modification affected transaction")
+	}
+
+	if string(tx.Tx) != `{"sensitive": "data"}` {
+		t.Errorf("Expected transaction to preserve original payload, got %s", string(tx.Tx))
+	}
+}
+
+func TestBuilderChaining(t *testing.T) {
+	ctx := context.Background()
+
+	payload := []byte(`{"test": "chaining"}`)
+
+	// Test that builder methods return the same instance for chaining
+	builder := NewExTxBuilder()
+
+	result1 := builder.Ethereum()
+	result2 := result1.SetPayload(payload)
+
+	// These should all be the same instance
+	if result1 != builder {
+		t.Error("Ethereum() should return the same builder instance")
+	}
+
+	if result2 != builder {
+		t.Error("SetPayload() should return the same builder instance")
+	}
+
+	tx, err := result2.Build(ctx)
+	if err != nil {
+		t.Fatalf("Failed to build chained transaction: %v", err)
+	}
+
+	if tx.ChainID != 1 {
+		t.Errorf("Expected ChainID 1 from chained calls, got %d", tx.ChainID)
 	}
 }

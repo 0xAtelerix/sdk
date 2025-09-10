@@ -2,65 +2,94 @@ package external
 
 import (
 	"context"
-	"errors"
-	"math/big"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-// Static errors for validation.
-var (
-	ErrChainIDRequired = errors.New("chainID must be set")
-	ErrAddressRequired = errors.New("to address must be set")
-)
-
-// ExTxBuilder provides a unified interface for building external transaction intents
-type ExTxBuilder interface {
-	// Chain configuration
-	SetChainID(chainID uint64) ExTxBuilder
-
-	// Transaction parameters (intent data)
-	SetTo(address string) ExTxBuilder
-	SetValue(value *big.Int) ExTxBuilder
-	SetData(data []byte) ExTxBuilder
-
-	// Build the external transaction intent (no signer needed - TSS handles it)
-	Build(ctx context.Context) (*apptypes.ExternalTransaction, error)
+// ExTxBuilder constructs external transaction intents for any chain
+type ExTxBuilder struct {
+	chainID uint64
+	payload []byte
 }
 
-// BaseTxIntent represents the common transaction intent structure for EVM and Solana
-type BaseTxIntent struct {
-	ChainID uint64 `json:"chainId"`
-	To      string `json:"to"`    // Address/Public key
-	Value   string `json:"value"` // Wei/Lamports as string
-	Data    string `json:"data"`  // Hex encoded transaction data
-}
-
-// Factory function to create chain-specific builders
-func NewExternalTxBuilder(chainType ChainType) ExTxBuilder {
-	switch chainType {
-	case ChainTypeEVM:
-		return NewEVMTxBuilder()
-	case ChainTypeSolana:
-		return NewSolanaTxBuilder()
-	default:
-		return NewEVMTxBuilder() // Default to EVM
+// NewExTxBuilder creates a new external transaction builder
+func NewExTxBuilder() *ExTxBuilder {
+	return &ExTxBuilder{
+		payload: []byte{},
 	}
 }
 
-type ChainType uint8
+// SetChainID sets the target chain ID
+func (b *ExTxBuilder) SetChainID(chainID uint64) *ExTxBuilder {
+	b.chainID = chainID
+	return b
+}
 
-const (
-	ChainTypeEVM ChainType = iota
-	ChainTypeSolana
-)
+// SetPayload sets the payload data (appchain-controlled encoding)
+func (b *ExTxBuilder) SetPayload(payload []byte) *ExTxBuilder {
+	b.payload = make([]byte, len(payload))
+	copy(b.payload, payload)
+	return b
+}
 
-// Helper function to determine chain type from chainID
-func GetChainType(chainID uint64) ChainType {
-	switch chainID {
-	case 101, 102, 103: // Solana mainnet, testnet, devnet
-		return ChainTypeSolana
-	default:
-		return ChainTypeEVM // All other chains are EVM-compatible
+// Build creates the external transaction
+func (b *ExTxBuilder) Build(_ context.Context) (*apptypes.ExternalTransaction, error) {
+	if b.chainID == 0 {
+		return nil, ErrChainIDRequired
 	}
+
+	return &apptypes.ExternalTransaction{
+		ChainID: b.chainID,
+		Tx:      b.payload,
+	}, nil
+}
+
+// === HELPER METHODS FOR COMMON CHAINS ===
+
+// Ethereum sets chainID to Ethereum mainnet (1)
+func (b *ExTxBuilder) Ethereum() *ExTxBuilder {
+	b.chainID = 1
+	return b
+}
+
+// EthereumSepolia sets chainID to Ethereum Sepolia testnet (11155111)
+func (b *ExTxBuilder) EthereumSepolia() *ExTxBuilder {
+	b.chainID = 11155111
+	return b
+}
+
+// Polygon sets chainID to Polygon mainnet (137)
+func (b *ExTxBuilder) Polygon() *ExTxBuilder {
+	b.chainID = 137
+	return b
+}
+
+// PolygonAmoy sets chainID to Polygon Amoy testnet (80002)
+func (b *ExTxBuilder) PolygonAmoy() *ExTxBuilder {
+	b.chainID = 80002
+	return b
+}
+
+// BSC sets chainID to Binance Smart Chain mainnet (56)
+func (b *ExTxBuilder) BSC() *ExTxBuilder {
+	b.chainID = 56
+	return b
+}
+
+// BSCTestnet sets chainID to Binance Smart Chain testnet (97)
+func (b *ExTxBuilder) BSCTestnet() *ExTxBuilder {
+	b.chainID = 97
+	return b
+}
+
+// SolanaMainnet sets chainID to Solana mainnet (900)
+func (b *ExTxBuilder) SolanaMainnet() *ExTxBuilder {
+	b.chainID = 900
+	return b
+}
+
+// SolanaDevnet sets chainID to Solana devnet (901)
+func (b *ExTxBuilder) SolanaDevnet() *ExTxBuilder {
+	b.chainID = 901
+	return b
 }
