@@ -23,7 +23,10 @@ import (
 func TestExampleAppchain(t *testing.T) {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
-	config := MakeAppchainConfig(42)
+	config := MakeAppchainConfig(42, map[ChainType]string{
+		// EthereumChainID: args.EthereumBlocksPath, //TODO
+		// SolanaChainID:   args.SolBlocksPath, //TODO
+	})
 
 	stateTransition := BatchProcesser[ExampleTransaction[ExampleReceipt], ExampleReceipt]{}
 

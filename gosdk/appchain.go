@@ -27,9 +27,9 @@ import (
 )
 
 func WithRootCalculator[STI StateTransitionInterface[AppTx, R],
-	AppTx apptypes.AppTransaction[R],
-	R apptypes.Receipt,
-	AppBlock apptypes.AppchainBlock](rc apptypes.RootCalculator) func(a *Appchain[STI, AppTx, R, AppBlock]) {
+AppTx apptypes.AppTransaction[R],
+R apptypes.Receipt,
+AppBlock apptypes.AppchainBlock](rc apptypes.RootCalculator) func(a *Appchain[STI, AppTx, R, AppBlock]) {
 	return func(a *Appchain[STI, AppTx, R, AppBlock]) {
 		a.rootCalculator = rc
 	}
@@ -48,21 +48,22 @@ type AppchainConfig struct {
 }
 
 // todo: it should be stored at the first run and checked on next
-func MakeAppchainConfig(chainID uint64) AppchainConfig {
+func MakeAppchainConfig(chainID uint64, multichainStateDB map[ChainType]string) AppchainConfig {
 	return AppchainConfig{
-		ChainID:        chainID,
-		EmitterPort:    ":50051",
-		PrometheusPort: "",
-		AppchainDBPath: "chaindb",
-		EventStreamDir: "epochs",
-		TxStreamDir:    strconv.FormatUint(chainID, 10),
+		ChainID:           chainID,
+		EmitterPort:       ":50051",
+		PrometheusPort:    "",
+		AppchainDBPath:    "chaindb",
+		EventStreamDir:    "epochs",
+		TxStreamDir:       strconv.FormatUint(chainID, 10),
+		MultichainStateDB: multichainStateDB,
 	}
 }
 
 func NewAppchain[STI StateTransitionInterface[AppTx, R],
-	AppTx apptypes.AppTransaction[R],
-	R apptypes.Receipt,
-	AppBlock apptypes.AppchainBlock](
+AppTx apptypes.AppTransaction[R],
+R apptypes.Receipt,
+AppBlock apptypes.AppchainBlock](
 	sti STI,
 	blockBuilder apptypes.AppchainBlockConstructor[AppTx, R, AppBlock],
 	txpool apptypes.TxPoolInterface[AppTx, R],
@@ -80,14 +81,14 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 		emiterAPI.logger = config.Logger
 	}
 
-	log.Info().Msg("Appchain initialized successfully")
-
 	multichainDB, err := NewMultichainStateAccess(config.MultichainStateDB)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to initialize MultichainStateAccess")
 
 		return Appchain[STI, AppTx, R, AppBlock]{}, err
 	}
+
+	log.Info().Msg("Appchain initialized successfully")
 
 	appchain := Appchain[STI, AppTx, R, AppBlock]{
 		appchainStateExecution: sti,

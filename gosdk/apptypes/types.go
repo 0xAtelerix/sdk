@@ -49,6 +49,14 @@ type ExternalFullBlock interface {
 	gethtypes.Block | client.Block
 }
 
+type ExternalData interface {
+	ExternalFullBlock | ExternalReceipt
+}
+
+type ExternalReceipt interface {
+	client.BlockTransaction | gethtypes.Receipt
+}
+
 type ExternalBlock struct {
 	ChainID     uint64
 	BlockNumber uint64

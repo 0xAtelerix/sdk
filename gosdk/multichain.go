@@ -147,24 +147,18 @@ func (sa *MultichainStateAccess) EthReceipts(
 	var blockReceipts []*gethtypes.Receipt
 
 	err := sa.stateAccessDB[ChainType(block.ChainID)].View(ctx, func(tx kv.Tx) error {
-		c, err := tx.Cursor(EthReceipts)
-		if err != nil {
-			return err
-		}
-
-		k, v, err := c.Seek(key)
-		for ; err == nil && len(k) == 44 && bytes.Equal(key[8:8+32], k[8:8+32]); k, v, err = c.Next() {
+		return tx.ForEach(EthReceipts, key, func(_, v []byte) error {
 			r := gethtypes.Receipt{}
 
-			err = rlp.DecodeBytes(v, &r)
-			if err != nil {
-				return err
+			dbErr := json.Unmarshal(v, &r)
+			if dbErr != nil {
+				return dbErr
 			}
 
 			blockReceipts = append(blockReceipts, &r)
-		}
 
-		return nil
+			return nil
+		})
 	})
 	if err != nil {
 		return nil, err

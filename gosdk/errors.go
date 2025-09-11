@@ -16,4 +16,5 @@ const (
 
 	ErrUnsupportedEntityType = SDKError("unsupported entity type")
 	ErrMalformedKey          = SDKError("malformed key")
+	ErrUnsupportedFixture    = SDKError("unsupported type in FixtureWriter")
 )
