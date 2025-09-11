@@ -1,15 +1,12 @@
 package external
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"testing"
 )
 
 func TestBasicBuilder(t *testing.T) {
-	ctx := context.Background()
-
 	payload := map[string]any{
 		"to":    "0x742d35Cc8AAbc38b9b5d1c16e785b2Ce6b8E7264",
 		"value": "1000000000000000000",
@@ -24,7 +21,7 @@ func TestBasicBuilder(t *testing.T) {
 	ethTx, err := NewExTxBuilder().
 		Ethereum().
 		SetPayload(payloadBytes).
-		Build(ctx)
+		Build()
 	if err != nil {
 		t.Fatalf("Failed to build Ethereum transaction: %v", err)
 	}
@@ -47,7 +44,6 @@ func TestBasicBuilder(t *testing.T) {
 }
 
 func TestChainHelperMethods(t *testing.T) {
-	ctx := context.Background()
 	payload := []byte(`{"test": "payload"}`)
 
 	tests := []struct {
@@ -73,7 +69,7 @@ func TestChainHelperMethods(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			tx, err := test.builderFunc().
 				SetPayload(payload).
-				Build(ctx)
+				Build()
 			if err != nil {
 				t.Fatalf("Failed to build %s transaction: %v", test.name, err)
 			}
@@ -91,8 +87,6 @@ func TestChainHelperMethods(t *testing.T) {
 }
 
 func TestSolanaTransactions(t *testing.T) {
-	ctx := context.Background()
-
 	payload := map[string]any{
 		"to":       "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
 		"lamports": "1000000000",
@@ -108,7 +102,7 @@ func TestSolanaTransactions(t *testing.T) {
 	mainnetTx, err := NewExTxBuilder().
 		SolanaMainnet().
 		SetPayload(payloadBytes).
-		Build(ctx)
+		Build()
 	if err != nil {
 		t.Fatalf("Failed to build Solana mainnet transaction: %v", err)
 	}
@@ -121,7 +115,7 @@ func TestSolanaTransactions(t *testing.T) {
 	devnetTx, err := NewExTxBuilder().
 		SolanaDevnet().
 		SetPayload(payloadBytes).
-		Build(ctx)
+		Build()
 	if err != nil {
 		t.Fatalf("Failed to build Solana devnet transaction: %v", err)
 	}
@@ -132,12 +126,10 @@ func TestSolanaTransactions(t *testing.T) {
 }
 
 func TestValidation(t *testing.T) {
-	ctx := context.Background()
-
 	// Test missing chainID
 	_, err := NewExTxBuilder().
 		SetPayload([]byte(`{"test": "payload"}`)).
-		Build(ctx)
+		Build()
 	if err == nil {
 		t.Error("Expected error for missing chainID, got nil")
 	}
@@ -150,7 +142,7 @@ func TestValidation(t *testing.T) {
 	tx, err := NewExTxBuilder().
 		SetChainID(1).
 		SetPayload([]byte(`{"test": "payload"}`)).
-		Build(ctx)
+		Build()
 	if err != nil {
 		t.Errorf("Unexpected error for valid transaction: %v", err)
 	}
@@ -161,8 +153,6 @@ func TestValidation(t *testing.T) {
 }
 
 func TestAdvancedPayloads(t *testing.T) {
-	ctx := context.Background()
-
 	// Test DeFi swap payload
 	defiPayload := map[string]any{
 		"action":       "swap",
@@ -183,7 +173,7 @@ func TestAdvancedPayloads(t *testing.T) {
 	defiTx, err := NewExTxBuilder().
 		Ethereum().
 		SetPayload(defiBytes).
-		Build(ctx)
+		Build()
 	if err != nil {
 		t.Fatalf("Failed to build DeFi transaction: %v", err)
 	}
@@ -209,8 +199,6 @@ func TestAdvancedPayloads(t *testing.T) {
 }
 
 func TestGameNFTPayload(t *testing.T) {
-	ctx := context.Background()
-
 	gamePayload := map[string]any{
 		"action":    "mint",
 		"gameId":    "atelerix-rpg",
@@ -235,7 +223,7 @@ func TestGameNFTPayload(t *testing.T) {
 	gameTx, err := NewExTxBuilder().
 		Polygon(). // Gaming often uses Polygon for low fees
 		SetPayload(gameBytes).
-		Build(ctx)
+		Build()
 	if err != nil {
 		t.Fatalf("Failed to build game transaction: %v", err)
 	}
@@ -261,8 +249,6 @@ func TestGameNFTPayload(t *testing.T) {
 }
 
 func TestMultiChainWorkflow(t *testing.T) {
-	ctx := context.Background()
-
 	swapPayload := map[string]any{
 		"action":       "swap",
 		"tokenIn":      "0xA0b86a33E6441c9fa6e8Ee5B1234567890abcdef",
@@ -290,7 +276,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 		t.Run(chain.name, func(t *testing.T) {
 			tx, err := chain.builder().
 				SetPayload(payloadBytes).
-				Build(ctx)
+				Build()
 			if err != nil {
 				t.Fatalf("Error creating %s transaction: %v", chain.name, err)
 			}
@@ -320,8 +306,6 @@ func TestMultiChainWorkflow(t *testing.T) {
 }
 
 func TestCustomChain(t *testing.T) {
-	ctx := context.Background()
-
 	customPayload := map[string]any{
 		"action":        "custom_operation",
 		"appchain_data": "custom_encoding_here",
@@ -342,7 +326,7 @@ func TestCustomChain(t *testing.T) {
 	tx, err := NewExTxBuilder().
 		SetChainID(999999).
 		SetPayload(payloadBytes).
-		Build(ctx)
+		Build()
 	if err != nil {
 		t.Fatalf("Failed to create custom chain transaction: %v", err)
 	}
@@ -372,8 +356,6 @@ func TestCustomChain(t *testing.T) {
 }
 
 func TestTestnetWorkflow(t *testing.T) {
-	ctx := context.Background()
-
 	deployPayload := map[string]any{
 		"action":   "deploy",
 		"bytecode": "0x608060405234801561001057600080fd5b50...",
@@ -405,7 +387,7 @@ func TestTestnetWorkflow(t *testing.T) {
 		t.Run(testnet.name, func(t *testing.T) {
 			tx, err := testnet.builder().
 				SetPayload(payloadBytes).
-				Build(ctx)
+				Build()
 			if err != nil {
 				t.Fatalf("Error deploying to %s: %v", testnet.name, err)
 			}
@@ -423,14 +405,12 @@ func TestTestnetWorkflow(t *testing.T) {
 }
 
 func TestPayloadCopying(t *testing.T) {
-	ctx := context.Background()
-
 	originalPayload := []byte(`{"sensitive": "data"}`)
 
 	tx, err := NewExTxBuilder().
 		Ethereum().
 		SetPayload(originalPayload).
-		Build(ctx)
+		Build()
 	if err != nil {
 		t.Fatalf("Failed to build transaction: %v", err)
 	}
@@ -449,8 +429,6 @@ func TestPayloadCopying(t *testing.T) {
 }
 
 func TestBuilderChaining(t *testing.T) {
-	ctx := context.Background()
-
 	payload := []byte(`{"test": "chaining"}`)
 
 	// Test that builder methods return the same instance for chaining
@@ -468,7 +446,7 @@ func TestBuilderChaining(t *testing.T) {
 		t.Error("SetPayload() should return the same builder instance")
 	}
 
-	tx, err := result2.Build(ctx)
+	tx, err := result2.Build()
 	if err != nil {
 		t.Fatalf("Failed to build chained transaction: %v", err)
 	}

@@ -1,8 +1,6 @@
 package external
 
 import (
-	"context"
-
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
@@ -35,12 +33,12 @@ func (b *ExTxBuilder) SetPayload(payload []byte) *ExTxBuilder {
 }
 
 // Build creates the external transaction
-func (b *ExTxBuilder) Build(_ context.Context) (*apptypes.ExternalTransaction, error) {
+func (b *ExTxBuilder) Build() (apptypes.ExternalTransaction, error) {
 	if b.chainID == 0 {
-		return nil, ErrChainIDRequired
+		return apptypes.ExternalTransaction{}, ErrChainIDRequired
 	}
 
-	return &apptypes.ExternalTransaction{
+	return apptypes.ExternalTransaction{
 		ChainID: b.chainID,
 		Tx:      b.payload,
 	}, nil

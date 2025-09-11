@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -18,8 +17,6 @@ type SolanaTransfer struct {
 
 // SolanaExample demonstrates Solana program integration
 func SolanaExample() {
-	ctx := context.Background()
-
 	fmt.Println("=== Solana External Transaction Example ===")
 
 	// 1. Create Solana transfer data
@@ -39,7 +36,7 @@ func SolanaExample() {
 	tx, err := external.NewExTxBuilder().
 		SolanaMainnet().
 		SetPayload(payloadBytes).
-		Build(ctx)
+		Build()
 	if err != nil {
 		log.Fatal("Failed to create Solana external transaction:", err)
 	}
@@ -67,8 +64,6 @@ func SolanaExample() {
 
 // MultiChainExample shows deploying to both EVM and Solana
 func MultiChainExample() {
-	ctx := context.Background()
-
 	fmt.Println("\n=== Multi-Chain: EVM + Solana Example ===")
 
 	// Same logical operation, different encoding formats
@@ -106,7 +101,7 @@ func MultiChainExample() {
 	for _, chain := range evmChains {
 		tx, chainErr := chain.builder().
 			SetPayload(evmData).
-			Build(ctx)
+			Build()
 		if chainErr != nil {
 			log.Printf("Failed %s: %v", chain.name, chainErr)
 
@@ -127,7 +122,7 @@ func MultiChainExample() {
 	solanaTx, err := external.NewExTxBuilder().
 		SolanaMainnet().
 		SetPayload(solanaData).
-		Build(ctx)
+		Build()
 	if err != nil {
 		log.Printf("Failed Solana: %v", err)
 	} else {

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"math/big"
@@ -14,8 +13,6 @@ import (
 
 // TransferExample demonstrates a realistic token transfer flow
 func TransferExample() {
-	ctx := context.Background()
-
 	// 1. Appchain side - encode actual transfer data
 	encoder := appchain.NewEncoder()
 
@@ -34,7 +31,7 @@ func TransferExample() {
 	tx, err := external.NewExTxBuilder().
 		Ethereum().
 		SetPayload(payloadBytes).
-		Build(ctx)
+		Build()
 	if err != nil {
 		log.Fatal("Failed to create external transaction:", err)
 	}
@@ -55,8 +52,6 @@ func TransferExample() {
 
 // Multi-chain example showing same payload on different chains
 func SwapExample() {
-	ctx := context.Background()
-
 	encoder := appchain.NewEncoder()
 
 	swapData := appchain.SwapData{
@@ -88,7 +83,7 @@ func SwapExample() {
 	for _, chain := range chains {
 		tx, err := chain.builder().
 			SetPayload(payloadBytes).
-			Build(ctx)
+			Build()
 		if err != nil {
 			log.Printf("Failed %s: %v", chain.name, err)
 
