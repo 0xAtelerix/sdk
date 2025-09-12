@@ -33,6 +33,10 @@ func (b BatchProcesser[appTx, R]) ProcessBatch(
 
 	for _, externalBlock := range batch.ExternalBlocks {
 		// todo склоняестя ли наш вариант в сторону жесткого космос, где сильно ограничена модификация клиента?
+
+		//TODO: filter blocks with subscription
+		//TODO: get external blocks
+
 		ext, err := b.ProcessBlock(*externalBlock, dbtx)
 		if err != nil {
 			return nil, nil, err

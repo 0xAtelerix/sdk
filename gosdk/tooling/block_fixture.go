@@ -100,7 +100,7 @@ func (fw *FixtureWriter[T]) putEthReceipts(ctx context.Context, recs []*gethtype
 		for i, rc := range recs {
 			k := ethReceiptKey(num, h, uint32(i))
 
-			enc, err := rlp.EncodeToBytes(rc)
+			enc, err := json.Marshal(rc)
 			if err != nil {
 				return err
 			}
