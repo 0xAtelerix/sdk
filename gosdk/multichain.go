@@ -5,12 +5,13 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 
 	"github.com/blocto/solana-go-sdk/client"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/fxamacker/cbor/v2"
+	"github.com/goccy/go-json"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
@@ -18,27 +19,28 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/receipt"
 )
 
 const (
 	ChainIDBucket = "chainid"
 	EthBlocks     = "blocks"
-	EthReceipts   = "receipts"
 	SolanaBlocks  = "solana_blocks"
 )
 
 func EvmTables() kv.TableCfg {
 	return kv.TableCfg{
-		ChainIDBucket: {},
-		EthBlocks:     {},
-		EthReceipts:   {},
+		ChainIDBucket:         {},
+		EthBlocks:             {},
+		receipt.ReceiptBucket: {},
 	}
 }
 
 func SolanaTables() kv.TableCfg {
 	return kv.TableCfg{
-		ChainIDBucket: {},
-		SolanaBlocks:  {},
+		ChainIDBucket:         {},
+		SolanaBlocks:          {},
+		receipt.ReceiptBucket: {},
 	}
 }
 
@@ -147,7 +149,7 @@ func (sa *MultichainStateAccess) EthReceipts(
 	var blockReceipts []*gethtypes.Receipt
 
 	err := sa.stateAccessDB[ChainType(block.ChainID)].View(ctx, func(tx kv.Tx) error {
-		return tx.ForEach(EthReceipts, key, func(_, v []byte) error {
+		return tx.ForEach(receipt.ReceiptBucket, key, func(_, v []byte) error {
 			r := gethtypes.Receipt{}
 
 			dbErr := json.Unmarshal(v, &r)
@@ -189,7 +191,7 @@ func (sa *MultichainStateAccess) SolanaBlock(
 			return err
 		}
 
-		return json.Unmarshal(v, &solBlock)
+		return cbor.Unmarshal(v, &solBlock)
 	})
 	if err != nil {
 		return nil, err

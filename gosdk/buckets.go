@@ -1,6 +1,10 @@
 package gosdk
 
-import "github.com/ledgerwatch/erigon-lib/kv"
+import (
+	"github.com/ledgerwatch/erigon-lib/kv"
+
+	"github.com/0xAtelerix/sdk/gosdk/receipt"
+)
 
 const (
 	CheckpointBucket = "checkpoints"
@@ -11,7 +15,6 @@ const (
 	StateBucket      = "state"
 	Snapshot         = "snapshot"
 	TxSnapshot       = "tx_snapshot"
-	ReceiptBucket    = "receipts" // tx-hash -> receipt
 
 	processedBuckets       = "processed_buckets"
 	eventStreamPositionKey = "event_stream_pos"
@@ -38,7 +41,7 @@ func DefaultTables() kv.TableCfg {
 		ConfigBucket:              {},
 		StateBucket:               {},
 		Snapshot:                  {},
-		ReceiptBucket:             {},
+		receipt.ReceiptBucket:     {},
 		SubscriptionBucket:        {},
 		ValsetBucket:              {},
 		ExternalBlockVotingBucket: {},

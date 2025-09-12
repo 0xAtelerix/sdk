@@ -3,10 +3,10 @@ package apptypes
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 
 	"github.com/blocto/solana-go-sdk/client"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
 )
 
@@ -19,26 +19,18 @@ type Receipt interface {
 	TxHash() [32]byte
 	Status() TxReceiptStatus
 	Error() string
-	Serializible
-	// TODO - Can add more methods later
-}
-
-// How to work with encoding with appchain transactions
-type Serializible interface {
-	Unmarshal(data []byte) error
-	Marshal() (data []byte, err error)
 }
 
 // AppTransaction should be serializible
 type Batch[appTx AppTransaction[R], R Receipt] struct {
-	Atropos        [32]byte
-	Transactions   []appTx
-	ExternalBlocks []*ExternalBlock
-	Checkpoints    []*Checkpoint
+	Atropos        [32]byte         `cbor:"1,keyasint"`
+	Transactions   []appTx          `cbor:"2,keyasint"`
+	ExternalBlocks []*ExternalBlock `cbor:"3,keyasint"`
+	Checkpoints    []*Checkpoint    `cbor:"4,keyasint"`
 	// todo add crossappchain tx
 	// ExternalTransactions [][]byte
-	EndOffset   int64
-	TxEndOffset int64 // txReader.position после чтения
+	EndOffset   int64 `cbor:"5,keyasint"`
+	TxEndOffset int64 `cbor:"6,keyasint"` // txReader.position после чтения
 }
 
 type ExternalEntity interface {
@@ -58,9 +50,9 @@ type ExternalReceipt interface {
 }
 
 type ExternalBlock struct {
-	ChainID     uint64
-	BlockNumber uint64
-	BlockHash   [32]byte
+	ChainID     uint64   `cbor:"1,keyasint"`
+	BlockNumber uint64   `cbor:"2,keyasint"`
+	BlockHash   [32]byte `cbor:"3,keyasint"`
 }
 
 func MakeExternalBlock(chainID uint64, blockNumber uint64, blockHash [32]byte) ExternalBlock {
@@ -76,9 +68,9 @@ func (e ExternalBlock) GetEntityID() ExternalID {
 }
 
 type ExternalID struct {
-	ChainID     uint64
-	BlockNumber uint64
-	BlockHash   [32]byte
+	ChainID     uint64   `cbor:"1,keyasint"`
+	BlockNumber uint64   `cbor:"2,keyasint"`
+	BlockHash   [32]byte `cbor:"3,keyasint"`
 }
 
 // For DAG it represents an interval between two Atroposes
@@ -87,12 +79,11 @@ type AppchainBlock interface {
 	Hash() [32]byte
 	StateRoot() [32]byte
 	Bytes() []byte
-	Serializible
 }
 
 type StoredAppchainBlock[appBlock AppchainBlock] struct {
-	Root  [32]byte
-	Block appBlock
+	Root  [32]byte `cbor:"1,keyasint"`
+	Block appBlock `cbor:"2,keyasint"`
 }
 
 type AppchainBlockConstructor[appTx AppTransaction[R], R Receipt, block AppchainBlock] func(
@@ -104,8 +95,8 @@ type AppchainBlockConstructor[appTx AppTransaction[R], R Receipt, block Appchain
 // Для подключенных L1/L2 мы должны  уметь анмаршалить поле tx.
 // Для межапчейновых - вставляем, как есть.
 type ExternalTransaction struct {
-	ChainID uint64
-	Tx      []byte
+	ChainID uint64 `cbor:"1,keyasint"`
+	Tx      []byte `cbor:"2,keyasint"`
 }
 
 //3) Calculate state root
@@ -120,8 +111,8 @@ type RootCalculator interface {
 
 // Батч хеш батча транзакций, который надо обработать
 type AppchainTxPoolBatch struct {
-	ChainID uint64
-	Hash    [32]byte
+	ChainID uint64   `cbor:"1,keyasint"`
+	Hash    [32]byte `cbor:"2,keyasint"`
 }
 
 type DB interface {
@@ -154,11 +145,11 @@ type TxPoolInterface[T AppTransaction[R], R Receipt] interface {
 
 // финализация перезода состояния аппчейна
 type Checkpoint struct {
-	ChainID                  uint64   `json:"chainId"`
-	BlockNumber              uint64   `json:"blockNumber"`
-	BlockHash                [32]byte `json:"blockHash"`
-	StateRoot                [32]byte `json:"stateRoot"`
-	ExternalTransactionsRoot [32]byte `json:"externalTransactionsRoot"`
+	ChainID                  uint64   `json:"chainId"                  cbor:"1,keyasint"`
+	BlockNumber              uint64   `json:"blockNumber"              cbor:"2,keyasint"`
+	BlockHash                [32]byte `json:"blockHash"                cbor:"3,keyasint"`
+	StateRoot                [32]byte `json:"stateRoot"                cbor:"4,keyasint"`
+	ExternalTransactionsRoot [32]byte `json:"externalTransactionsRoot" cbor:"5,keyasint"`
 }
 
 func MakeCheckpoint(chainID uint64, blockNumber uint64, blockHash [32]byte) Checkpoint {
@@ -179,26 +170,25 @@ func (c Checkpoint) GetEntityID() ExternalID {
 
 type Event struct {
 	// todo возможно тут должно быть MedianTime
-	Base          BaseEvent `json:"base"`
-	CreationTime  uint64    `json:"creationTime"`
-	PrevEpochHash *[32]byte `json:"prevEpochHash"`
+	Base          BaseEvent `json:"base"          cbor:"1,keyasint"`
+	CreationTime  uint64    `json:"creationTime"  cbor:"2,keyasint"`
+	PrevEpochHash *[32]byte `json:"prevEpochHash" cbor:"3,keyasint"`
 
 	// батчи транзакций, которые были уже переданы другим валидаторам и у нас есть подпись, что они получены
-	TxPool []AppchainTxPoolBatch `json:"txPool"`
+	TxPool []AppchainTxPoolBatch `json:"txPool"     cbor:"4,keyasint"`
 	// обновления состояния аппчейна, какой новый стейт рут, блок и внешние транзакции
-	Appchains []Checkpoint `json:"appchains"`
+	Appchains []Checkpoint `json:"appchains"  cbor:"5,keyasint"`
 	// внешние блоки
-	BlockVotes []ExternalBlock `json:"blockVotes"`
+	BlockVotes []ExternalBlock `json:"blockVotes" cbor:"6,keyasint"`
 
-	Signature [64]byte `json:"signature"`
+	Signature [64]byte `json:"signature" cbor:"7,keyasint"`
 }
 
 func (e Event) Bytes() ([]byte, error) {
 	var buf bytes.Buffer
 
-	enc := json.NewEncoder(&buf)
+	enc := cbor.NewEncoder(&buf)
 
-	//nolint:musttag // false-positive
 	if err := enc.Encode(e); err != nil {
 		return nil, err
 	}
@@ -207,16 +197,16 @@ func (e Event) Bytes() ([]byte, error) {
 }
 
 type BaseEvent struct {
-	ID      [32]byte
-	Epoch   uint32
-	Seq     uint32
-	Frame   uint32
-	Creator uint32
-	Lamport uint32
-	Parents [][32]byte
+	ID      [32]byte   `cbor:"1,keyasint"`
+	Epoch   uint32     `cbor:"2,keyasint"`
+	Seq     uint32     `cbor:"3,keyasint"`
+	Frame   uint32     `cbor:"4,keyasint"`
+	Creator uint32     `cbor:"5,keyasint"`
+	Lamport uint32     `cbor:"6,keyasint"`
+	Parents [][32]byte `cbor:"7,keyasint"`
 }
 
 type AppchainAddresses struct {
-	ChainID        uint32
-	EmitterAddress string
+	ChainID        uint32 `cbor:"1,keyasint"`
+	EmitterAddress string `cbor:"2,keyasint"`
 }

@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
-	"encoding/json"
 	"net"
 	"os"
 	"sort"
@@ -534,14 +533,6 @@ type CustomTransaction[R Receipt] struct {
 	Value int    `json:"value"`
 }
 
-func (c *CustomTransaction[R]) Unmarshal(b []byte) error {
-	return json.Unmarshal(b, c)
-}
-
-func (c *CustomTransaction[R]) Marshal() ([]byte, error) {
-	return json.Marshal(c)
-}
-
 func (c *CustomTransaction[R]) Hash() [32]byte {
 	s := c.From + c.To + strconv.Itoa(c.Value)
 
@@ -555,14 +546,6 @@ func (*CustomTransaction[R]) Process(
 }
 
 type Receipt struct{}
-
-func (r Receipt) Marshal() ([]byte, error) {
-	return json.Marshal(r)
-}
-
-func (r Receipt) Unmarshal(data []byte) error {
-	return json.Unmarshal(data, &r)
-}
 
 func (Receipt) TxHash() [32]byte {
 	return [32]byte{}

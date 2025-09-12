@@ -16,10 +16,12 @@ import (
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	geth "github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/fxamacker/cbor/v2"
 	"github.com/goccy/go-json"
 	"github.com/ledgerwatch/erigon-lib/kv"
 
 	"github.com/0xAtelerix/sdk/gosdk"
+	"github.com/0xAtelerix/sdk/gosdk/receipt"
 )
 
 type FixtureWriter[T any] struct {
@@ -105,7 +107,7 @@ func (fw *FixtureWriter[T]) putEthReceipts(ctx context.Context, recs []*gethtype
 				return err
 			}
 
-			if err := tx.Put(gosdk.EthReceipts, k, enc); err != nil {
+			if err := tx.Put(receipt.ReceiptBucket, k, enc); err != nil {
 				return err
 			}
 		}
@@ -119,7 +121,7 @@ func (fw *FixtureWriter[T]) putSolBlock(ctx context.Context, b *client.Block) er
 	// (Slot is a good choice; keep it consistent end-to-end).
 	k := solBlockKey(uint64(*b.BlockHeight))
 
-	enc, err := json.Marshal(b)
+	enc, err := cbor.Marshal(b)
 	if err != nil {
 		return err
 	}
@@ -358,7 +360,7 @@ func (it *EthReceiptsFileIterator) Next(_ context.Context) ([]*gethtypes.Receipt
 	// Expect: JSON array of base64/hex RLP receipts or raw JSON receipts you control.
 	// For simplicity, assume JSON array of raw RLP blobs (base64) – adjust to your file.
 	var entries [][]byte
-	if err := json.Unmarshal(it.sc.Bytes(), &entries); err != nil {
+	if err := cbor.Unmarshal(it.sc.Bytes(), &entries); err != nil {
 		return nil, err
 	}
 
@@ -407,7 +409,7 @@ func (it *SolBlockFileIterator) Next(_ context.Context) (*client.Block, error) {
 	}
 
 	var blk client.Block
-	if err := json.Unmarshal(it.sc.Bytes(), &blk); err != nil {
+	if err := cbor.Unmarshal(it.sc.Bytes(), &blk); err != nil {
 		return nil, err
 	}
 

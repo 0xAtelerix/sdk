@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"math/big"
 	"path/filepath"
 	"testing"
@@ -16,6 +15,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/fxamacker/cbor/v2"
+	"github.com/goccy/go-json"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/receipt"
 )
 
 // --- minimal test fixture writer matching your read-side keying ---
@@ -74,7 +76,7 @@ func (w *testFixtureWriter) putEthReceipts(
 
 			key := ethReceiptKey(blockNum, blockHash, uint32(i))
 
-			if err := tx.Put(gosdk.EthReceipts, key, enc); err != nil {
+			if err = tx.Put(receipt.ReceiptBucket, key, enc); err != nil {
 				return err
 			}
 		}
@@ -92,7 +94,7 @@ func (w *testFixtureWriter) putSolBlock(t *testing.T, blk *client.Block) {
 	require.NotNil(t, blk.BlockHeight)
 	binary.BigEndian.PutUint64(key, uint64(*blk.BlockHeight))
 
-	enc, err := json.Marshal(blk)
+	enc, err := cbor.Marshal(blk)
 	require.NoError(t, err)
 
 	require.NoError(t, w.db.Update(t.Context(), func(tx kv.RwTx) error {
@@ -142,7 +144,11 @@ func makeEthReceipts(t *testing.T, blk *gethtypes.Block, n int) []*gethtypes.Rec
 			BlockNumber:       new(big.Int).Set(blk.Number()),
 			BlockHash:         blk.Hash(),
 			TransactionIndex:  uint(i),
-			Logs:              make([]*gethtypes.Log, 1), // requires
+			Logs: []*gethtypes.Log{
+				{
+					Topics: []common.Hash{{}},
+				},
+			},
 		}
 
 		// TxHash: if your block has real txs:
