@@ -22,7 +22,7 @@ func main() {
     
     // Start server
     if err := server.StartHTTPServer(context.Background(), ":8080"); err != nil {
-        log.Fatal("Failed to start RPC server")
+        log.Panic("Failed to start RPC server")
     }
 }
 ```
