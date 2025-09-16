@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -23,7 +24,7 @@ import (
 func TestExampleAppchain(t *testing.T) {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
-	config := MakeAppchainConfig(42, map[ChainType]string{
+	config := MakeAppchainConfig(42, map[apptypes.ChainType]string{
 		// EthereumChainID: args.EthereumBlocksPath, //TODO
 		// SolanaChainID:   args.SolBlocksPath, //TODO
 	})
@@ -41,13 +42,25 @@ func TestExampleAppchain(t *testing.T) {
 	txPool := txpool.NewTxPool[ExampleTransaction[ExampleReceipt], ExampleReceipt](localDB)
 
 	// инициализируем базу на нашей стороне
+	appchainDBPath := filepath.Join(tmp, config.AppchainDBPath)
 	appchainDB, err := mdbx.NewMDBX(mdbxlog.New()).
-		Path(config.AppchainDBPath).
+		Path(appchainDBPath).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return DefaultTables()
 		}).
 		Open()
 	require.NoError(t, err)
+
+	txStreamDirPath := filepath.Join(tmp, config.TxStreamDir)
+	txBatchDB, err := mdbx.NewMDBX(mdbxlog.New()).
+		Path(txStreamDirPath).
+		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
+			return TxBucketsTables()
+		}).
+		Open()
+	if err != nil {
+		log.Panic().Err(err).Msg("Failed to tx batch mdbx database")
+	}
 
 	subscriber, err := NewSubscriber(t.Context(), appchainDB)
 	require.NoError(t, err)
@@ -73,6 +86,7 @@ func TestExampleAppchain(t *testing.T) {
 		appchainDB,
 		subscriber,
 		multichainDB,
+		txBatchDB,
 	)
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)

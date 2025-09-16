@@ -95,8 +95,8 @@ type AppchainBlockConstructor[appTx AppTransaction[R], R Receipt, block Appchain
 // Для подключенных L1/L2 мы должны  уметь анмаршалить поле tx.
 // Для межапчейновых - вставляем, как есть.
 type ExternalTransaction struct {
-	ChainID uint64 `cbor:"1,keyasint"`
-	Tx      []byte `cbor:"2,keyasint"`
+	ChainID ChainType `cbor:"1,keyasint"`
+	Tx      []byte    `cbor:"2,keyasint"`
 }
 
 //3) Calculate state root
@@ -210,3 +210,5 @@ type AppchainAddresses struct {
 	ChainID        uint32 `cbor:"1,keyasint"`
 	EmitterAddress string `cbor:"2,keyasint"`
 }
+
+type ChainType uint32

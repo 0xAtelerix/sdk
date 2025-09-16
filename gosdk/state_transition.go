@@ -60,7 +60,7 @@ func (b BatchProcesser[appTx, R]) ProcessBatch(
 blockLoop:
 	for _, blk := range batch.ExternalBlocks {
 		switch {
-		case IsEvmChain(ChainType(blk.ChainID)):
+		case IsEvmChain(apptypes.ChainType(blk.ChainID)):
 			// todo склоняестя ли наш вариант в сторону жесткого космос, где сильно ограничена модификация клиента?
 			ethReceipts, err := b.MultiChain.EthReceipts(ctx, *blk)
 			if err != nil {
@@ -72,7 +72,7 @@ blockLoop:
 			var ok bool
 
 			for _, rec := range ethReceipts {
-				ok = b.Subscriber.IsEthSubscription(ChainType(blk.ChainID), EthereumAddress(rec.ContractAddress))
+				ok = b.Subscriber.IsEthSubscription(apptypes.ChainType(blk.ChainID), EthereumAddress(rec.ContractAddress))
 
 				if ok {
 					ext, err := b.ProcessBlock(*blk, dbtx)
@@ -86,7 +86,7 @@ blockLoop:
 				}
 			}
 
-		case IsSolanaChain(ChainType(blk.ChainID)):
+		case IsSolanaChain(apptypes.ChainType(blk.ChainID)):
 			block, err := b.MultiChain.SolanaBlock(ctx, *blk)
 			if err != nil {
 				logger.Debug().Err(err).Msg("failed to get Solana block")
@@ -97,7 +97,7 @@ blockLoop:
 			for _, tx := range block.Transactions {
 				for i := range tx.Transaction.Message.Header.NumRequireSignatures {
 					pub := tx.Transaction.Message.Accounts[i]
-					ok := b.Subscriber.IsSolanaSubscription(ChainType(blk.ChainID), SolanaAddress(pub))
+					ok := b.Subscriber.IsSolanaSubscription(apptypes.ChainType(blk.ChainID), SolanaAddress(pub))
 
 					if ok {
 						ext, err := b.ProcessBlock(*blk, dbtx)

@@ -251,9 +251,9 @@ func TestEthereum_BlockAndReceipts_RoundTrip(t *testing.T) {
 	writerDB.Close()
 
 	// open read-only accessor and read back
-	//nolint:exhaustive // it is a config
+
 	mc, err := gosdk.NewMultichainStateAccess(gosdk.MultichainConfig{
-		gosdk.ChainType(chainID): evmDBPath,
+		apptypes.ChainType(chainID): evmDBPath,
 	})
 	require.NoError(t, err)
 
@@ -309,9 +309,9 @@ func TestSolana_Block_RoundTrip(t *testing.T) {
 	writerDB.Close()
 
 	// open accessor and read back
-	//nolint:exhaustive // it is a config
+
 	mc, err := gosdk.NewMultichainStateAccess(gosdk.MultichainConfig{
-		gosdk.ChainType(chainID): svmDBPath,
+		apptypes.ChainType(chainID): svmDBPath,
 	})
 	require.NoError(t, err)
 
@@ -401,9 +401,9 @@ func TestEthBlockFileIterator_Pipeline(t *testing.T) {
 	writerDB.Close()
 
 	// --- Assert: read back using MultichainStateAccess
-	//nolint:exhaustive // it's a test and a config
+
 	mc, err := gosdk.NewMultichainStateAccess(gosdk.MultichainConfig{
-		gosdk.ChainType(1): evmDBPath,
+		apptypes.ChainType(1): evmDBPath,
 	})
 	require.NoError(t, err)
 
@@ -514,9 +514,9 @@ func TestEthReceiptsFileIterator_Pipeline(t *testing.T) {
 	writerDB.Close()
 
 	// --- Assert: read back using MultichainStateAccess
-	//nolint:exhaustive // it's a test and a config
+
 	mc, err := gosdk.NewMultichainStateAccess(gosdk.MultichainConfig{
-		gosdk.ChainType(1): evmDBPath,
+		apptypes.ChainType(1): evmDBPath,
 	})
 	require.NoError(t, err)
 
@@ -606,7 +606,7 @@ func TestSolBlockFileIterator_Pipeline(t *testing.T) {
 	writerDB.Close()
 
 	// --- Assert: read back using MultichainStateAccess
-	//nolint:exhaustive // it's a test and a config
+
 	mc, err := gosdk.NewMultichainStateAccess(gosdk.MultichainConfig{
 		gosdk.SolanaDevnetChainID: svmDBPath,
 	})

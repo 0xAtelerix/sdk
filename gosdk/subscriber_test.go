@@ -10,6 +10,8 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
 	"github.com/stretchr/testify/require"
+
+	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
 func mkEth(b byte) EthereumAddress {
@@ -54,10 +56,10 @@ func Test_cmpAddr_Solana(t *testing.T) {
 
 func newSubscriber() *Subscriber {
 	return &Subscriber{
-		ethContracts:        make(map[ChainType]map[EthereumAddress]struct{}),
-		solAddresses:        make(map[ChainType]map[SolanaAddress]struct{}),
-		deletedEthContracts: make(map[ChainType]map[EthereumAddress]struct{}),
-		deletedSolAddresses: make(map[ChainType]map[SolanaAddress]struct{}),
+		ethContracts:        make(map[apptypes.ChainType]map[EthereumAddress]struct{}),
+		solAddresses:        make(map[apptypes.ChainType]map[SolanaAddress]struct{}),
+		deletedEthContracts: make(map[apptypes.ChainType]map[EthereumAddress]struct{}),
+		deletedSolAddresses: make(map[apptypes.ChainType]map[SolanaAddress]struct{}),
 	}
 }
 
@@ -71,13 +73,13 @@ func Test_sortChainAddresses_Ethereum(t *testing.T) {
 	}
 	SortChainAddresses(items)
 
-	require.Equal(t, ChainType(1), items[0].chainID)
+	require.Equal(t, apptypes.ChainType(1), items[0].chainID)
 	require.Equal(t, []EthereumAddress{mkEth(1), mkEth(2)}, items[0].addresses)
 
-	require.Equal(t, ChainType(3), items[1].chainID)
+	require.Equal(t, apptypes.ChainType(3), items[1].chainID)
 	require.Equal(t, []EthereumAddress{mkEth(9)}, items[1].addresses)
 
-	require.Equal(t, ChainType(5), items[2].chainID)
+	require.Equal(t, apptypes.ChainType(5), items[2].chainID)
 	require.Equal(t, []EthereumAddress{mkEth(1), mkEth(2), mkEth(3)}, items[2].addresses)
 }
 
@@ -90,18 +92,17 @@ func Test_sortChainAddresses_Solana(t *testing.T) {
 	}
 	SortChainAddresses(items)
 
-	require.Equal(t, ChainType(9), items[0].chainID)
+	require.Equal(t, apptypes.ChainType(9), items[0].chainID)
 	require.Equal(t, []SolanaAddress{mkSol(1), mkSol(2)}, items[0].addresses)
 
-	require.Equal(t, ChainType(42), items[1].chainID)
+	require.Equal(t, apptypes.ChainType(42), items[1].chainID)
 	require.Equal(t, []SolanaAddress{mkSol(3), mkSol(3), mkSol(4), mkSol(7)}, items[1].addresses)
 }
 
 func Test_collectChainAddresses_SetsToSlice_Ethereum(t *testing.T) {
 	t.Parallel()
 
-	//nolint:exhaustive // it's a config map for a test
-	m := map[ChainType]map[EthereumAddress]struct{}{
+	m := map[apptypes.ChainType]map[EthereumAddress]struct{}{
 		10: {
 			mkEth(3): {},
 			mkEth(1): {},
@@ -113,10 +114,10 @@ func Test_collectChainAddresses_SetsToSlice_Ethereum(t *testing.T) {
 	out := CollectChainAddresses[EthereumAddress](m)
 
 	require.Len(t, out, 2)
-	require.Equal(t, ChainType(1), out[0].chainID)
+	require.Equal(t, apptypes.ChainType(1), out[0].chainID)
 	require.Equal(t, []EthereumAddress{mkEth(2)}, out[0].addresses)
 
-	require.Equal(t, ChainType(10), out[1].chainID)
+	require.Equal(t, apptypes.ChainType(10), out[1].chainID)
 	// order within a chain must be sorted
 	require.Equal(t, []EthereumAddress{mkEth(1), mkEth(3)}, out[1].addresses)
 }
@@ -124,8 +125,7 @@ func Test_collectChainAddresses_SetsToSlice_Ethereum(t *testing.T) {
 func Test_collectChainAddresses_SetsToSlice_Solana(t *testing.T) {
 	t.Parallel()
 
-	//nolint:exhaustive // it's a config map for a test
-	m := map[ChainType]map[SolanaAddress]struct{}{
+	m := map[apptypes.ChainType]map[SolanaAddress]struct{}{
 		5: {
 			mkSol(9): {},
 			mkSol(1): {},
@@ -135,7 +135,7 @@ func Test_collectChainAddresses_SetsToSlice_Solana(t *testing.T) {
 	out := CollectChainAddresses[SolanaAddress](m)
 
 	require.Len(t, out, 1)
-	require.Equal(t, ChainType(5), out[0].chainID)
+	require.Equal(t, apptypes.ChainType(5), out[0].chainID)
 	require.Equal(t, []SolanaAddress{mkSol(1), mkSol(7), mkSol(9)}, out[0].addresses)
 }
 
@@ -171,7 +171,7 @@ func Test_SubscribeEthContract_And_IsEthSubscription(t *testing.T) {
 
 	s := newSubscriber()
 
-	chainID := ChainType(1)
+	chainID := apptypes.ChainType(1)
 	contract := mkEth(0x11)
 
 	require.True(t, s.IsEthSubscription(chainID, contract))
@@ -188,7 +188,7 @@ func Test_UnsubscribeEthContract_RemovesFromActive_And_MarksDeleted(t *testing.T
 	t.Parallel()
 
 	s := newSubscriber()
-	chainID := ChainType(2)
+	chainID := apptypes.ChainType(2)
 	contract := mkEth(0x22)
 
 	// precondition: no subscriptions, listen to all chains
@@ -223,7 +223,7 @@ func Test_IsSolanaSubscription(t *testing.T) {
 
 	s := newSubscriber()
 
-	chainID := ChainType(9)
+	chainID := apptypes.ChainType(9)
 	addr := mkSol(0x09)
 
 	// Manually set up to avoid the current Subscribe bug.
@@ -290,14 +290,14 @@ func openTestDB(t *testing.T) kv.RwDB {
 func readAllSubscriptions(
 	t *testing.T,
 	tx kv.Tx,
-) (map[ChainType]map[EthereumAddress]struct{}, map[ChainType]map[SolanaAddress]struct{}) {
+) (map[apptypes.ChainType]map[EthereumAddress]struct{}, map[apptypes.ChainType]map[SolanaAddress]struct{}) {
 	t.Helper()
 
-	gotEth := make(map[ChainType]map[EthereumAddress]struct{})
-	gotSol := make(map[ChainType]map[SolanaAddress]struct{})
+	gotEth := make(map[apptypes.ChainType]map[EthereumAddress]struct{})
+	gotSol := make(map[apptypes.ChainType]map[SolanaAddress]struct{})
 
 	err := tx.ForEach(SubscriptionBucket, nil, func(k, v []byte) error {
-		chain := ChainType(binary.BigEndian.Uint64(k))
+		chain := apptypes.ChainType(binary.BigEndian.Uint64(k))
 
 		if IsEvmChain(chain) {
 			gotEth[chain] = make(map[EthereumAddress]struct{})
@@ -372,7 +372,7 @@ func Test_Store_Persistency_WriteAndReadBack(t *testing.T) {
 	require.Len(t, gotSol, 1)
 
 	// chain 1 should have eth1, eth2
-	require.Contains(t, gotEth, ChainType(1))
+	require.Contains(t, gotEth, apptypes.ChainType(1))
 	// byte equality
 	found1 := false
 	found2 := false

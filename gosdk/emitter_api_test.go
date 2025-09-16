@@ -460,7 +460,7 @@ func TestGetExternalTransactions_PropertyBased(t *testing.T) {
 
 				for range numTx {
 					tx := apptypes.ExternalTransaction{
-						ChainID: rapid.Uint64().Draw(tr, "ChainId"),
+						ChainID: apptypes.ChainType(rapid.Uint64().Draw(tr, "ChainId")),
 						Tx:      rapid.SliceOfN(rapid.Byte(), 64, 64).Draw(tr, "Tx"),
 					}
 					transactionMap[blockNumber] = append(transactionMap[blockNumber], tx)

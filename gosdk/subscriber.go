@@ -8,14 +8,16 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
+
+	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
 type Subscriber struct {
-	ethContracts map[ChainType]map[EthereumAddress]struct{} // chainID -> EthereumContractAddress
-	solAddresses map[ChainType]map[SolanaAddress]struct{}   // chainID -> SolanaAddress
+	ethContracts map[apptypes.ChainType]map[EthereumAddress]struct{} // chainID -> EthereumContractAddress
+	solAddresses map[apptypes.ChainType]map[SolanaAddress]struct{}   // chainID -> SolanaAddress
 
-	deletedEthContracts map[ChainType]map[EthereumAddress]struct{} // chainID -> EthereumContractAddress
-	deletedSolAddresses map[ChainType]map[SolanaAddress]struct{}   // chainID -> SolanaAddress
+	deletedEthContracts map[apptypes.ChainType]map[EthereumAddress]struct{} // chainID -> EthereumContractAddress
+	deletedSolAddresses map[apptypes.ChainType]map[SolanaAddress]struct{}   // chainID -> SolanaAddress
 
 	mu sync.RWMutex
 }
@@ -29,10 +31,10 @@ func NewSubscriber(ctx context.Context, tx kv.RoDB) (*Subscriber, error) {
 	defer roTx.Rollback()
 
 	sub := &Subscriber{
-		ethContracts:        make(map[ChainType]map[EthereumAddress]struct{}),
-		solAddresses:        make(map[ChainType]map[SolanaAddress]struct{}),
-		deletedEthContracts: make(map[ChainType]map[EthereumAddress]struct{}),
-		deletedSolAddresses: make(map[ChainType]map[SolanaAddress]struct{}),
+		ethContracts:        make(map[apptypes.ChainType]map[EthereumAddress]struct{}),
+		solAddresses:        make(map[apptypes.ChainType]map[SolanaAddress]struct{}),
+		deletedEthContracts: make(map[apptypes.ChainType]map[EthereumAddress]struct{}),
+		deletedSolAddresses: make(map[apptypes.ChainType]map[SolanaAddress]struct{}),
 	}
 
 	sub.ethContracts, sub.solAddresses, err = loadAllSubscriptions(roTx)
@@ -43,7 +45,10 @@ func NewSubscriber(ctx context.Context, tx kv.RoDB) (*Subscriber, error) {
 	return sub, nil
 }
 
-func (s *Subscriber) SubscribeEthContract(chainID ChainType, contracts ...EthereumAddress) {
+func (s *Subscriber) SubscribeEthContract(
+	chainID apptypes.ChainType,
+	contracts ...EthereumAddress,
+) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -57,7 +62,10 @@ func (s *Subscriber) SubscribeEthContract(chainID ChainType, contracts ...Ethere
 	}
 }
 
-func (s *Subscriber) UnsubscribeEthContract(chainID ChainType, contracts ...EthereumAddress) {
+func (s *Subscriber) UnsubscribeEthContract(
+	chainID apptypes.ChainType,
+	contracts ...EthereumAddress,
+) {
 	if len(contracts) == 0 {
 		return
 	}
@@ -80,7 +88,7 @@ func (s *Subscriber) UnsubscribeEthContract(chainID ChainType, contracts ...Ethe
 	}
 }
 
-func (s *Subscriber) IsEthSubscription(chainID ChainType, contract EthereumAddress) bool {
+func (s *Subscriber) IsEthSubscription(chainID apptypes.ChainType, contract EthereumAddress) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -98,7 +106,10 @@ func (s *Subscriber) IsEthSubscription(chainID ChainType, contract EthereumAddre
 	return ok
 }
 
-func (s *Subscriber) SubscribeSolanaAddress(chainID ChainType, addresses ...SolanaAddress) {
+func (s *Subscriber) SubscribeSolanaAddress(
+	chainID apptypes.ChainType,
+	addresses ...SolanaAddress,
+) {
 	if len(addresses) == 0 {
 		return
 	}
@@ -116,7 +127,7 @@ func (s *Subscriber) SubscribeSolanaAddress(chainID ChainType, addresses ...Sola
 	}
 }
 
-func (s *Subscriber) IsSolanaSubscription(chainID ChainType, address SolanaAddress) bool {
+func (s *Subscriber) IsSolanaSubscription(chainID apptypes.ChainType, address SolanaAddress) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -136,7 +147,10 @@ func (s *Subscriber) IsSolanaSubscription(chainID ChainType, address SolanaAddre
 	return true
 }
 
-func (s *Subscriber) UnsubscribeSolanaAddress(chainID ChainType, addresses ...SolanaAddress) {
+func (s *Subscriber) UnsubscribeSolanaAddress(
+	chainID apptypes.ChainType,
+	addresses ...SolanaAddress,
+) {
 	if len(addresses) == 0 {
 		return
 	}
@@ -239,8 +253,8 @@ func (s *Subscriber) Store(tx kv.RwTx) error {
 	}
 
 	// Clear the deleted maps after successful persist
-	s.deletedEthContracts = make(map[ChainType]map[EthereumAddress]struct{})
-	s.deletedSolAddresses = make(map[ChainType]map[SolanaAddress]struct{})
+	s.deletedEthContracts = make(map[apptypes.ChainType]map[EthereumAddress]struct{})
+	s.deletedSolAddresses = make(map[apptypes.ChainType]map[SolanaAddress]struct{})
 
 	return nil
 }
@@ -248,15 +262,15 @@ func (s *Subscriber) Store(tx kv.RwTx) error {
 // loadAllSubscriptions reads the whole subscription bucket and returns
 // two in-memory sets: EVM and Solana, keyed by chainID then address.
 func loadAllSubscriptions(tx kv.Tx) (
-	map[ChainType]map[EthereumAddress]struct{},
-	map[ChainType]map[SolanaAddress]struct{},
+	map[apptypes.ChainType]map[EthereumAddress]struct{},
+	map[apptypes.ChainType]map[SolanaAddress]struct{},
 	error,
 ) {
-	evm := make(map[ChainType]map[EthereumAddress]struct{})
-	sol := make(map[ChainType]map[SolanaAddress]struct{})
+	evm := make(map[apptypes.ChainType]map[EthereumAddress]struct{})
+	sol := make(map[apptypes.ChainType]map[SolanaAddress]struct{})
 
 	err := tx.ForEach(SubscriptionBucket, nil, func(chainIDBytes, addrBytes []byte) error {
-		chainID := ChainType(binary.BigEndian.Uint64(chainIDBytes))
+		chainID := apptypes.ChainType(binary.BigEndian.Uint64(chainIDBytes))
 
 		if IsEvmChain(chainID) {
 			var addrSlice []EthereumAddress
@@ -301,7 +315,7 @@ func loadAllSubscriptions(tx kv.Tx) (
 	return evm, sol, nil
 }
 
-func putChainAddresses[T Address](tx kv.RwTx, chainID ChainType, addrs []T) error {
+func putChainAddresses[T Address](tx kv.RwTx, chainID apptypes.ChainType, addrs []T) error {
 	var key [8]byte
 	binary.BigEndian.PutUint64(key[:], uint64(chainID))
 

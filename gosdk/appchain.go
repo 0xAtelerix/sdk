@@ -43,13 +43,16 @@ type AppchainConfig struct {
 	AppchainDBPath    string
 	EventStreamDir    string
 	TxStreamDir       string
-	MultichainStateDB map[ChainType]string
+	MultichainStateDB map[apptypes.ChainType]string
 	Logger            *zerolog.Logger
 	ValidatorID       string
 }
 
 // todo: it should be stored at the first run and checked on next
-func MakeAppchainConfig(chainID uint64, multichainStateDB map[ChainType]string) AppchainConfig {
+func MakeAppchainConfig(
+	chainID uint64,
+	multichainStateDB map[apptypes.ChainType]string,
+) AppchainConfig {
 	return AppchainConfig{
 		ChainID:           chainID,
 		EmitterPort:       ":50051",
@@ -72,6 +75,7 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 	appchainDB kv.RwDB,
 	subscriber *Subscriber,
 	multichain *MultichainStateAccess,
+	txBatchDB kv.RoDB,
 	options ...func(a *Appchain[STI, AppTx, R, AppBlock]),
 ) Appchain[STI, AppTx, R, AppBlock] {
 	log.Info().Str("db_path", config.AppchainDBPath).Msg("Initializing appchain database")
@@ -91,6 +95,7 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 		blockBuilder:           blockBuilder,
 		emiterAPI:              emiterAPI,
 		AppchainDB:             appchainDB,
+		TxBatchDB:              txBatchDB,
 		config:                 config,
 		multichainDB:           multichain,
 		subscriber:             subscriber,
@@ -200,7 +205,7 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 	if streamConstructor == nil {
 		logger.Info().Msg("NewMdbxEventStreamWrapper")
 		eventStream, err = NewMdbxEventStreamWrapper[appTx, R](
-			filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
+			filepath.Join(a.config.EventStreamDir, "epoch_1.data"),
 			uint32(a.config.ChainID),
 			startEventPos,
 			a.TxBatchDB,
@@ -211,7 +216,7 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 			votingCheckpoints,
 		)
 	} else {
-		eventStream, err = streamConstructor(filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
+		eventStream, err = streamConstructor(filepath.Join(a.config.EventStreamDir, "epoch_1.data"),
 			uint32(a.config.ChainID),
 			startEventPos,
 			a.TxBatchDB,
@@ -604,7 +609,7 @@ func TransactionToProto(
 	protoTxs := make([]*emitterproto.ExternalTransaction, len(txs))
 
 	for i, tx := range txs {
-		protoTxs[i].ChainId = tx.ChainID
+		protoTxs[i].ChainId = uint64(tx.ChainID)
 		protoTxs[i].Tx = tx.Tx
 	}
 

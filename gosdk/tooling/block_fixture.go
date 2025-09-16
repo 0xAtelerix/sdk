@@ -18,12 +18,13 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 
 	"github.com/0xAtelerix/sdk/gosdk"
+	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/receipt"
 )
 
 type FixtureWriter[T any] struct {
 	DB       kv.RwDB
-	ChainID  gosdk.ChainType
+	ChainID  apptypes.ChainType
 	Iter     Iterator[T]
 	Interval time.Duration
 }

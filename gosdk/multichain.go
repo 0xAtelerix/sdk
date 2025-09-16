@@ -44,15 +44,15 @@ func SolanaTables() kv.TableCfg {
 }
 
 type MultichainStateAccess struct {
-	stateAccessDB map[ChainType]kv.RoDB
+	stateAccessDB map[apptypes.ChainType]kv.RoDB
 	mu            sync.RWMutex
 }
 
-type MultichainConfig map[ChainType]string // chainID, chainDBpath
+type MultichainConfig map[apptypes.ChainType]string // chainID, chainDBpath
 
 func NewMultichainStateAccess(cfg MultichainConfig) (*MultichainStateAccess, error) {
 	multichainStateDB := MultichainStateAccess{
-		stateAccessDB: make(map[ChainType]kv.RoDB, len(cfg)),
+		stateAccessDB: make(map[apptypes.ChainType]kv.RoDB, len(cfg)),
 	}
 	for chainID, path := range cfg {
 		var tableCfg kv.TableCfg
@@ -93,7 +93,7 @@ func (sa *MultichainStateAccess) EthBlock(
 	sa.mu.RLock()
 	defer sa.mu.RUnlock()
 
-	if _, ok := sa.stateAccessDB[ChainType(block.ChainID)]; !ok {
+	if _, ok := sa.stateAccessDB[apptypes.ChainType(block.ChainID)]; !ok {
 		return nil, fmt.Errorf("%w, no DB for chainID, %v", ErrUnknownChain, block.ChainID)
 	}
 
@@ -101,7 +101,7 @@ func (sa *MultichainStateAccess) EthBlock(
 
 	ethBlock := EthereumBlock{}
 
-	err := sa.stateAccessDB[ChainType(block.ChainID)].View(ctx, func(tx kv.Tx) error {
+	err := sa.stateAccessDB[apptypes.ChainType(block.ChainID)].View(ctx, func(tx kv.Tx) error {
 		v, err := tx.GetOne(EthBlocks, key)
 		if err != nil {
 			return err
@@ -142,7 +142,7 @@ func (sa *MultichainStateAccess) EthReceipts(
 	sa.mu.RLock()
 	defer sa.mu.RUnlock()
 
-	if _, ok := sa.stateAccessDB[ChainType(block.ChainID)]; !ok {
+	if _, ok := sa.stateAccessDB[apptypes.ChainType(block.ChainID)]; !ok {
 		return nil, fmt.Errorf("%w, no DB for chainID, %v", ErrUnknownChain, block.ChainID)
 	}
 
@@ -150,7 +150,7 @@ func (sa *MultichainStateAccess) EthReceipts(
 
 	var blockReceipts []gethtypes.Receipt
 
-	err := sa.stateAccessDB[ChainType(block.ChainID)].View(ctx, func(tx kv.Tx) error {
+	err := sa.stateAccessDB[apptypes.ChainType(block.ChainID)].View(ctx, func(tx kv.Tx) error {
 		return tx.ForPrefix(receipt.ReceiptBucket, key, func(_, v []byte) error {
 			r := gethtypes.Receipt{}
 
@@ -180,7 +180,7 @@ func (sa *MultichainStateAccess) SolanaBlock(
 	sa.mu.RLock()
 	defer sa.mu.RUnlock()
 
-	db, ok := sa.stateAccessDB[ChainType(block.ChainID)]
+	db, ok := sa.stateAccessDB[apptypes.ChainType(block.ChainID)]
 	if !ok {
 		return nil, fmt.Errorf("%w, no DB for chainID, %v", ErrUnknownChain, block.ChainID)
 	}
@@ -222,7 +222,7 @@ func (sa *MultichainStateAccess) SolanaBlock(
 // You can rely on received finalized external blocks that you have received from consensus.
 func (sa *MultichainStateAccess) ViewDB(
 	ctx context.Context,
-	chainID ChainType,
+	chainID apptypes.ChainType,
 	fn func(tx kv.Tx) error,
 ) error {
 	sa.mu.RLock()
