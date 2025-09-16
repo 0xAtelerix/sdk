@@ -36,6 +36,7 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 	txpool apptypes.TxPoolInterface[AppTx, R],
 	config AppchainConfig,
 	appchainDB kv.RwDB,
+	txBatchDB kv.RoDB,
 	options ...func(a *Appchain[STI, AppTx, R, AppBlock]),
 ) (Appchain[STI, AppTx, R, AppBlock], error) {
 	log.Info().Str("db_path", config.AppchainDBPath).Msg("Initializing appchain database")
@@ -62,6 +63,7 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 		blockBuilder:           blockBuilder,
 		emiterAPI:              emiterAPI,
 		AppchainDB:             appchainDB,
+		TxBatchDB:              txBatchDB,
 		config:                 config,
 		multichainDB:           multichainDB,
 	}
@@ -178,14 +180,14 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 	if streamConstructor == nil {
 		logger.Info().Msg("NewMdbxEventStreamWrapper")
 		eventStream, err = NewMdbxEventStreamWrapper[appTx, R](
-			filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
+			filepath.Join(a.config.EventStreamDir, "epoch_1.data"),
 			uint32(a.config.ChainID),
 			startEventPos,
 			a.TxBatchDB,
 			logger,
 		)
 	} else {
-		eventStream, err = streamConstructor(filepath.Join(a.config.EventStreamDir, "epoch_0.data"),
+		eventStream, err = streamConstructor(filepath.Join(a.config.EventStreamDir, "epoch_1.data"),
 			uint32(a.config.ChainID),
 			startEventPos,
 			a.TxBatchDB,

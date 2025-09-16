@@ -63,12 +63,36 @@ func TestChainHelperMethods(t *testing.T) {
 			func() *ExTxBuilder { return NewExTxBuilder().EthereumSepolia() },
 			gosdk.EthereumSepoliaChainID,
 		},
-		{"Polygon", func() *ExTxBuilder { return NewExTxBuilder().Polygon() }, gosdk.PolygonChainID},
-		{"PolygonAmoy", func() *ExTxBuilder { return NewExTxBuilder().PolygonAmoy() }, gosdk.PolygonAmoyChainID},
-		{"BSC", func() *ExTxBuilder { return NewExTxBuilder().BSC() }, gosdk.BNBChainID},
-		{"BSCTestnet", func() *ExTxBuilder { return NewExTxBuilder().BSCTestnet() }, gosdk.BNBTestnetChainID},
-		{"SolanaMainnet", func() *ExTxBuilder { return NewExTxBuilder().SolanaMainnet() }, gosdk.SolanaChainID},
-		{"SolanaDevnet", func() *ExTxBuilder { return NewExTxBuilder().SolanaDevnet() }, gosdk.SolanaDevnetChainID},
+		{
+			"Polygon",
+			func() *ExTxBuilder { return NewExTxBuilder().Polygon() },
+			gosdk.PolygonChainID,
+		},
+		{
+			"PolygonAmoy",
+			func() *ExTxBuilder { return NewExTxBuilder().PolygonAmoy() },
+			gosdk.PolygonAmoyChainID,
+		},
+		{
+			"BSC",
+			func() *ExTxBuilder { return NewExTxBuilder().BSC() },
+			gosdk.BNBChainID,
+		},
+		{
+			"BSCTestnet",
+			func() *ExTxBuilder { return NewExTxBuilder().BSCTestnet() },
+			gosdk.BNBTestnetChainID,
+		},
+		{
+			"SolanaMainnet",
+			func() *ExTxBuilder { return NewExTxBuilder().SolanaMainnet() },
+			gosdk.SolanaChainID,
+		},
+		{
+			"SolanaDevnet",
+			func() *ExTxBuilder { return NewExTxBuilder().SolanaDevnet() },
+			gosdk.SolanaDevnetChainID,
+		},
 	}
 
 	for _, test := range tests {
@@ -114,7 +138,11 @@ func TestSolanaTransactions(t *testing.T) {
 	}
 
 	if mainnetTx.ChainID != gosdk.SolanaChainID {
-		t.Errorf("Expected ChainID %d for Solana mainnet, got %d", gosdk.SolanaChainID, mainnetTx.ChainID)
+		t.Errorf(
+			"Expected ChainID %d for Solana mainnet, got %d",
+			gosdk.SolanaChainID,
+			mainnetTx.ChainID,
+		)
 	}
 
 	// Test Solana devnet
@@ -127,7 +155,11 @@ func TestSolanaTransactions(t *testing.T) {
 	}
 
 	if devnetTx.ChainID != gosdk.SolanaDevnetChainID {
-		t.Errorf("Expected ChainID %d for Solana devnet, got %d", gosdk.SolanaDevnetChainID, devnetTx.ChainID)
+		t.Errorf(
+			"Expected ChainID %d for Solana devnet, got %d",
+			gosdk.SolanaDevnetChainID,
+			devnetTx.ChainID,
+		)
 	}
 }
 
@@ -273,9 +305,21 @@ func TestMultiChainWorkflow(t *testing.T) {
 		builder  func() *ExTxBuilder
 		expected uint64
 	}{
-		{"Ethereum", func() *ExTxBuilder { return NewExTxBuilder().Ethereum() }, gosdk.EthereumChainID},
-		{"Polygon", func() *ExTxBuilder { return NewExTxBuilder().Polygon() }, gosdk.PolygonChainID},
-		{"BSC", func() *ExTxBuilder { return NewExTxBuilder().BSC() }, gosdk.BNBChainID},
+		{
+			"Ethereum",
+			func() *ExTxBuilder { return NewExTxBuilder().Ethereum() },
+			gosdk.EthereumChainID,
+		},
+		{
+			"Polygon",
+			func() *ExTxBuilder { return NewExTxBuilder().Polygon() },
+			gosdk.PolygonChainID,
+		},
+		{
+			"BSC",
+			func() *ExTxBuilder { return NewExTxBuilder().BSC() },
+			gosdk.BNBChainID,
+		},
 	}
 
 	for _, chain := range chains {
@@ -384,9 +428,21 @@ func TestTestnetWorkflow(t *testing.T) {
 			func() *ExTxBuilder { return NewExTxBuilder().EthereumSepolia() },
 			gosdk.EthereumSepoliaChainID,
 		},
-		{"PolygonAmoy", func() *ExTxBuilder { return NewExTxBuilder().PolygonAmoy() }, gosdk.PolygonAmoyChainID},
-		{"BSCTestnet", func() *ExTxBuilder { return NewExTxBuilder().BSCTestnet() }, gosdk.BNBTestnetChainID},
-		{"SolanaDevnet", func() *ExTxBuilder { return NewExTxBuilder().SolanaDevnet() }, gosdk.SolanaDevnetChainID},
+		{
+			"PolygonAmoy",
+			func() *ExTxBuilder { return NewExTxBuilder().PolygonAmoy() },
+			gosdk.PolygonAmoyChainID,
+		},
+		{
+			"BSCTestnet",
+			func() *ExTxBuilder { return NewExTxBuilder().BSCTestnet() },
+			gosdk.BNBTestnetChainID,
+		},
+		{
+			"SolanaDevnet",
+			func() *ExTxBuilder { return NewExTxBuilder().SolanaDevnet() },
+			gosdk.SolanaDevnetChainID,
+		},
 	}
 
 	for _, testnet := range testnets {
@@ -458,6 +514,10 @@ func TestBuilderChaining(t *testing.T) {
 	}
 
 	if tx.ChainID != gosdk.EthereumChainID {
-		t.Errorf("Expected ChainID %d from chained calls, got %d", gosdk.EthereumChainID, tx.ChainID)
+		t.Errorf(
+			"Expected ChainID %d from chained calls, got %d",
+			gosdk.EthereumChainID,
+			tx.ChainID,
+		)
 	}
 }

@@ -115,6 +115,16 @@ func ExampleAppchain() {
 		log.Fatal().Err(err).Msg("Failed to appchain mdbx database")
 	}
 
+	txBatchDB, err := mdbx.NewMDBX(mdbxlog.New()).
+		Path(config.TxStreamDir).
+		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
+			return TxBucketsTables()
+		}).
+		Readonly().Open()
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to tx batch mdbx database")
+	}
+
 	log.Info().Msg("Starting appchain...")
 
 	appchainExample, err := NewAppchain(
@@ -125,6 +135,7 @@ func ExampleAppchain() {
 		txPool,
 		config,
 		appchainDB,
+		txBatchDB,
 	)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to start appchain")
