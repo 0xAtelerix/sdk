@@ -16,7 +16,7 @@ tx, err := external.NewExTxBuilder().
 
 ## Installation
 
-```bash
+```
 go get github.com/0xAtelerix/sdk/gosdk
 ```
 

@@ -4,8 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/big"
+
+	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/0xAtelerix/sdk/gosdk/external"
+	"github.com/0xAtelerix/sdk/gosdk/external/example/appchain"
 )
 
 // SolanaTransfer represents a Solana token transfer
@@ -66,25 +70,27 @@ func SolanaExample() {
 func MultiChainExample() {
 	fmt.Println("\n=== Multi-Chain: EVM + Solana Example ===")
 
-	// Same logical operation, different encoding formats
-	evmPayload := map[string]any{
-		"action": "transfer",
-		"to":     "0x742d35Cc6493C35b1234567890abcdef",
-		"amount": "1000000000000000000", // 1 ETH
+	// 1. EVM chains - use ABI encoding (same as main.go)
+	encoder := appchain.NewEncoder()
+
+	evmTransferData := appchain.TransferData{
+		To:     common.HexToAddress("0x742d35Cc6493C35b1234567890abcdef"),
+		Amount: big.NewInt(1000000000000000000), // 1 ETH
+		Token:  common.HexToAddress("0xA0b86a33E6441c9fa6e8Ee5B1234567890abcdef"),
 	}
 
+	evmData, err := encoder.EncodeTransfer(evmTransferData)
+	if err != nil {
+		log.Printf("Failed to encode EVM transfer: %v", err)
+
+		return
+	}
+
+	// 2. Solana - use JSON encoding (program-specific)
 	solanaPayload := SolanaTransfer{
 		To:     "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
 		Amount: 1000000000, // 1 SOL
 		Token:  "So11111111111111111111111111111111111111112",
-	}
-
-	// Deploy to EVM chains
-	evmData, err := json.Marshal(evmPayload)
-	if err != nil {
-		log.Printf("Failed to marshal EVM payload: %v", err)
-
-		return
 	}
 
 	evmChains := []struct {
@@ -111,7 +117,7 @@ func MultiChainExample() {
 		fmt.Printf("  ✓ %s (Chain %d) - %d bytes\n", chain.name, tx.ChainID, len(tx.Tx))
 	}
 
-	// Deploy to Solana
+	// 3. Deploy to Solana with JSON encoding
 	solanaData, err := json.Marshal(solanaPayload)
 	if err != nil {
 		log.Printf("Failed to marshal Solana payload: %v", err)
@@ -130,6 +136,7 @@ func MultiChainExample() {
 	}
 
 	fmt.Println("\n✓ Same transfer logic deployed to EVM + Solana!")
-	fmt.Println("✓ Each chain uses its native encoding format")
+	fmt.Println("✓ EVM chains use ABI encoding (contract-compatible)")
+	fmt.Println("✓ Solana uses JSON encoding (program-specific)")
 	fmt.Println("✓ TSS appchain handles all cross-chain coordination")
 }

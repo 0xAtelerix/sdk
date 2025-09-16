@@ -12,6 +12,7 @@ const (
 	// testnets
 	EthereumSepoliaChainID = 11155111 // Ethereum Sepolia Testnet
 	PolygonMumbaiChainID   = 80001    // Polygon Mumbai Testnet
+	PolygonAmoyChainID     = 80002    // Polygon Amoy Testnet
 	BNBTestnetChainID      = 97       // BNB Smart Chain Testnet
 	AvalancheFujiChainID   = 43113    // Avalanche Fuji Testnet
 	GnosisChiadoChainID    = 10200    // Gnosis Chiado Testnet
@@ -33,6 +34,7 @@ func EVMChains() map[uint32]struct{} {
 		BaseChainID:            {},
 		EthereumSepoliaChainID: {},
 		PolygonMumbaiChainID:   {},
+		PolygonAmoyChainID:     {},
 		BNBTestnetChainID:      {},
 		AvalancheFujiChainID:   {},
 		GnosisChiadoChainID:    {},
