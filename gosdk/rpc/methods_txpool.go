@@ -79,35 +79,6 @@ func (m *TxPoolMethods[appTx, R]) GetTransactionByHash(
 	return tx, nil
 }
 
-// GetTransactionStatus retrieves transaction status
-func (m *TxPoolMethods[appTx, R]) GetTransactionStatus(
-	ctx context.Context,
-	params []any,
-) (any, error) {
-	if len(params) != 1 {
-		return nil, ErrGetTransactionStatusRequires1Param
-	}
-
-	hashStr, ok := params[0].(string)
-	if !ok {
-		return nil, ErrHashParameterMustBeString
-	}
-
-	hash, err := parseHash(hashStr)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidHashFormat, err)
-	}
-
-	// Use txpool's GetTransactionStatus method
-	status, err := m.txpool.GetTransactionStatus(ctx, hash[:])
-	if err != nil {
-		return "not_found", ErrTransactionNotFound
-	}
-
-	// Convert TxStatus to string
-	return status.String(), nil
-}
-
 // GetPendingTransactions retrieves all pending transactions
 func (m *TxPoolMethods[appTx, R]) GetPendingTransactions(
 	ctx context.Context,
@@ -130,6 +101,5 @@ func AddTxPoolMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 
 	server.AddCustomMethod("sendTransaction", methods.SendTransaction)
 	server.AddCustomMethod("getTransactionByHash", methods.GetTransactionByHash)
-	server.AddCustomMethod("getTransactionStatus", methods.GetTransactionStatus)
 	server.AddCustomMethod("getPendingTransactions", methods.GetPendingTransactions)
 }
