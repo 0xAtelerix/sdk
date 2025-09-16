@@ -52,6 +52,7 @@ func TestExampleAppchain(t *testing.T) {
 	require.NoError(t, err)
 
 	txStreamDirPath := filepath.Join(tmp, config.TxStreamDir)
+
 	txBatchDB, err := mdbx.NewMDBX(mdbxlog.New()).
 		Path(txStreamDirPath).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
