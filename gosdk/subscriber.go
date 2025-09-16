@@ -84,6 +84,11 @@ func (s *Subscriber) IsEthSubscription(chainID ChainType, contract EthereumAddre
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	// if there is no subscriptions, give all blocks
+	if len(s.ethContracts[chainID]) == 0 {
+		return true
+	}
+
 	if _, ok := s.ethContracts[chainID]; !ok {
 		return false
 	}
@@ -114,6 +119,11 @@ func (s *Subscriber) SubscribeSolanaAddress(chainID ChainType, addresses ...Sola
 func (s *Subscriber) IsSolanaSubscription(chainID ChainType, address SolanaAddress) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
+	// if there is no subscriptions, give all blocks
+	if len(s.solAddresses[chainID]) == 0 {
+		return true
+	}
 
 	if _, ok := s.solAddresses[chainID]; !ok {
 		return false

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -15,8 +14,6 @@ import (
 	"github.com/blocto/solana-go-sdk/client"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	geth "github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/fxamacker/cbor/v2"
 	"github.com/goccy/go-json"
 	"github.com/ledgerwatch/erigon-lib/kv"
 
@@ -62,7 +59,11 @@ func (fw *FixtureWriter[T]) writeOne(ctx context.Context, item T) error {
 		return fw.putEthBlock(ctx, v)
 	case gethtypes.Block:
 		return fw.putEthBlock(ctx, &v)
-	case []*gethtypes.Receipt:
+	case *gosdk.EthereumBlock:
+		return fw.putEthereumBlock(ctx, v)
+	case gosdk.EthereumBlock:
+		return fw.putEthereumBlock(ctx, &v)
+	case []gethtypes.Receipt:
 		return fw.putEthReceipts(ctx, v)
 	case *client.Block:
 		return fw.putSolBlock(ctx, v)
@@ -78,9 +79,11 @@ func (fw *FixtureWriter[T]) writeOne(ctx context.Context, item T) error {
 func (fw *FixtureWriter[T]) putEthBlock(ctx context.Context, b *gethtypes.Block) error {
 	num := b.NumberU64()
 	h := b.Hash()
-	k := ethBlockKey(num, h)
+	k := gosdk.EthBlockKey(num, h)
 
-	enc, err := rlp.EncodeToBytes(b)
+	ethBlock := gosdk.NewEthereumBlock(b)
+
+	enc, err := json.Marshal(ethBlock)
 	if err != nil {
 		return err
 	}
@@ -90,7 +93,22 @@ func (fw *FixtureWriter[T]) putEthBlock(ctx context.Context, b *gethtypes.Block)
 	})
 }
 
-func (fw *FixtureWriter[T]) putEthReceipts(ctx context.Context, recs []*gethtypes.Receipt) error {
+func (fw *FixtureWriter[T]) putEthereumBlock(ctx context.Context, b *gosdk.EthereumBlock) error {
+	num := b.Header.Number.Uint64()
+	h := b.Header.Hash()
+	k := gosdk.EthBlockKey(num, h)
+
+	enc, err := json.Marshal(b)
+	if err != nil {
+		return err
+	}
+
+	return fw.DB.Update(ctx, func(tx kv.RwTx) error {
+		return tx.Put(gosdk.EthBlocks, k, enc)
+	})
+}
+
+func (fw *FixtureWriter[T]) putEthReceipts(ctx context.Context, recs []gethtypes.Receipt) error {
 	if len(recs) == 0 {
 		return nil
 	}
@@ -100,14 +118,14 @@ func (fw *FixtureWriter[T]) putEthReceipts(ctx context.Context, recs []*gethtype
 
 	return fw.DB.Update(ctx, func(tx kv.RwTx) error {
 		for i, rc := range recs {
-			k := ethReceiptKey(num, h, uint32(i))
+			k := gosdk.EthReceiptKey(num, h, uint32(i))
 
 			enc, err := json.Marshal(rc)
 			if err != nil {
 				return err
 			}
 
-			if err := tx.Put(receipt.ReceiptBucket, k, enc); err != nil {
+			if err = tx.Put(receipt.ReceiptBucket, k, enc); err != nil {
 				return err
 			}
 		}
@@ -119,9 +137,9 @@ func (fw *FixtureWriter[T]) putEthReceipts(ctx context.Context, recs []*gethtype
 func (fw *FixtureWriter[T]) putSolBlock(ctx context.Context, b *client.Block) error {
 	// Make sure this numeric matches what you use as ExternalBlock.BlockNumber on read
 	// (Slot is a good choice; keep it consistent end-to-end).
-	k := solBlockKey(uint64(*b.BlockHeight))
+	k := gosdk.SolBlockKey(uint64(*b.BlockHeight))
 
-	enc, err := cbor.Marshal(b)
+	enc, err := json.Marshal(b)
 	if err != nil {
 		return err
 	}
@@ -129,34 +147,6 @@ func (fw *FixtureWriter[T]) putSolBlock(ctx context.Context, b *client.Block) er
 	return fw.DB.Update(ctx, func(tx kv.RwTx) error {
 		return tx.Put(gosdk.SolanaBlocks, k, enc)
 	})
-}
-
-// EthBlocks: [8 bytes blockNumber][32 bytes blockHash]  => total 40 bytes
-func ethBlockKey(num uint64, hash [32]byte) []byte {
-	key := make([]byte, 8+32)
-	binary.BigEndian.PutUint64(key[:8], num)
-	copy(key[8:], hash[:])
-
-	return key
-}
-
-// EthReceipts: [8 bytes blockNumber][32 bytes blockHash][4 bytes txIndex] => 44 bytes
-func ethReceiptKey(blockNumber uint64, blockHash [32]byte, txIndex uint32) []byte {
-	key := make([]byte, 44)
-	binary.BigEndian.PutUint64(key[:8], blockNumber)
-	copy(key[8:40], blockHash[:])
-	binary.BigEndian.PutUint32(key[40:], txIndex)
-
-	return key
-}
-
-// SolanaBlocks: [8 bytes blockNumber]  (you read by ExternalBlock.BlockNumber)
-// If you use Slot as BlockNumber, write Slot here.
-func solBlockKey(num uint64) []byte {
-	key := make([]byte, 8)
-	binary.BigEndian.PutUint64(key, num)
-
-	return key
 }
 
 type Iterator[T any] interface {
@@ -286,7 +276,7 @@ func (it *SolBlockRPCIterator) Close() error {
 type EthBlockFileIterator struct {
 	f   *os.File
 	sc  *bufio.Scanner
-	dec func([]byte) (*gethtypes.Block, error)
+	dec func([]byte) (*gosdk.EthereumBlock, error)
 }
 
 func NewEthBlockFileIterator(path string) (*EthBlockFileIterator, error) {
@@ -301,10 +291,10 @@ func NewEthBlockFileIterator(path string) (*EthBlockFileIterator, error) {
 	return &EthBlockFileIterator{
 		f:  f,
 		sc: sc,
-		dec: func(b []byte) (*gethtypes.Block, error) {
-			// assume b is raw RLP. If you store hex, decode hex first.
-			var blk gethtypes.Block
-			if err := rlp.DecodeBytes(b, &blk); err != nil {
+		dec: func(b []byte) (*gosdk.EthereumBlock, error) {
+			// assume b is raw JSON. If you store hex, decode hex first.
+			var blk gosdk.EthereumBlock
+			if err := json.Unmarshal(b, &blk); err != nil {
 				return nil, err
 			}
 
@@ -313,7 +303,7 @@ func NewEthBlockFileIterator(path string) (*EthBlockFileIterator, error) {
 	}, nil
 }
 
-func (it *EthBlockFileIterator) Next(_ context.Context) (*gethtypes.Block, error) {
+func (it *EthBlockFileIterator) Next(_ context.Context) (*gosdk.EthereumBlock, error) {
 	if !it.sc.Scan() {
 		if err := it.sc.Err(); err != nil {
 			return nil, err
@@ -323,7 +313,7 @@ func (it *EthBlockFileIterator) Next(_ context.Context) (*gethtypes.Block, error
 	}
 
 	line := it.sc.Bytes()
-	// If lines are hex: raw, _ := hex.DecodeString(strings.TrimSpace(string(line)))
+
 	return it.dec(bytes.Clone(line))
 }
 
@@ -349,7 +339,7 @@ func NewEthReceiptsFileIterator(path string) (*EthReceiptsFileIterator, error) {
 	return &EthReceiptsFileIterator{f: f, sc: sc}, nil
 }
 
-func (it *EthReceiptsFileIterator) Next(_ context.Context) ([]*gethtypes.Receipt, error) {
+func (it *EthReceiptsFileIterator) Next(_ context.Context) ([]gethtypes.Receipt, error) {
 	if !it.sc.Scan() {
 		if err := it.sc.Err(); err != nil {
 			return nil, err
@@ -359,22 +349,12 @@ func (it *EthReceiptsFileIterator) Next(_ context.Context) ([]*gethtypes.Receipt
 	}
 	// Expect: JSON array of base64/hex RLP receipts or raw JSON receipts you control.
 	// For simplicity, assume JSON array of raw RLP blobs (base64) – adjust to your file.
-	var entries [][]byte
-	if err := cbor.Unmarshal(it.sc.Bytes(), &entries); err != nil {
+	var entries []gethtypes.Receipt
+	if err := json.Unmarshal(it.sc.Bytes(), &entries); err != nil {
 		return nil, err
 	}
 
-	out := make([]*gethtypes.Receipt, 0, len(entries))
-	for _, rlpb := range entries {
-		var rc gethtypes.Receipt
-		if err := rlp.DecodeBytes(rlpb, &rc); err != nil {
-			return nil, err
-		}
-
-		out = append(out, &rc)
-	}
-
-	return out, nil
+	return entries, nil
 }
 
 func (it *EthReceiptsFileIterator) Close() error {
@@ -409,7 +389,7 @@ func (it *SolBlockFileIterator) Next(_ context.Context) (*client.Block, error) {
 	}
 
 	var blk client.Block
-	if err := cbor.Unmarshal(it.sc.Bytes(), &blk); err != nil {
+	if err := json.Unmarshal(it.sc.Bytes(), &blk); err != nil {
 		return nil, err
 	}
 
