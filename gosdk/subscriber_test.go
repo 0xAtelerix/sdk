@@ -174,7 +174,7 @@ func Test_SubscribeEthContract_And_IsEthSubscription(t *testing.T) {
 	chainID := ChainType(1)
 	contract := mkEth(0x11)
 
-	require.False(t, s.IsEthSubscription(chainID, contract))
+	require.True(t, s.IsEthSubscription(chainID, contract))
 
 	s.SubscribeEthContract(chainID, contract)
 	require.True(t, s.IsEthSubscription(chainID, contract))
@@ -191,8 +191,8 @@ func Test_UnsubscribeEthContract_RemovesFromActive_And_MarksDeleted(t *testing.T
 	chainID := ChainType(2)
 	contract := mkEth(0x22)
 
-	// precondition: not subscribed
-	require.False(t, s.IsEthSubscription(chainID, contract))
+	// precondition: no subscriptions, listen to all chains
+	require.True(t, s.IsEthSubscription(chainID, contract))
 
 	// subscribe -> present
 	s.SubscribeEthContract(chainID, contract)
@@ -201,8 +201,8 @@ func Test_UnsubscribeEthContract_RemovesFromActive_And_MarksDeleted(t *testing.T
 	// act: unsubscribe (should NOT panic with correct code)
 	s.UnsubscribeEthContract(chainID, contract)
 
-	// removed from active
-	require.False(t, s.IsEthSubscription(chainID, contract))
+	// removed from active - no subscriptions
+	require.True(t, s.IsEthSubscription(chainID, contract))
 
 	// and marked as deleted
 	require.NotNil(t, s.deletedEthContracts[chainID])
@@ -231,7 +231,9 @@ func Test_IsSolanaSubscription(t *testing.T) {
 
 	require.True(t, s.IsSolanaSubscription(chainID, addr))
 	require.False(t, s.IsSolanaSubscription(chainID, mkSol(0xAA)))
-	require.False(t, s.IsSolanaSubscription(12345, addr))
+
+	// precondition: no subscriptions, listen to all chains
+	require.True(t, s.IsSolanaSubscription(12345, addr))
 }
 
 func Test_UnsubscribeSolanaAddress_RemovesFromActive_And_MarksDeleted(t *testing.T) {
@@ -245,9 +247,9 @@ func Test_UnsubscribeSolanaAddress_RemovesFromActive_And_MarksDeleted(t *testing
 	s.SubscribeSolanaAddress(SolanaChainID, addr)
 	require.True(t, s.IsSolanaSubscription(SolanaChainID, addr))
 
-	// delete (should NOT panic; should remove from active and mark as deleted)
+	// delete (should NOT panic; should remove from active and mark as deleted), no subscriptions
 	s.UnsubscribeSolanaAddress(SolanaChainID, addr)
-	require.False(t, s.IsSolanaSubscription(SolanaChainID, addr))
+	require.True(t, s.IsSolanaSubscription(SolanaChainID, addr))
 
 	// deleted map must be initialized and contain the addr
 	require.NotNil(t, s.deletedSolAddresses[SolanaChainID])
@@ -260,9 +262,9 @@ func Test_UnsubscribeSolanaAddress_RemovesFromActive_And_MarksDeleted(t *testing
 	_, ok = s.deletedSolAddresses[SolanaChainID][addr]
 	require.False(t, ok)
 
-	// delete again re-marks as deleted
+	// delete again re-marks as deleted, no subscriptions
 	s.UnsubscribeSolanaAddress(SolanaChainID, addr)
-	require.False(t, s.IsSolanaSubscription(SolanaChainID, addr))
+	require.True(t, s.IsSolanaSubscription(SolanaChainID, addr))
 
 	_, ok = s.deletedSolAddresses[SolanaChainID][addr]
 	require.True(t, ok)
