@@ -334,8 +334,8 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 		result = append(result, apptypes.Batch[appTx, R]{
 			Atropos:        eventBatch.Atropos,
 			Transactions:   allParsedTxs,
-			ExternalBlocks: ews.votingBlocks.PopFinalized(),
-			Checkpoints:    ews.votingCheckpoints.PopFinalized(),
+			ExternalBlocks: ews.votingBlocks.PopFinalized(),      // return only finalized
+			Checkpoints:    ews.votingCheckpoints.PopFinalized(), // return only finalized
 			EndOffset:      eventBatch.EndOffset,
 		})
 	}

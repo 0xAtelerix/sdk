@@ -27,8 +27,6 @@ func TestExampleAppchain(t *testing.T) {
 		// SolanaChainID:   args.SolBlocksPath, //TODO
 	})
 
-	stateTransition := BatchProcesser[ExampleTransaction[ExampleReceipt], ExampleReceipt]{}
-
 	tmp := t.TempDir()
 
 	localDB, err := mdbx.NewMDBX(mdbxlog.New()).
@@ -53,9 +51,18 @@ func TestExampleAppchain(t *testing.T) {
 	subscriber, err := NewSubscriber(t.Context(), appchainDB)
 	require.NoError(t, err)
 
+	multichainDB, err := NewMultichainStateAccess(config.MultichainStateDB)
+	require.NoError(t, err)
+
+	stateTransition := NewBatchProcesser[ExampleTransaction[ExampleReceipt], ExampleReceipt](
+		NewStateTransition(multichainDB),
+		multichainDB,
+		subscriber,
+	)
+
 	log.Info().Msg("Starting appchain...")
 
-	appchainExample, err := NewAppchain(
+	appchainExample := NewAppchain(
 		stateTransition,
 		func(_ uint64, _ [32]byte, _ [32]byte, _ apptypes.Batch[ExampleTransaction[ExampleReceipt], ExampleReceipt]) *ExampleBlock {
 			return &ExampleBlock{}
@@ -64,8 +71,8 @@ func TestExampleAppchain(t *testing.T) {
 		config,
 		appchainDB,
 		subscriber,
+		multichainDB,
 	)
-	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
@@ -140,4 +147,22 @@ func (*ExampleBlock) StateRoot() [32]byte {
 
 func (*ExampleBlock) Bytes() []byte {
 	return []byte{}
+}
+
+type StateTransition struct {
+	MultiChain *MultichainStateAccess
+}
+
+func NewStateTransition(multiChain *MultichainStateAccess) *StateTransition {
+	return &StateTransition{
+		MultiChain: multiChain,
+	}
+}
+
+// how to external chains blocks
+func (*StateTransition) ProcessBlock(
+	_ apptypes.ExternalBlock,
+	_ kv.RwTx,
+) ([]apptypes.ExternalTransaction, error) {
+	return nil, nil
 }

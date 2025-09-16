@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"sync"
 
 	"github.com/blocto/solana-go-sdk/client"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -46,6 +47,7 @@ func SolanaTables() kv.TableCfg {
 
 type MultichainStateAccess struct {
 	stateAccessDB map[ChainType]kv.RoDB
+	mu            sync.RWMutex
 }
 
 type MultichainConfig map[ChainType]string // chainID, chainDBpath
@@ -90,6 +92,9 @@ func (sa *MultichainStateAccess) EthBlock(
 	ctx context.Context,
 	block apptypes.ExternalBlock,
 ) (*gethtypes.Block, error) {
+	sa.mu.RLock()
+	defer sa.mu.RUnlock()
+
 	if _, ok := sa.stateAccessDB[ChainType(block.ChainID)]; !ok {
 		return nil, fmt.Errorf("%w, no DB for chainID, %v", ErrUnknownChain, block.ChainID)
 	}
@@ -138,6 +143,9 @@ func (sa *MultichainStateAccess) EthReceipts(
 	ctx context.Context,
 	block apptypes.ExternalBlock,
 ) ([]*gethtypes.Receipt, error) {
+	sa.mu.RLock()
+	defer sa.mu.RUnlock()
+
 	if _, ok := sa.stateAccessDB[ChainType(block.ChainID)]; !ok {
 		return nil, fmt.Errorf("%w, no DB for chainID, %v", ErrUnknownChain, block.ChainID)
 	}
@@ -175,6 +183,9 @@ func (sa *MultichainStateAccess) SolanaBlock(
 	ctx context.Context,
 	block apptypes.ExternalBlock,
 ) (*client.Block, error) {
+	sa.mu.RLock()
+	defer sa.mu.RUnlock()
+
 	db, ok := sa.stateAccessDB[ChainType(block.ChainID)]
 	if !ok {
 		return nil, fmt.Errorf("%w, no DB for chainID, %v", ErrUnknownChain, block.ChainID)
@@ -221,6 +232,9 @@ func (sa *MultichainStateAccess) ViewDB(
 	chainID ChainType,
 	fn func(tx kv.Tx) error,
 ) error {
+	sa.mu.RLock()
+	defer sa.mu.RUnlock()
+
 	db, ok := sa.stateAccessDB[chainID]
 	if !ok {
 		return fmt.Errorf("%w, no DB for chainID, %d", ErrUnknownChain, chainID)
@@ -230,6 +244,9 @@ func (sa *MultichainStateAccess) ViewDB(
 }
 
 func (sa *MultichainStateAccess) Close() {
+	sa.mu.Lock()
+	defer sa.mu.Unlock()
+
 	for _, db := range sa.stateAccessDB {
 		db.Close()
 	}

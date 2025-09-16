@@ -38,7 +38,7 @@ type ExternalEntity interface {
 }
 
 type ExternalFullBlock interface {
-	gethtypes.Block | client.Block
+	gethtypes.Block | client.Block | *gethtypes.Block | *client.Block
 }
 
 type ExternalData interface {

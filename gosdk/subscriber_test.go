@@ -369,8 +369,6 @@ func Test_Store_Persistency_WriteAndReadBack(t *testing.T) {
 	require.Len(t, gotEth, 1)
 	require.Len(t, gotSol, 1)
 
-	t.Log(gotEth, gotSol)
-
 	// chain 1 should have eth1, eth2
 	require.Contains(t, gotEth, ChainType(1))
 	// byte equality

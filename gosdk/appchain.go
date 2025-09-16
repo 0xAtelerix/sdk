@@ -71,8 +71,9 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 	config AppchainConfig,
 	appchainDB kv.RwDB,
 	subscriber *Subscriber,
+	multichain *MultichainStateAccess,
 	options ...func(a *Appchain[STI, AppTx, R, AppBlock]),
-) (Appchain[STI, AppTx, R, AppBlock], error) {
+) Appchain[STI, AppTx, R, AppBlock] {
 	log.Info().Str("db_path", config.AppchainDBPath).Msg("Initializing appchain database")
 
 	emiterAPI := NewServer(appchainDB, config.ChainID, txpool)
@@ -80,13 +81,6 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 	emiterAPI.logger = &log.Logger
 	if config.Logger != nil {
 		emiterAPI.logger = config.Logger
-	}
-
-	multichainDB, err := NewMultichainStateAccess(config.MultichainStateDB)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to initialize MultichainStateAccess")
-
-		return Appchain[STI, AppTx, R, AppBlock]{}, err
 	}
 
 	log.Info().Msg("Appchain initialized successfully")
@@ -98,7 +92,7 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 		emiterAPI:              emiterAPI,
 		AppchainDB:             appchainDB,
 		config:                 config,
-		multichainDB:           multichainDB,
+		multichainDB:           multichain,
 		subscriber:             subscriber,
 	}
 
@@ -106,7 +100,7 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 		option(&appchain)
 	}
 
-	return appchain, nil
+	return appchain
 }
 
 type Appchain[STI StateTransitionInterface[appTx, R], appTx apptypes.AppTransaction[R], R apptypes.Receipt, AppBlock apptypes.AppchainBlock] struct {
@@ -127,6 +121,7 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 	streamConstructor EventStreamWrapperConstructor[appTx, R],
 ) error {
 	logger := log.Ctx(ctx)
+	logger.Error().Msg("Starting appchain...")
 	logger.Info().Msg("Appchain run started")
 
 	ctx = utility.CtxWithValidatorID(ctx, a.config.ValidatorID)
@@ -312,11 +307,7 @@ runFor:
 					processedReceipts []R
 				)
 
-				// TODO: filter external blocks
-				// TODO: filter checkpoints
-				// TODO: possibly get external blocks
-
-				processedReceipts, extTxs, err = a.appchainStateExecution.ProcessBatch(batch, rwtx)
+				processedReceipts, extTxs, err = a.appchainStateExecution.ProcessBatch(ctx, batch, rwtx)
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to process batch")
 
