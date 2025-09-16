@@ -129,7 +129,14 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 	vid := utility.ValidatorIDFromCtx(ctx)
 	cid := utility.ChainIDFromCtx(ctx)
 
-	go a.RunEmitterAPI(ctx)
+	emitterErrChan := make(chan error)
+
+	go a.RunEmitterAPI(ctx, emitterErrChan)
+
+	err := <-emitterErrChan
+	if err != nil {
+		panic(err)
+	}
 
 	if a.config.PrometheusPort != "" {
 		go startPrometheusServer(ctx, a.config.PrometheusPort)
@@ -453,13 +460,17 @@ runFor:
 	return nil
 }
 
-func (a *Appchain[STI, appTx, R, AppBlock]) RunEmitterAPI(ctx context.Context) {
+func (a *Appchain[STI, appTx, R, AppBlock]) RunEmitterAPI(ctx context.Context, errCh chan error) {
 	logger := log.Ctx(ctx)
 
 	lis, err := (&net.ListenConfig{}).Listen(ctx, "tcp", a.config.EmitterPort)
 	if err != nil {
-		logger.Fatal().Err(err).Str("port", a.config.EmitterPort).Msg("Failed to create listener")
+		errCh <- fmt.Errorf("failed to create listener: %w, port %q", err, a.config.EmitterPort)
+
+		return
 	}
+
+	close(errCh)
 
 	logger.Info().Str("port", a.config.EmitterPort).Msg("Starting gRPC server")
 
@@ -505,7 +516,7 @@ func (a *Appchain[STI, appTx, R, AppBlock]) RunEmitterAPI(ctx context.Context) {
 	case err = <-serveErr:
 		// Serve exited on its own (listener error, etc.)
 		if err != nil {
-			logger.Fatal().Err(err).Msg("gRPC server crashed")
+			logger.Panic().Err(err).Msg("gRPC server crashed")
 		}
 
 		logger.Info().Msg("gRPC server exited")
@@ -631,7 +642,7 @@ func startPrometheusServer(ctx context.Context, addr string) {
 	}()
 
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Ctx(ctx).Fatal().Err(err).Msg("metrics server crashed")
+		log.Ctx(ctx).Panic().Err(err).Msg("metrics server crashed")
 	}
 }
 

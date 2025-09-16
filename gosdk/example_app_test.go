@@ -13,6 +13,7 @@ import (
 	mdbxlog "github.com/ledgerwatch/log/v3"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
@@ -60,7 +61,7 @@ func TestExampleAppchain(t *testing.T) {
 		subscriber,
 	)
 
-	log.Info().Msg("Starting appchain...")
+	log.Info().Msg("Creating appchain...")
 
 	appchainExample := NewAppchain(
 		stateTransition,
@@ -80,8 +81,12 @@ func TestExampleAppchain(t *testing.T) {
 	// Run appchain in goroutine
 	runErr := make(chan error, 1)
 
+	log.Info().Msg("Starting appchain...")
+
 	go func() {
-		runErr <- appchainExample.Run(ctx, nil)
+		assert.NotPanics(t, func() {
+			runErr <- appchainExample.Run(ctx, nil)
+		})
 	}()
 
 	err = <-runErr
