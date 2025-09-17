@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/fxamacker/cbor/v2"
 	"github.com/goccy/go-json"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
@@ -295,7 +294,7 @@ func TestStandardRPCServer_getTransactionReceipt(t *testing.T) {
 
 	// Create a test receipt
 	testReceipt := TestReceipt{ReceiptStatus: apptypes.ReceiptConfirmed}
-	receiptData, err := cbor.Marshal(testReceipt)
+	receiptData, err := json.Marshal(testReceipt)
 	require.NoError(t, err)
 
 	// Create a test hash

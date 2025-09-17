@@ -14,53 +14,9 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-// CustomTransaction - тестовая структура транзакции
-//
-
-type CustomTransaction[R Receipt] struct {
-	From  string `json:"from"  cbor:"1,keyasint"`
-	To    string `json:"to"    cbor:"2,keyasint"`
-	Value int    `json:"value" cbor:"3,keyasint"`
-}
-
-func (c CustomTransaction[R]) Hash() [32]byte {
-	s := c.From + c.To + strconv.Itoa(c.Value)
-
-	return sha256.Sum256([]byte(s))
-}
-
-func (CustomTransaction[R]) Process(
-	_ kv.RwTx,
-) (r Receipt, txs []apptypes.ExternalTransaction, err error) {
-	return
-}
-
-type Receipt struct{}
-
-func (Receipt) TxHash() [32]byte {
-	return [32]byte{}
-}
-
-func (Receipt) Status() apptypes.TxReceiptStatus {
-	return apptypes.ReceiptConfirmed
-}
-
-func (Receipt) Error() string {
-	return ""
-}
-
-// randomTransaction генерирует случайную транзакцию
-func randomTransaction[R Receipt]() *rapid.Generator[CustomTransaction[R]] {
-	return rapid.Custom(func(t *rapid.T) CustomTransaction[R] {
-		return CustomTransaction[R]{
-			From:  rapid.StringN(1, 32, 32).Draw(t, "from"),
-			To:    rapid.StringN(1, 32, 32).Draw(t, "to"),
-			Value: rapid.IntRange(1, 10_000).Draw(t, "value"),
-		}
-	})
-}
-
 func TestTxPool_PropertyBased(t *testing.T) {
+	t.Parallel()
+
 	rapid.Check(t, func(tr *rapid.T) {
 		t.Run(tr.Name(), func(t *testing.T) {
 			dbPath := t.TempDir()
@@ -174,5 +130,51 @@ func TestTxPool_PropertyBased(t *testing.T) {
 				tr.Fatalf("Ожидалось %d транзакций, получено %d", len(txs), len(allTxs))
 			}
 		})
+	})
+}
+
+// CustomTransaction - тестовая структура транзакции
+//
+
+type CustomTransaction[R Receipt] struct {
+	From  string `json:"from"  cbor:"1,keyasint"`
+	To    string `json:"to"    cbor:"2,keyasint"`
+	Value int    `json:"value" cbor:"3,keyasint"`
+}
+
+func (c CustomTransaction[R]) Hash() [32]byte {
+	s := c.From + c.To + strconv.Itoa(c.Value)
+
+	return sha256.Sum256([]byte(s))
+}
+
+func (CustomTransaction[R]) Process(
+	_ kv.RwTx,
+) (r Receipt, txs []apptypes.ExternalTransaction, err error) {
+	return
+}
+
+type Receipt struct{}
+
+func (Receipt) TxHash() [32]byte {
+	return [32]byte{}
+}
+
+func (Receipt) Status() apptypes.TxReceiptStatus {
+	return apptypes.ReceiptConfirmed
+}
+
+func (Receipt) Error() string {
+	return ""
+}
+
+// randomTransaction генерирует случайную транзакцию
+func randomTransaction[R Receipt]() *rapid.Generator[CustomTransaction[R]] {
+	return rapid.Custom(func(t *rapid.T) CustomTransaction[R] {
+		return CustomTransaction[R]{
+			From:  rapid.StringN(1, 32, 32).Draw(t, "from"),
+			To:    rapid.StringN(1, 32, 32).Draw(t, "to"),
+			Value: rapid.IntRange(1, 10_000).Draw(t, "value"),
+		}
 	})
 }

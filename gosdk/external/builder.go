@@ -14,7 +14,7 @@ var (
 
 // ExTxBuilder constructs external transaction intents for any chain
 type ExTxBuilder struct {
-	chainID uint64
+	chainID apptypes.ChainType
 	payload []byte
 }
 
@@ -26,7 +26,7 @@ func NewExTxBuilder() *ExTxBuilder {
 }
 
 // SetChainID sets the target chain ID
-func (b *ExTxBuilder) SetChainID(chainID uint64) *ExTxBuilder {
+func (b *ExTxBuilder) SetChainID(chainID apptypes.ChainType) *ExTxBuilder {
 	b.chainID = chainID
 
 	return b

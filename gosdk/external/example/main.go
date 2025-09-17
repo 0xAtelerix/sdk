@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"math/big"
 
@@ -36,7 +35,7 @@ func TransferExample() {
 		log.Fatal("Failed to create external transaction:", err)
 	}
 
-	fmt.Printf("External Transaction Created: ChainID=%d, Size=%d bytes\n", tx.ChainID, len(tx.Tx))
+	log.Printf("External Transaction Created: ChainID=%d, Size=%d bytes\n", tx.ChainID, len(tx.Tx))
 
 	// 3. Simulate contract-side decoding (what happens in AppchainReceiver.sol)
 	decodedData, err := encoder.DecodeTransfer(tx.Tx)
@@ -44,7 +43,7 @@ func TransferExample() {
 		log.Fatal("Failed to decode transfer:", err)
 	}
 
-	fmt.Printf("Decoded Transfer: %s → %s (%s wei)\n",
+	log.Printf("Decoded Transfer: %s → %s (%s wei)\n",
 		decodedData.Token.Hex(),
 		decodedData.To.Hex(),
 		decodedData.Amount.String())
@@ -78,7 +77,7 @@ func SwapExample() {
 		{"Polygon", external.NewExTxBuilder().Polygon},
 	}
 
-	fmt.Printf("Deploying swap to %d chains:\n", len(chains))
+	log.Printf("Deploying swap to %d chains:\n", len(chains))
 
 	for _, chain := range chains {
 		tx, err := chain.builder().
@@ -90,31 +89,31 @@ func SwapExample() {
 			continue
 		}
 
-		fmt.Printf("✓ %s (Chain %d) - %d bytes\n", chain.name, tx.ChainID, len(tx.Tx))
+		log.Printf("✓ %s (Chain %d) - %d bytes\n", chain.name, tx.ChainID, len(tx.Tx))
 	}
 }
 
 func main() {
-	fmt.Println("=== External Transaction Examples ===")
+	log.Println("=== External Transaction Examples ===")
 
 	// Run EVM examples
-	fmt.Println("\n1. Token Transfer:")
+	log.Println("\n1. Token Transfer:")
 	TransferExample()
 
-	fmt.Println("\n2. Multi-Chain Swap:")
+	log.Println("\n2. Multi-Chain Swap:")
 	SwapExample()
 
 	// Run Solana examples
-	fmt.Println("\n3. Solana Integration:")
+	log.Println("\n3. Solana Integration:")
 	SolanaExample()
 
-	fmt.Println("\n4. Multi-Chain: EVM + Solana:")
+	log.Println("\n4. Multi-Chain: EVM + Solana:")
 	MultiChainExample()
 
-	fmt.Println("\n✓ All examples completed successfully")
-	fmt.Println("=== Summary ===")
-	fmt.Println("• External transaction builder supports all chains")
-	fmt.Println("• Use appropriate encoding for each chain (ABI vs Borsh vs JSON)")
-	fmt.Println("• TSS appchain transports data regardless of encoding format")
-	fmt.Println("• Your contracts/programs decode using same format you encoded with")
+	log.Println("\n✓ All examples completed successfully")
+	log.Println("=== Summary ===")
+	log.Println("• External transaction builder supports all chains")
+	log.Println("• Use appropriate encoding for each chain (ABI vs Borsh vs JSON)")
+	log.Println("• TSS appchain transports data regardless of encoding format")
+	log.Println("• Your contracts/programs decode using same format you encoded with")
 }

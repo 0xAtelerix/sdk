@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/0xAtelerix/sdk/gosdk"
+	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
 func TestBasicBuilder(t *testing.T) {
@@ -51,7 +52,7 @@ func TestChainHelperMethods(t *testing.T) {
 	tests := []struct {
 		name        string
 		builderFunc func() *ExTxBuilder
-		expectedID  uint64
+		expectedID  apptypes.ChainType
 	}{
 		{
 			"Ethereum",
@@ -303,7 +304,7 @@ func TestMultiChainWorkflow(t *testing.T) {
 	chains := []struct {
 		name     string
 		builder  func() *ExTxBuilder
-		expected uint64
+		expected apptypes.ChainType
 	}{
 		{
 			"Ethereum",
@@ -421,7 +422,7 @@ func TestTestnetWorkflow(t *testing.T) {
 	testnets := []struct {
 		name     string
 		builder  func() *ExTxBuilder
-		expected uint64
+		expected apptypes.ChainType
 	}{
 		{
 			"EthereumSepolia",
