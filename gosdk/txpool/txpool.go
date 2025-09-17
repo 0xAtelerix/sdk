@@ -215,8 +215,6 @@ func (p *TxPool[T, R]) GetTransactionStatus(
 		return apptypes.Batched, nil
 	}
 
-	// TODO: handle: ReadyToProcess and Processed
-
 	return status, nil
 }
 

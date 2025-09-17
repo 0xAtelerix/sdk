@@ -21,7 +21,9 @@ func main() {
     rpc.AddStandardMethods[MyTransaction, MyReceipt](server, appchainDB, txpool)
     
     // Start server
-    log.Fatal(server.StartHTTPServer(context.Background(), ":8080"))
+    if err := server.StartHTTPServer(context.Background(), ":8080"); err != nil {
+        log.Panic("Failed to start RPC server")
+    }
 }
 ```
 
@@ -34,13 +36,18 @@ func main() {
 
 ## Available Method Sets
 
+### Transaction Methods
+```go
+rpc.AddTransactionMethods[MyTransaction, MyReceipt](server, txpool, appchainDB)
+```
+- `getTransactionStatus` - Comprehensive transaction status (checks receipts + txpool)
+
 ### Transaction Pool Methods
 ```go
 rpc.AddTxPoolMethods[MyTransaction, MyReceipt](server, txpool)
 ```
 - `sendTransaction` - Submit transactions
-- `getTransactionByHash` - Retrieve transactions
-- `getTransactionStatus` - Check transaction status
+- `getTransactionByHash` - Retrieve transactions from pool
 - `getPendingTransactions` - List pending transactions
 
 ### Receipt Methods
@@ -53,7 +60,7 @@ rpc.AddReceiptMethods[MyReceipt](server, appchainDB)
 ```go
 rpc.AddStandardMethods[MyTransaction, MyReceipt](server, appchainDB, txpool)
 ```
-Adds all transaction pool and receipt methods at once.
+Adds all transaction, txpool, and receipt methods at once.
 
 ## Complete Integration Example
 
@@ -81,6 +88,7 @@ func main() {
     rpc.AddStandardMethods[MyTransaction, MyReceipt](server, appchainDB, txpool)
     
     // Option 2: Add only specific method sets
+    // rpc.AddTransactionMethods[MyTransaction, MyReceipt](server, txpool, appchainDB)
     // rpc.AddTxPoolMethods[MyTransaction, MyReceipt](server, txpool)
     // rpc.AddReceiptMethods[MyReceipt](server, appchainDB)
     
@@ -134,7 +142,7 @@ server.StartHTTPServer(context.Background(), ":8080")
 
 ```go
 server := rpc.NewStandardRPCServer()
-rpc.AddTxPoolMethods[MyTransaction, MyReceipt](server, txpool)
+rpc.AddTransactionMethods[MyTransaction, MyReceipt](server, txpool, appchainDB)
 server.StartHTTPServer(context.Background(), ":8080")
 ```
 
@@ -219,13 +227,129 @@ Access server health at `GET /health`:
 }
 ```
 
+## Method Details
+
+### `sendTransaction`
+
+Submits a transaction to the transaction pool for processing.
+
+**Parameters:**
+- `transaction` (object) - The transaction object to submit
+
+**Example:**
+```bash
+curl -X POST http://localhost:8080/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "sendTransaction",
+    "params": [{"from": "0x...", "to": "0x...", "value": 100}],
+    "id": 1
+  }'
+```
+
+**Returns:** Transaction hash as hex string (e.g., `"0x1234abcd..."`)
+
+### `getTransactionByHash`
+
+Retrieves a transaction from the transaction pool by its hash.
+
+**Parameters:**
+- `hash` (string) - The transaction hash (with or without 0x prefix)
+
+**Example:**
+```bash
+curl -X POST http://localhost:8080/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "getTransactionByHash",
+    "params": ["0x1234abcd..."],
+    "id": 2
+  }'
+```
+
+**Returns:** Transaction object or error if not found in txpool
+
+### `getTransactionStatus`
+
+Provides comprehensive transaction status checking across both receipts and txpool.
+
+**How it works:**
+1. **First checks receipts** - Returns status for finalized transactions (`"Processed"`, `"Failed"`)
+2. **Then checks txpool** - Returns status for pending transactions (`"Pending"`, `"Batched"`)
+3. **Returns `"not_found"`** if transaction doesn't exist anywhere
+
+**Parameters:**
+- `hash` (string) - The transaction hash (with or without 0x prefix)
+
+**Example:**
+```bash
+curl -X POST http://localhost:8080/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "getTransactionStatus",
+    "params": ["0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"],
+    "id": 3
+  }'
+```
+
+**Possible responses:**
+- `"Processed"` - Transaction confirmed and executed successfully
+- `"Failed"` - Transaction failed during execution
+- `"Pending"` - Transaction waiting in txpool
+- `"Batched"` - Transaction batched but not yet processed
+- `"not_found"` - Transaction not found anywhere
+
+### `getPendingTransactions`
+
+Retrieves all transactions currently pending in the transaction pool.
+
+**Parameters:** None
+
+**Example:**
+```bash
+curl -X POST http://localhost:8080/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "getPendingTransactions",
+    "params": [],
+    "id": 4
+  }'
+```
+
+**Returns:** Array of pending transaction objects
+
+### `getTransactionReceipt`
+
+Retrieves the receipt for a finalized transaction by its hash.
+
+**Parameters:**
+- `hash` (string) - The transaction hash (with or without 0x prefix)
+
+**Example:**
+```bash
+curl -X POST http://localhost:8080/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "getTransactionReceipt",
+    "params": ["0x1234abcd..."],
+    "id": 5
+  }'
+```
+
+**Returns:** Receipt object with transaction status, hash, and execution details
+
 ## Method Names
 
 ⚠️ **Important**: Use exact method names when calling via JSON-RPC:
 
 - ✅ `sendTransaction` 
 - ✅ `getTransactionByHash`
-- ✅ `getTransactionStatus`
+- ✅ `getTransactionStatus` - Comprehensive (receipts + txpool)
 - ✅ `getPendingTransactions`
 - ✅ `getTransactionReceipt`
 
@@ -255,6 +379,16 @@ curl -X POST http://localhost:8080/rpc \
     "id": 2
   }'
 
+# Get comprehensive transaction status
+curl -X POST http://localhost:8080/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "getTransactionStatus",
+    "params": ["0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"],
+    "id": 3
+  }'
+
 # Get pending transactions
 curl -X POST http://localhost:8080/rpc \
   -H "Content-Type: application/json" \
@@ -262,7 +396,7 @@ curl -X POST http://localhost:8080/rpc \
     "jsonrpc": "2.0",
     "method": "getPendingTransactions",
     "params": [],
-    "id": 3
+    "id": 4
   }'
 
 # Custom method call
@@ -272,7 +406,7 @@ curl -X POST http://localhost:8080/rpc \
     "jsonrpc": "2.0",
     "method": "getChainInfo",
     "params": [],
-    "id": 4
+    "id": 5
   }'
 ```
 
@@ -295,6 +429,16 @@ The server returns standard JSON-RPC 2.0 error responses:
 
 ### Successful Response
 
+**Transaction Status Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": "Processed",
+  "id": 1
+}
+```
+
+**Other Method Response:**
 ```json
 {
   "jsonrpc": "2.0",

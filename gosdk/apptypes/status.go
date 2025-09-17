@@ -3,25 +3,29 @@ package apptypes
 type TxStatus int
 
 const (
+	unknown   = "Unknown"
+	failed    = "Failed"
+	confirmed = "Confirmed"
+)
+
+const (
 	Unknown TxStatus = iota
 	Pending
 	Batched
-	ReadyToProcess
 	Processed
+	Failed
 )
 
 func (s TxStatus) String() string {
-	const unknown = "Unknown"
-
 	switch s {
 	case Pending:
 		return "Pending"
 	case Batched:
 		return "Batched"
-	case ReadyToProcess:
-		return "ReadyToProcess"
 	case Processed:
 		return "Processed"
+	case Failed:
+		return failed
 	case Unknown:
 		return unknown
 	default:
@@ -38,15 +42,13 @@ const (
 )
 
 func (s TxReceiptStatus) String() string {
-	const unknown = "Unknown"
-
 	switch s {
 	case ReceiptUnknown:
 		return unknown
 	case ReceiptFailed:
-		return "Failed"
+		return failed
 	case ReceiptConfirmed:
-		return "Confirmed"
+		return confirmed
 	default:
 		return unknown
 	}
