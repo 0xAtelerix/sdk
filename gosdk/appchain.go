@@ -185,19 +185,25 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 		break
 	}
 
-	var eventStream Streamer[appTx, R]
+	var (
+		eventStream       Streamer[appTx, R]
+		votingBlocks      *Voting[apptypes.ExternalBlock]
+		votingCheckpoints *Voting[apptypes.Checkpoint]
+	)
 
-	roTx, err := a.AppchainDB.BeginRo(ctx)
-	if err != nil {
-		return err
-	}
+	err = a.AppchainDB.View(ctx, func(tx kv.Tx) error {
+		votingBlocks, err = NewVotingFromStorage(tx, apptypes.MakeExternalBlock, nil)
+		if err != nil {
+			return err
+		}
 
-	votingBlocks, err := NewVotingFromStorage(roTx, apptypes.MakeExternalBlock, nil)
-	if err != nil {
-		return err
-	}
+		votingCheckpoints, err = NewVotingFromStorage(tx, apptypes.MakeCheckpoint, nil)
+		if err != nil {
+			return err
+		}
 
-	votingCheckpoints, err := NewVotingFromStorage(roTx, apptypes.MakeCheckpoint, nil)
+		return nil
+	})
 	if err != nil {
 		return err
 	}
@@ -210,7 +216,7 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 			startEventPos,
 			a.TxBatchDB,
 			logger,
-			roTx,
+			a.AppchainDB,
 			a.subscriber,
 			votingBlocks,
 			votingCheckpoints,
@@ -221,7 +227,7 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 			startEventPos,
 			a.TxBatchDB,
 			logger,
-			roTx,
+			a.AppchainDB,
 			a.subscriber,
 			votingBlocks,
 			votingCheckpoints,
@@ -230,8 +236,6 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to create event stream")
-
-		roTx.Rollback()
 
 		return fmt.Errorf("failed to create event stream: %w", err)
 	}

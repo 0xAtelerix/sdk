@@ -19,7 +19,6 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
-	"github.com/0xAtelerix/sdk/gosdk/receipt"
 )
 
 type FixtureWriter[T any] struct {
@@ -126,7 +125,7 @@ func (fw *FixtureWriter[T]) putEthReceipts(ctx context.Context, recs []gethtypes
 				return err
 			}
 
-			if err = tx.Put(receipt.ReceiptBucket, k, enc); err != nil {
+			if err = tx.Put(gosdk.EthReceipts, k, enc); err != nil {
 				return err
 			}
 		}

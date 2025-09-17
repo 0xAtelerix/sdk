@@ -28,7 +28,6 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
-	"github.com/0xAtelerix/sdk/gosdk/receipt"
 )
 
 // --- minimal test fixture writer matching your read-side keying ---
@@ -97,7 +96,7 @@ func (w *testFixtureWriter) putEthReceipts(
 
 			key := gosdk.EthReceiptKey(blockNum, blockHash, uint32(i))
 
-			if err = tx.Put(receipt.ReceiptBucket, key, enc); err != nil {
+			if err = tx.Put(gosdk.EthReceipts, key, enc); err != nil {
 				return err
 			}
 		}

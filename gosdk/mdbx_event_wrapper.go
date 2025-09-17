@@ -22,7 +22,7 @@ type MdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 	chainID           uint32
 	logger            *zerolog.Logger
 	subscriber        *Subscriber
-	appchainDB        kv.Tx
+	appchainDB        kv.RoDB
 	votingBlocks      *Voting[apptypes.ExternalBlock]
 	votingCheckpoints *Voting[apptypes.Checkpoint]
 }
@@ -33,7 +33,7 @@ type EventStreamWrapperConstructor[appTx apptypes.AppTransaction[R], R apptypes.
 	eventStartPos int64,
 	txBatchDB kv.RoDB,
 	logger *zerolog.Logger,
-	appchainTx kv.Tx,
+	appchainTx kv.RoDB,
 	subscriber *Subscriber,
 	votingBlocks *Voting[apptypes.ExternalBlock],
 	votingCheckpoints *Voting[apptypes.Checkpoint],
@@ -45,7 +45,7 @@ func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Rece
 	eventStartPos int64,
 	txBatchDB kv.RoDB,
 	logger *zerolog.Logger,
-	appchainDB kv.Tx,
+	appchainDB kv.RoDB,
 	subscriber *Subscriber,
 	votingBlocks *Voting[apptypes.ExternalBlock],
 	votingCheckpoints *Voting[apptypes.Checkpoint],
@@ -113,7 +113,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 		for _, rawEvent := range eventBatch.Events {
 			var evt apptypes.Event
 
-			if err := cbor.Unmarshal(rawEvent, &evt); err != nil {
+			if err = cbor.Unmarshal(rawEvent, &evt); err != nil {
 				return nil, fmt.Errorf("failed to decode event: %w", err)
 			}
 
@@ -148,30 +148,39 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 				key := [4]byte{}
 				binary.BigEndian.PutUint32(key[:], evt.Base.Epoch)
 
-				valsetData, err := ews.appchainDB.GetOne(ValsetBucket, key[:])
+				err = ews.appchainDB.View(ctx, func(tx kv.Tx) error {
+					var valsetData []byte
+
+					valsetData, err = tx.GetOne(ValsetBucket, key[:])
+					if err != nil {
+						ews.logger.Err(err).
+							Uint32("Epoch", evt.Base.Epoch)
+
+						return err
+					}
+
+					if len(valsetData) == 0 {
+						return ErrNoValidatorSet
+					}
+
+					valset = &ValidatorSet{}
+
+					err = cbor.Unmarshal(valsetData, valset)
+					if err != nil {
+						ews.logger.Err(err).
+							Uint32("Epoch", evt.Base.Epoch)
+
+						return err
+					}
+
+					ews.votingBlocks.SetValset(valset)
+					ews.votingCheckpoints.SetValset(valset)
+
+					return nil
+				})
 				if err != nil {
-					ews.logger.Err(err).
-						Uint32("Epoch", evt.Base.Epoch)
-
 					continue
 				}
-
-				if len(valsetData) == 0 {
-					continue
-				}
-
-				valset = &ValidatorSet{}
-
-				err = cbor.Unmarshal(valsetData, valset)
-				if err != nil {
-					ews.logger.Err(err).
-						Uint32("Epoch", evt.Base.Epoch)
-
-					continue
-				}
-
-				ews.votingBlocks.SetValset(valset)
-				ews.votingCheckpoints.SetValset(valset)
 			}
 
 			for _, batch := range evt.TxPool {
@@ -351,7 +360,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) Close() error {
 
 	ews.txReader.Close()
 
-	ews.appchainDB.Rollback()
+	ews.appchainDB.Close()
 
 	return nil
 }

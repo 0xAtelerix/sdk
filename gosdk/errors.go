@@ -10,6 +10,7 @@ const (
 	ErrCorruptedFile  = SDKError("corrupted file")
 	ErrUnknownChain   = SDKError("unknown chain")
 	ErrMissingTxBatch = SDKError("missing tx batch")
+	ErrNoValidatorSet = SDKError("no valset")
 
 	ErrWrongBlock = SDKError("wrong block hash")
 

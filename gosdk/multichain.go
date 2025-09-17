@@ -18,28 +18,28 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
-	"github.com/0xAtelerix/sdk/gosdk/receipt"
 )
 
 const (
 	ChainIDBucket = "chainid"
 	EthBlocks     = "blocks"
+	EthReceipts   = "ethereum_receipts"
 	SolanaBlocks  = "solana_blocks"
 )
 
 func EvmTables() kv.TableCfg {
 	return kv.TableCfg{
-		ChainIDBucket:         {},
-		EthBlocks:             {},
-		receipt.ReceiptBucket: {},
+		ChainIDBucket: {},
+		EthBlocks:     {},
+		EthReceipts:   {},
 	}
 }
 
 func SolanaTables() kv.TableCfg {
 	return kv.TableCfg{
-		ChainIDBucket:         {},
-		SolanaBlocks:          {},
-		receipt.ReceiptBucket: {},
+		ChainIDBucket: {},
+		SolanaBlocks:  {},
+		EthReceipts:   {},
 	}
 }
 
@@ -151,7 +151,7 @@ func (sa *MultichainStateAccess) EthReceipts(
 	var blockReceipts []gethtypes.Receipt
 
 	err := sa.stateAccessDB[apptypes.ChainType(block.ChainID)].View(ctx, func(tx kv.Tx) error {
-		return tx.ForPrefix(receipt.ReceiptBucket, key, func(_, v []byte) error {
+		return tx.ForPrefix(EthReceipts, key, func(_, v []byte) error {
 			r := gethtypes.Receipt{}
 
 			dbErr := json.Unmarshal(v, &r)
