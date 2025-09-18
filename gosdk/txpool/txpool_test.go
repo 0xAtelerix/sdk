@@ -1,10 +1,13 @@
 package txpool
 
 import (
+	"context"
 	"crypto/sha256"
 	"strconv"
+	"sync"
 	"testing"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
@@ -133,9 +136,72 @@ func TestTxPool_PropertyBased(t *testing.T) {
 	})
 }
 
-// CustomTransaction - тестовая структура транзакции
-//
+func TestTxPool_ConcurrentAddAndBatch(t *testing.T) {
+	dbPath := t.TempDir()
 
+	db, err := mdbx.NewMDBX(mdbxlog.New()).
+		Path(dbPath).
+		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
+			return Tables()
+		}).
+		Open()
+	require.NoError(t, err)
+
+	txPool := NewTxPool[CustomTransaction[Receipt]](db)
+
+	t.Cleanup(func() {
+		_ = txPool.Close()
+	})
+
+	const numTx = 1000
+
+	ctx := context.Background()
+
+	// Rapid burst of AddTransaction via goroutines
+	var wg sync.WaitGroup
+	wg.Add(numTx)
+
+	for i := range make([]struct{}, numTx) {
+		go func(i int) {
+			defer wg.Done()
+
+			tx := CustomTransaction[Receipt]{
+				From:  "alice",
+				To:    "bob",
+				Value: i,
+			}
+
+			_ = txPool.AddTransaction(ctx, tx)
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Create a batch immediately after burst
+	batchHash, txs, err := txPool.CreateTransactionBatch(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, batchHash)
+	require.NotEmpty(t, txs)
+
+	// Ensure unmarshalling of each tx in batch works by checking status lookup and count
+	// Status should be Batched for all that were included
+	var batchedCount int
+
+	for _, raw := range txs {
+		var tx CustomTransaction[Receipt]
+		require.NoError(t, cbor.Unmarshal(raw, &tx))
+		h := tx.Hash()
+		st, err := txPool.GetTransactionStatus(ctx, h[:])
+		require.NoError(t, err)
+		require.Equal(t, apptypes.Batched, st)
+
+		batchedCount++
+	}
+
+	require.Equal(t, numTx, batchedCount)
+}
+
+// CustomTransaction - test transaction structure
 type CustomTransaction[R Receipt] struct {
 	From  string `json:"from"  cbor:"1,keyasint"`
 	To    string `json:"to"    cbor:"2,keyasint"`
