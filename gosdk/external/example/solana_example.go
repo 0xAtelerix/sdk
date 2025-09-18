@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"math/big"
 
@@ -21,7 +20,7 @@ type SolanaTransfer struct {
 
 // SolanaExample demonstrates Solana program integration
 func SolanaExample() {
-	fmt.Println("=== Solana External Transaction Example ===")
+	log.Println("=== Solana External Transaction Example ===")
 
 	// 1. Create Solana transfer data
 	transferData := SolanaTransfer{
@@ -45,9 +44,9 @@ func SolanaExample() {
 		log.Fatal("Failed to create Solana external transaction:", err)
 	}
 
-	fmt.Println("Solana External Transaction Created:")
-	fmt.Printf("  Chain ID: %d (Solana Mainnet)\n", tx.ChainID)
-	fmt.Printf("  Payload Size: %d bytes\n", len(tx.Tx))
+	log.Println("Solana External Transaction Created:")
+	log.Printf("  Chain ID: %d (Solana Mainnet)\n", tx.ChainID)
+	log.Printf("  Payload Size: %d bytes\n", len(tx.Tx))
 
 	// 4. Simulate what happens in Solana program
 	var decoded SolanaTransfer
@@ -57,18 +56,18 @@ func SolanaExample() {
 		log.Fatal("Failed to decode Solana transfer:", err)
 	}
 
-	fmt.Println("Decoded Solana Transfer:")
-	fmt.Printf("  To: %s\n", decoded.To)
-	fmt.Printf("  Amount: %d lamports (%.2f SOL)\n", decoded.Amount, float64(decoded.Amount)/1e9)
-	fmt.Printf("  Token: %s\n", decoded.Token)
+	log.Println("Decoded Solana Transfer:")
+	log.Printf("  To: %s\n", decoded.To)
+	log.Printf("  Amount: %d lamports (%.2f SOL)\n", decoded.Amount, float64(decoded.Amount)/1e9)
+	log.Printf("  Token: %s\n", decoded.Token)
 
-	fmt.Println("\n✓ TSS appchain will submit this to Solana program")
-	fmt.Println("✓ Solana program decodes using same JSON format")
+	log.Println("\n✓ TSS appchain will submit this to Solana program")
+	log.Println("✓ Solana program decodes using same JSON format")
 }
 
 // MultiChainExample shows deploying to both EVM and Solana
 func MultiChainExample() {
-	fmt.Println("\n=== Multi-Chain: EVM + Solana Example ===")
+	log.Println("\n=== Multi-Chain: EVM + Solana Example ===")
 
 	// 1. EVM chains - use ABI encoding (same as main.go)
 	encoder := appchain.NewEncoder()
@@ -102,7 +101,7 @@ func MultiChainExample() {
 		{"Polygon", external.NewExTxBuilder().Polygon},
 	}
 
-	fmt.Println("EVM Deployments:")
+	log.Println("EVM Deployments:")
 
 	for _, chain := range evmChains {
 		tx, chainErr := chain.builder().
@@ -114,7 +113,7 @@ func MultiChainExample() {
 			continue
 		}
 
-		fmt.Printf("  ✓ %s (Chain %d) - %d bytes\n", chain.name, tx.ChainID, len(tx.Tx))
+		log.Printf("  ✓ %s (Chain %d) - %d bytes\n", chain.name, tx.ChainID, len(tx.Tx))
 	}
 
 	// 3. Deploy to Solana with JSON encoding
@@ -132,11 +131,11 @@ func MultiChainExample() {
 	if err != nil {
 		log.Printf("Failed Solana: %v", err)
 	} else {
-		fmt.Printf("  ✓ Solana (Chain %d) - %d bytes\n", solanaTx.ChainID, len(solanaTx.Tx))
+		log.Printf("  ✓ Solana (Chain %d) - %d bytes\n", solanaTx.ChainID, len(solanaTx.Tx))
 	}
 
-	fmt.Println("\n✓ Same transfer logic deployed to EVM + Solana!")
-	fmt.Println("✓ EVM chains use ABI encoding (contract-compatible)")
-	fmt.Println("✓ Solana uses JSON encoding (program-specific)")
-	fmt.Println("✓ TSS appchain handles all cross-chain coordination")
+	log.Println("\n✓ Same transfer logic deployed to EVM + Solana!")
+	log.Println("✓ EVM chains use ABI encoding (contract-compatible)")
+	log.Println("✓ Solana uses JSON encoding (program-specific)")
+	log.Println("✓ TSS appchain handles all cross-chain coordination")
 }

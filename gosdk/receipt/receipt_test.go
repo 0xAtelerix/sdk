@@ -1,7 +1,6 @@
 package receipt
 
 import (
-	"context"
 	"crypto/sha256"
 	"fmt"
 	"testing"
@@ -49,29 +48,30 @@ func createTestReceipt(data string, errorMsg string) *TestReceipt {
 }
 
 func TestStoreAndGetReceipt(t *testing.T) {
-	// Create in-memory database
+	t.Parallel()
+
 	db := memdb.NewTestDB(t)
 	defer db.Close()
 
 	// Create tables
-	err := db.Update(context.Background(), func(tx kv.RwTx) error {
+	err := db.Update(t.Context(), func(tx kv.RwTx) error {
 		// Create the receipts bucket
 		return tx.CreateBucket(ReceiptBucket)
 	})
 	require.NoError(t, err)
 
-	t.Run("successful store and retrieve", func(t *testing.T) {
+	t.Run("successful store and retrieve", func(tr *testing.T) {
 		receipt := createTestReceipt("test-receipt-1", "")
 
-		err := db.Update(context.Background(), func(tx kv.RwTx) error {
+		caseErr := db.Update(tr.Context(), func(tx kv.RwTx) error {
 			return StoreReceipt(tx, receipt)
 		})
-		require.NoError(t, err)
+		require.NoError(tr, caseErr)
 
 		// Retrieve the receipt
 		var retrievedReceipt *TestReceipt
 
-		err = db.View(context.Background(), func(tx kv.Tx) error {
+		caseErr = db.View(tr.Context(), func(tx kv.Tx) error {
 			txHash := receipt.TxHash()
 
 			var getErr error
@@ -80,16 +80,16 @@ func TestStoreAndGetReceipt(t *testing.T) {
 
 			return getErr
 		})
-		require.NoError(t, err)
+		require.NoError(tr, caseErr)
 
 		// Verify the retrieved receipt matches the original
-		assert.Equal(t, receipt.Hash, retrievedReceipt.Hash)
-		assert.Equal(t, receipt.Data, retrievedReceipt.Data)
-		assert.Equal(t, receipt.Error(), retrievedReceipt.Error())
-		assert.Equal(t, receipt.Status(), retrievedReceipt.Status())
+		assert.Equal(tr, receipt.Hash, retrievedReceipt.Hash)
+		assert.Equal(tr, receipt.Data, retrievedReceipt.Data)
+		assert.Equal(tr, receipt.Error(), retrievedReceipt.Error())
+		assert.Equal(tr, receipt.Status(), retrievedReceipt.Status())
 	})
 
-	t.Run("store multiple receipts", func(t *testing.T) {
+	t.Run("store multiple receipts", func(tr *testing.T) {
 		receipts := []*TestReceipt{
 			createTestReceipt("receipt-1", ""),
 			createTestReceipt("receipt-2", "some error"),
@@ -97,19 +97,19 @@ func TestStoreAndGetReceipt(t *testing.T) {
 		}
 
 		// Store all receipts
-		err := db.Update(context.Background(), func(tx kv.RwTx) error {
+		caseErr := db.Update(tr.Context(), func(tx kv.RwTx) error {
 			for _, receipt := range receipts {
-				if err := StoreReceipt(tx, receipt); err != nil {
-					return err
+				if dbErr := StoreReceipt(tx, receipt); err != nil {
+					return dbErr
 				}
 			}
 
 			return nil
 		})
-		require.NoError(t, err)
+		require.NoError(tr, caseErr)
 
 		// Retrieve all receipts and verify
-		err = db.View(context.Background(), func(tx kv.Tx) error {
+		err = db.View(tr.Context(), func(tx kv.Tx) error {
 			for _, originalReceipt := range receipts {
 				var (
 					retrievedReceipt *TestReceipt
@@ -123,44 +123,48 @@ func TestStoreAndGetReceipt(t *testing.T) {
 					return getErr
 				}
 
-				assert.Equal(t, originalReceipt.Hash, retrievedReceipt.Hash)
-				assert.Equal(t, originalReceipt.Data, retrievedReceipt.Data)
-				assert.Equal(t, originalReceipt.Error(), retrievedReceipt.Error())
+				assert.Equal(tr, originalReceipt.Hash, retrievedReceipt.Hash)
+				assert.Equal(tr, originalReceipt.Data, retrievedReceipt.Data)
+				assert.Equal(tr, originalReceipt.Error(), retrievedReceipt.Error())
 			}
 
 			return nil
 		})
-		require.NoError(t, err)
+
+		require.NoError(tr, err)
 	})
 
-	t.Run("get non-existent receipt", func(t *testing.T) {
+	t.Run("get non-existent receipt", func(tr *testing.T) {
 		nonExistentHash := sha256.Sum256([]byte("non-existent"))
 
-		err := db.View(context.Background(), func(tx kv.Tx) error {
+		err := db.View(tr.Context(), func(tx kv.Tx) error {
 			var receipt TestReceipt
 
-			_, err := getReceipt(tx, nonExistentHash[:], &receipt)
+			_, dbErr := getReceipt(tx, nonExistentHash[:], &receipt)
 			// Should return an error for non-existent receipt
-			assert.Error(t, err)
+			assert.Error(tr, dbErr)
 
 			return nil
 		})
-		require.NoError(t, err)
+
+		require.NoError(tr, err)
 	})
 }
 
 func TestReceiptBatchOperations(t *testing.T) {
+	t.Parallel()
+
 	// Test storing multiple receipts in a single transaction (like in the real use case)
 	db := memdb.NewTestDB(t)
 	defer db.Close()
 
 	// Create tables
-	err := db.Update(context.Background(), func(tx kv.RwTx) error {
+	err := db.Update(t.Context(), func(tx kv.RwTx) error {
 		return tx.CreateBucket(ReceiptBucket)
 	})
 	require.NoError(t, err)
 
-	t.Run("batch store receipts", func(t *testing.T) {
+	t.Run("batch store receipts", func(tr *testing.T) {
 		receipts := make([]*TestReceipt, 100)
 
 		for i := range 100 {
@@ -169,23 +173,28 @@ func TestReceiptBatchOperations(t *testing.T) {
 				errorMsg = fmt.Sprintf("error %d", i)
 			}
 
-			receipts[i] = createTestReceipt(string(rune('a'+i%26))+string(rune('0'+i%10)), errorMsg)
+			receipts[i] = createTestReceipt(
+				//nolint:perfsprint // for test cases
+				fmt.Sprint('a'+i%26)+fmt.Sprint('0'+i%10),
+				errorMsg,
+			)
 		}
 
 		// Store all receipts in a single transaction
-		err := db.Update(context.Background(), func(tx kv.RwTx) error {
+		err = db.Update(tr.Context(), func(tx kv.RwTx) error {
 			for _, receipt := range receipts {
-				if err := StoreReceipt(tx, receipt); err != nil {
-					return err
+				if dbErr := StoreReceipt(tx, receipt); err != nil {
+					return dbErr
 				}
 			}
 
 			return nil
 		})
-		require.NoError(t, err)
+
+		require.NoError(tr, err)
 
 		// Verify all receipts can be retrieved
-		err = db.View(context.Background(), func(tx kv.Tx) error {
+		err = db.View(tr.Context(), func(tx kv.Tx) error {
 			for _, originalReceipt := range receipts {
 				var (
 					retrievedReceipt *TestReceipt
@@ -199,13 +208,14 @@ func TestReceiptBatchOperations(t *testing.T) {
 					return getErr
 				}
 
-				assert.Equal(t, originalReceipt.Data, retrievedReceipt.Data)
-				assert.Equal(t, originalReceipt.Error(), retrievedReceipt.Error())
+				assert.Equal(tr, originalReceipt.Data, retrievedReceipt.Data)
+				assert.Equal(tr, originalReceipt.Error(), retrievedReceipt.Error())
 			}
 
 			return nil
 		})
-		require.NoError(t, err)
+
+		require.NoError(tr, err)
 	})
 }
 
@@ -214,7 +224,7 @@ func BenchmarkStoreReceipt(b *testing.B) {
 	defer db.Close()
 
 	// Create tables
-	err := db.Update(context.Background(), func(tx kv.RwTx) error {
+	err := db.Update(b.Context(), func(tx kv.RwTx) error {
 		return tx.CreateBucket(ReceiptBucket)
 	})
 	require.NoError(b, err)
@@ -222,7 +232,7 @@ func BenchmarkStoreReceipt(b *testing.B) {
 	b.ResetTimer()
 
 	for i := range b.N {
-		err := db.Update(context.Background(), func(tx kv.RwTx) error {
+		err = db.Update(b.Context(), func(tx kv.RwTx) error {
 			// Create a unique receipt for each iteration
 			testReceipt := createTestReceipt("benchmark-receipt-"+string(rune(i)), "")
 
@@ -237,7 +247,7 @@ func BenchmarkGetReceipt(b *testing.B) {
 	defer db.Close()
 
 	// Create tables
-	err := db.Update(context.Background(), func(tx kv.RwTx) error {
+	err := db.Update(b.Context(), func(tx kv.RwTx) error {
 		return tx.CreateBucket(ReceiptBucket)
 	})
 	require.NoError(b, err)
@@ -245,7 +255,7 @@ func BenchmarkGetReceipt(b *testing.B) {
 	receipt := createTestReceipt("benchmark-receipt", "")
 
 	// Store the receipt first
-	err = db.Update(context.Background(), func(tx kv.RwTx) error {
+	err = db.Update(b.Context(), func(tx kv.RwTx) error {
 		return StoreReceipt(tx, receipt)
 	})
 	require.NoError(b, err)
@@ -253,39 +263,42 @@ func BenchmarkGetReceipt(b *testing.B) {
 	b.ResetTimer()
 
 	for range b.N {
-		err := db.View(context.Background(), func(tx kv.Tx) error {
+		err = db.View(b.Context(), func(tx kv.Tx) error {
 			txHash := receipt.TxHash()
-			_, err := getReceipt(tx, txHash[:], &TestReceipt{})
+			_, dbErr := getReceipt(tx, txHash[:], &TestReceipt{})
 
-			return err
+			return dbErr
 		})
+
 		require.NoError(b, err)
 	}
 }
 
 func TestReceiptErrorHandling(t *testing.T) {
+	t.Parallel()
+
 	// Create in-memory database
 	db := memdb.NewTestDB(t)
 	defer db.Close()
 
 	// Create tables
-	err := db.Update(context.Background(), func(tx kv.RwTx) error {
+	err := db.Update(t.Context(), func(tx kv.RwTx) error {
 		return tx.CreateBucket(ReceiptBucket)
 	})
 	require.NoError(t, err)
 
-	t.Run("error message serialization", func(t *testing.T) {
+	t.Run("error message serialization", func(tr *testing.T) {
 		// Test that error messages with special characters serialize correctly
 		specialErrorMsg := "error with unicode: \u6d4b\u8bd5 and symbols: !@#$%^&*()[]{}|;':\",./<>?"
 		receipt := createTestReceipt("unicode-error", specialErrorMsg)
 
-		err := db.Update(context.Background(), func(tx kv.RwTx) error {
+		err := db.Update(tr.Context(), func(tx kv.RwTx) error {
 			return StoreReceipt(tx, receipt)
 		})
-		require.NoError(t, err)
+		require.NoError(tr, err)
 
 		// Retrieve and verify special characters are preserved
-		err = db.View(context.Background(), func(tx kv.Tx) error {
+		err = db.View(tr.Context(), func(tx kv.Tx) error {
 			txHash := receipt.TxHash()
 
 			retrievedReceipt, getErr := getReceipt(tx, txHash[:], &TestReceipt{})
@@ -293,14 +306,14 @@ func TestReceiptErrorHandling(t *testing.T) {
 				return getErr
 			}
 
-			assert.Equal(t, specialErrorMsg, retrievedReceipt.Error())
+			assert.Equal(tr, specialErrorMsg, retrievedReceipt.Error())
 
 			return nil
 		})
-		require.NoError(t, err)
+		require.NoError(tr, err)
 	})
 
-	t.Run("long error message", func(t *testing.T) {
+	t.Run("long error message", func(tr *testing.T) {
 		// Test with a very long error message
 		longError := "this is a very long error message that simulates a detailed stack trace or " +
 			"comprehensive error description that might occur in complex transaction processing scenarios " +
@@ -308,13 +321,13 @@ func TestReceiptErrorHandling(t *testing.T) {
 
 		receipt := createTestReceipt("long-error", longError)
 
-		err := db.Update(context.Background(), func(tx kv.RwTx) error {
+		err := db.Update(tr.Context(), func(tx kv.RwTx) error {
 			return StoreReceipt(tx, receipt)
 		})
-		require.NoError(t, err)
+		require.NoError(tr, err)
 
 		// Retrieve and verify long error is preserved
-		err = db.View(context.Background(), func(tx kv.Tx) error {
+		err = db.View(tr.Context(), func(tx kv.Tx) error {
 			txHash := receipt.TxHash()
 
 			retrievedReceipt, getErr := getReceipt(tx, txHash[:], &TestReceipt{})
@@ -322,40 +335,42 @@ func TestReceiptErrorHandling(t *testing.T) {
 				return getErr
 			}
 
-			assert.Equal(t, longError, retrievedReceipt.Error())
-			assert.Greater(t, len(retrievedReceipt.Error()), 200, "Error message should be long")
+			assert.Equal(tr, longError, retrievedReceipt.Error())
+			assert.Greater(tr, len(retrievedReceipt.Error()), 200, "Error message should be long")
 
 			return nil
 		})
-		require.NoError(t, err)
+		require.NoError(tr, err)
 	})
 }
 
 func TestErrorMethodContract(t *testing.T) {
-	t.Run("error method contract for success", func(t *testing.T) {
+	t.Parallel()
+
+	t.Run("error method contract for success", func(tr *testing.T) {
 		receipt := createTestReceipt("success", "")
 		receipt.ErrorMsg = ""
 
 		// For successful transactions, Error() should return empty string
-		assert.Empty(t, receipt.Error())
-		assert.Equal(t, apptypes.ReceiptConfirmed, receipt.Status())
+		assert.Empty(tr, receipt.Error())
+		assert.Equal(tr, apptypes.ReceiptConfirmed, receipt.Status())
 
 		// Verify the contract: empty error means success
-		assert.Empty(t, receipt.Error(), "Successful receipt should have empty error")
+		assert.Empty(tr, receipt.Error(), "Successful receipt should have empty error")
 	})
 
-	t.Run("error method contract for failure", func(t *testing.T) {
+	t.Run("error method contract for failure", func(tr *testing.T) {
 		receipt := createTestReceipt("failure", "transaction failed")
 
 		// For failed transactions, Error() should return the error message
-		assert.Equal(t, "transaction failed", receipt.Error())
-		assert.Equal(t, apptypes.ReceiptFailed, receipt.Status())
+		assert.Equal(tr, "transaction failed", receipt.Error())
+		assert.Equal(tr, apptypes.ReceiptFailed, receipt.Status())
 
 		// Verify the contract: non-empty error indicates failure
-		assert.NotEmpty(t, receipt.Error(), "Failed receipt should have non-empty error")
+		assert.NotEmpty(tr, receipt.Error(), "Failed receipt should have non-empty error")
 	})
 
-	t.Run("error and status consistency", func(t *testing.T) {
+	t.Run("error and status consistency", func(tr *testing.T) {
 		testCases := []struct {
 			name           string
 			errorMsg       string
@@ -367,11 +382,11 @@ func TestErrorMethodContract(t *testing.T) {
 		}
 
 		for _, tc := range testCases {
-			t.Run(tc.name, func(t *testing.T) {
+			tr.Run(tc.name, func(tcr *testing.T) {
 				receipt := createTestReceipt(tc.name, tc.errorMsg)
 
-				assert.Equal(t, tc.expectedStatus, receipt.Status())
-				assert.Equal(t, tc.errorMsg, receipt.Error())
+				assert.Equal(tcr, tc.expectedStatus, receipt.Status())
+				assert.Equal(tcr, tc.errorMsg, receipt.Error())
 			})
 		}
 	})

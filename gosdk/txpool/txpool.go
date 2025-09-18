@@ -7,6 +7,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/utility"
@@ -123,6 +124,8 @@ func (p *TxPool[T, R]) GetPendingTransactions(ctx context.Context) ([]T, error) 
 
 // GetAllTransactions получает все транзакции (generic)
 func (p *TxPool[T, R]) CreateTransactionBatch(ctx context.Context) ([]byte, [][]byte, error) {
+	log.Warn().Msg("creating transaction batch")
+
 	var (
 		transactions [][]byte
 		batchHash    []byte

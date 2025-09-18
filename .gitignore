@@ -1,5 +1,7 @@
 .idea
 gosdk/testdb
+gosdk/42
+gosdk/chaindb
 
 # Rust
 target/

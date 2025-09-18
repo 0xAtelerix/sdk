@@ -1,11 +1,12 @@
-//nolint:testableexamples // an example app
 package gosdk
 
 import (
 	"context"
 	"crypto/sha256"
 	"os"
+	"path/filepath"
 	"strconv"
+	"testing"
 	"time"
 
 	"github.com/ledgerwatch/erigon-lib/kv"
@@ -13,10 +14,102 @@ import (
 	mdbxlog "github.com/ledgerwatch/log/v3"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
+
+func TestExampleAppchain(t *testing.T) {
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+
+	config := MakeAppchainConfig(42, map[apptypes.ChainType]string{
+		// EthereumChainID: args.EthereumBlocksPath, //TODO
+		// SolanaChainID:   args.SolBlocksPath, //TODO
+	})
+
+	tmp := t.TempDir()
+
+	localDB, err := mdbx.NewMDBX(mdbxlog.New()).
+		InMem(tmp).
+		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
+			return txpool.Tables()
+		}).
+		Open()
+	require.NoError(t, err)
+
+	txPool := txpool.NewTxPool[ExampleTransaction[ExampleReceipt], ExampleReceipt](localDB)
+
+	// инициализируем базу на нашей стороне
+	appchainDBPath := filepath.Join(tmp, config.AppchainDBPath)
+	appchainDB, err := mdbx.NewMDBX(mdbxlog.New()).
+		Path(appchainDBPath).
+		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
+			return DefaultTables()
+		}).
+		Open()
+	require.NoError(t, err)
+
+	txStreamDirPath := filepath.Join(tmp, config.TxStreamDir)
+
+	txBatchDB, err := mdbx.NewMDBX(mdbxlog.New()).
+		Path(txStreamDirPath).
+		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
+			return TxBucketsTables()
+		}).
+		Open()
+	if err != nil {
+		log.Panic().Err(err).Msg("Failed to tx batch mdbx database")
+	}
+
+	subscriber, err := NewSubscriber(t.Context(), appchainDB)
+	require.NoError(t, err)
+
+	multichainDB, err := NewMultichainStateAccess(config.MultichainStateDB)
+	require.NoError(t, err)
+
+	stateTransition := NewBatchProcesser[ExampleTransaction[ExampleReceipt], ExampleReceipt](
+		NewStateTransition(multichainDB),
+		multichainDB,
+		subscriber,
+	)
+
+	log.Info().Msg("Creating appchain...")
+
+	appchainExample := NewAppchain(
+		stateTransition,
+		func(_ uint64, _ [32]byte, _ [32]byte, _ apptypes.Batch[ExampleTransaction[ExampleReceipt], ExampleReceipt]) *ExampleBlock {
+			return &ExampleBlock{}
+		},
+		txPool,
+		config,
+		appchainDB,
+		subscriber,
+		multichainDB,
+		txBatchDB,
+	)
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+
+	// Run appchain in goroutine
+	runErr := make(chan error, 1)
+
+	log.Info().Msg("Starting appchain...")
+
+	go func() {
+		assert.NotPanics(t, func() {
+			runErr <- appchainExample.Run(ctx, nil)
+		})
+	}()
+
+	err = <-runErr
+
+	appchainExample.Shutdown()
+
+	log.Info().Err(err).Msg("Appchain exited")
+}
 
 type ExampleTransaction[R ExampleReceipt] struct {
 	Sender string
@@ -76,81 +169,20 @@ func (*ExampleBlock) Bytes() []byte {
 	return []byte{}
 }
 
-func ExampleAppchain() {
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+type StateTransition struct {
+	MultiChain *MultichainStateAccess
+}
 
-	config := MakeAppchainConfig(42)
-
-	stateTransition := BatchProcesser[ExampleTransaction[ExampleReceipt], ExampleReceipt]{}
-
-	tmp := os.TempDir() + "/txpool_test"
-
-	defer func() {
-		dirErr := os.RemoveAll(tmp)
-		if dirErr != nil {
-			log.Warn().Err(dirErr).Msgf("Failed to remove: %q", tmp)
-		}
-	}()
-
-	localDB, err := mdbx.NewMDBX(mdbxlog.New()).
-		InMem(tmp).
-		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
-			return txpool.Tables()
-		}).
-		Open()
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to local mdbx database")
+func NewStateTransition(multiChain *MultichainStateAccess) *StateTransition {
+	return &StateTransition{
+		MultiChain: multiChain,
 	}
+}
 
-	txPool := txpool.NewTxPool[ExampleTransaction[ExampleReceipt], ExampleReceipt](localDB)
-
-	// инициализируем базу на нашей стороне
-	appchainDB, err := mdbx.NewMDBX(mdbxlog.New()).
-		Path(config.AppchainDBPath).
-		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
-			return DefaultTables()
-		}).
-		Open()
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to appchain mdbx database")
-	}
-
-	txBatchDB, err := mdbx.NewMDBX(mdbxlog.New()).
-		Path(config.TxStreamDir).
-		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
-			return TxBucketsTables()
-		}).
-		Readonly().Open()
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to tx batch mdbx database")
-	}
-
-	log.Info().Msg("Starting appchain...")
-
-	appchainExample, err := NewAppchain(
-		stateTransition,
-		func(_ uint64, _ [32]byte, _ [32]byte, _ apptypes.Batch[ExampleTransaction[ExampleReceipt], ExampleReceipt]) *ExampleBlock {
-			return &ExampleBlock{}
-		},
-		txPool,
-		config,
-		appchainDB,
-		txBatchDB,
-	)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to start appchain")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
-	// Run appchain in goroutine
-	runErr := make(chan error, 1)
-
-	go func() {
-		runErr <- appchainExample.Run(ctx, nil)
-	}()
-
-	err = <-runErr
-
-	log.Info().Err(err).Msg("Appchain exited")
+// how to external chains blocks
+func (*StateTransition) ProcessBlock(
+	_ apptypes.ExternalBlock,
+	_ kv.RwTx,
+) ([]apptypes.ExternalTransaction, error) {
+	return nil, nil
 }

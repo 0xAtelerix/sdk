@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"net"
 	"os"
 	"sort"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
@@ -29,6 +31,8 @@ import (
 )
 
 func TestEmitterCall(t *testing.T) {
+	t.Parallel()
+
 	dbPath := t.TempDir()
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -39,15 +43,45 @@ func TestEmitterCall(t *testing.T) {
 				CheckpointBucket: {},
 				ExternalTxBucket: {},
 				BlocksBucket:     {},
+				ValsetBucket:     {},
 			}
 		}).
 		Open()
+	require.NoError(t, err)
+
+	rwTx, err := db.BeginRw(t.Context())
+	require.NoError(t, err)
+
+	valsetMap := map[ValidatorID]Stake{
+		1: 10,
+		2: 20,
+		3: 30,
+	}
+
+	valset := NewValidatorSet(valsetMap)
+
+	var epochKey [4]byte
+
+	epoch := currentEpoch
+	binary.BigEndian.PutUint32(epochKey[:], epoch)
+
+	valsetData, err := cbor.Marshal(valset)
+	require.NoError(t, err)
+
+	err = rwTx.Put(ValsetBucket, epochKey[:], valsetData)
+	require.NoError(t, err)
+
+	err = rwTx.Commit()
+	require.NoError(t, err)
+
+	rwTx.Rollback()
 
 	// Создаем сервер с MDBX
 	srv := NewServer[*CustomTransaction[Receipt]](db, 1, nil)
 	if err != nil {
 		t.Fatalf("Ошибка создания сервера: %v", err)
 	}
+
 	defer srv.appchainDB.Close()
 
 	// Записываем тестовые чекпоинты через WriteCheckpoint
@@ -112,10 +146,12 @@ func TestEmitterCall(t *testing.T) {
 
 			return
 		}
+
+		log.Info().Msg("Сервер на порту 50051 закрыт.")
 	}()
 
 	wg.Wait()
-	time.Sleep(time.Millisecond * 500)
+	time.Sleep(time.Second)
 
 	// Подключение к серверу
 	conn, err := grpc.NewClient(
@@ -229,6 +265,8 @@ func startGRPCServer[apptx apptypes.AppTransaction[R], R apptypes.Receipt](
 }
 
 func TestEmitterCall_PropertyBased(t *testing.T) {
+	t.Parallel()
+
 	rapid.Check(t, func(tr *rapid.T) {
 		t.Run(tr.Name(), func(t *testing.T) {
 			dbPath := t.TempDir()
@@ -240,6 +278,7 @@ func TestEmitterCall_PropertyBased(t *testing.T) {
 						CheckpointBucket: {},
 						ExternalTxBucket: {},
 						BlocksBucket:     {},
+						ValsetBucket:     {},
 					}
 				}).
 				Open()
@@ -394,6 +433,7 @@ func TestGetExternalTransactions_PropertyBased(t *testing.T) {
 						CheckpointBucket: {},
 						ExternalTxBucket: {},
 						BlocksBucket:     {},
+						ValsetBucket:     {},
 					}
 				}).
 				Open()
@@ -420,7 +460,7 @@ func TestGetExternalTransactions_PropertyBased(t *testing.T) {
 
 				for range numTx {
 					tx := apptypes.ExternalTransaction{
-						ChainID: rapid.Uint64().Draw(tr, "ChainId"),
+						ChainID: apptypes.ChainType(rapid.Uint64().Draw(tr, "ChainId")),
 						Tx:      rapid.SliceOfN(rapid.Byte(), 64, 64).Draw(tr, "Tx"),
 					}
 					transactionMap[blockNumber] = append(transactionMap[blockNumber], tx)

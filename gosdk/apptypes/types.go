@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/blocto/solana-go-sdk/client"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
 )
@@ -21,16 +23,51 @@ type Receipt interface {
 
 // AppTransaction should be serializible
 type Batch[appTx AppTransaction[R], R Receipt] struct {
-	Atropos        [32]byte        `cbor:"1,keyasint"`
-	Transactions   []appTx         `cbor:"2,keyasint"`
-	ExternalBlocks []ExternalBlock `cbor:"3,keyasint"`
+	Atropos        [32]byte         `cbor:"1,keyasint"`
+	Transactions   []appTx          `cbor:"2,keyasint"`
+	ExternalBlocks []*ExternalBlock `cbor:"3,keyasint"`
+	Checkpoints    []*Checkpoint    `cbor:"4,keyasint"`
 	// todo add crossappchain tx
 	// ExternalTransactions [][]byte
-	EndOffset   int64 `cbor:"4,keyasint"`
-	TxEndOffset int64 `cbor:"5,keyasint"` // txReader.position после чтения
+	EndOffset   int64 `cbor:"5,keyasint"`
+	TxEndOffset int64 `cbor:"6,keyasint"` // txReader.position после чтения
+}
+
+type ExternalEntity interface {
+	GetEntityID() ExternalID
+}
+
+type ExternalFullBlock interface {
+	gethtypes.Block | client.Block | *gethtypes.Block | *client.Block
+}
+
+type ExternalData interface {
+	ExternalFullBlock | ExternalReceipt
+}
+
+type ExternalReceipt interface {
+	client.BlockTransaction | gethtypes.Receipt
 }
 
 type ExternalBlock struct {
+	ChainID     uint64   `cbor:"1,keyasint"`
+	BlockNumber uint64   `cbor:"2,keyasint"`
+	BlockHash   [32]byte `cbor:"3,keyasint"`
+}
+
+func MakeExternalBlock(chainID uint64, blockNumber uint64, blockHash [32]byte) ExternalBlock {
+	return ExternalBlock{
+		ChainID:     chainID,
+		BlockNumber: blockNumber,
+		BlockHash:   blockHash,
+	}
+}
+
+func (e ExternalBlock) GetEntityID() ExternalID {
+	return ExternalID(e)
+}
+
+type ExternalID struct {
 	ChainID     uint64   `cbor:"1,keyasint"`
 	BlockNumber uint64   `cbor:"2,keyasint"`
 	BlockHash   [32]byte `cbor:"3,keyasint"`
@@ -58,8 +95,8 @@ type AppchainBlockConstructor[appTx AppTransaction[R], R Receipt, block Appchain
 // Для подключенных L1/L2 мы должны  уметь анмаршалить поле tx.
 // Для межапчейновых - вставляем, как есть.
 type ExternalTransaction struct {
-	ChainID uint64 `cbor:"1,keyasint"`
-	Tx      []byte `cbor:"2,keyasint"`
+	ChainID ChainType `cbor:"1,keyasint"`
+	Tx      []byte    `cbor:"2,keyasint"`
 }
 
 //3) Calculate state root
@@ -115,6 +152,22 @@ type Checkpoint struct {
 	ExternalTransactionsRoot [32]byte `json:"externalTransactionsRoot" cbor:"5,keyasint"`
 }
 
+func MakeCheckpoint(chainID uint64, blockNumber uint64, blockHash [32]byte) Checkpoint {
+	return Checkpoint{
+		ChainID:     chainID,
+		BlockNumber: blockNumber,
+		BlockHash:   blockHash,
+	}
+}
+
+func (c Checkpoint) GetEntityID() ExternalID {
+	return ExternalID{
+		ChainID:     c.ChainID,
+		BlockNumber: c.BlockNumber,
+		BlockHash:   c.BlockHash,
+	}
+}
+
 type Event struct {
 	// todo возможно тут должно быть MedianTime
 	Base          BaseEvent `json:"base"          cbor:"1,keyasint"`
@@ -157,3 +210,5 @@ type AppchainAddresses struct {
 	ChainID        uint32 `cbor:"1,keyasint"`
 	EmitterAddress string `cbor:"2,keyasint"`
 }
+
+type ChainType uint32

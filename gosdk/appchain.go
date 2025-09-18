@@ -27,53 +27,6 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
-func NewAppchain[STI StateTransitionInterface[AppTx, R],
-	AppTx apptypes.AppTransaction[R],
-	R apptypes.Receipt,
-	AppBlock apptypes.AppchainBlock](
-	sti STI,
-	blockBuilder apptypes.AppchainBlockConstructor[AppTx, R, AppBlock],
-	txpool apptypes.TxPoolInterface[AppTx, R],
-	config AppchainConfig,
-	appchainDB kv.RwDB,
-	txBatchDB kv.RoDB,
-	options ...func(a *Appchain[STI, AppTx, R, AppBlock]),
-) (Appchain[STI, AppTx, R, AppBlock], error) {
-	log.Info().Str("db_path", config.AppchainDBPath).Msg("Initializing appchain database")
-
-	emiterAPI := NewServer(appchainDB, config.ChainID, txpool)
-
-	emiterAPI.logger = &log.Logger
-	if config.Logger != nil {
-		emiterAPI.logger = config.Logger
-	}
-
-	log.Info().Msg("Appchain initialized successfully")
-
-	multichainDB, err := NewMultichainStateAccess(config.MultichainStateDB)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to initialize MultichainStateAccess")
-
-		return Appchain[STI, AppTx, R, AppBlock]{}, err
-	}
-
-	appchain := Appchain[STI, AppTx, R, AppBlock]{
-		appchainStateExecution: sti,
-		rootCalculator:         NewStubRootCalculator(),
-		blockBuilder:           blockBuilder,
-		emiterAPI:              emiterAPI,
-		AppchainDB:             appchainDB,
-		TxBatchDB:              txBatchDB,
-		config:                 config,
-		multichainDB:           multichainDB,
-	}
-	for _, option := range options {
-		option(&appchain)
-	}
-
-	return appchain, nil
-}
-
 func WithRootCalculator[STI StateTransitionInterface[AppTx, R],
 	AppTx apptypes.AppTransaction[R],
 	R apptypes.Receipt,
@@ -90,21 +43,69 @@ type AppchainConfig struct {
 	AppchainDBPath    string
 	EventStreamDir    string
 	TxStreamDir       string
-	MultichainStateDB map[uint32]string
+	MultichainStateDB map[apptypes.ChainType]string
 	Logger            *zerolog.Logger
 	ValidatorID       string
 }
 
 // todo: it should be stored at the first run and checked on next
-func MakeAppchainConfig(chainID uint64) AppchainConfig {
+func MakeAppchainConfig(
+	chainID uint64,
+	multichainStateDB map[apptypes.ChainType]string,
+) AppchainConfig {
 	return AppchainConfig{
-		ChainID:        chainID,
-		EmitterPort:    ":50051",
-		PrometheusPort: "",
-		AppchainDBPath: "chaindb",
-		EventStreamDir: "epochs",
-		TxStreamDir:    strconv.FormatUint(chainID, 10),
+		ChainID:           chainID,
+		EmitterPort:       ":50051",
+		PrometheusPort:    "",
+		AppchainDBPath:    "chaindb",
+		EventStreamDir:    "epochs",
+		TxStreamDir:       strconv.FormatUint(chainID, 10),
+		MultichainStateDB: multichainStateDB,
 	}
+}
+
+func NewAppchain[STI StateTransitionInterface[AppTx, R],
+	AppTx apptypes.AppTransaction[R],
+	R apptypes.Receipt,
+	AppBlock apptypes.AppchainBlock](
+	sti STI,
+	blockBuilder apptypes.AppchainBlockConstructor[AppTx, R, AppBlock],
+	txpool apptypes.TxPoolInterface[AppTx, R],
+	config AppchainConfig,
+	appchainDB kv.RwDB,
+	subscriber *Subscriber,
+	multichain *MultichainStateAccess,
+	txBatchDB kv.RoDB,
+	options ...func(a *Appchain[STI, AppTx, R, AppBlock]),
+) Appchain[STI, AppTx, R, AppBlock] {
+	log.Info().Str("db_path", config.AppchainDBPath).Msg("Initializing appchain database")
+
+	emiterAPI := NewServer(appchainDB, config.ChainID, txpool)
+
+	emiterAPI.logger = &log.Logger
+	if config.Logger != nil {
+		emiterAPI.logger = config.Logger
+	}
+
+	log.Info().Msg("Appchain initialized successfully")
+
+	appchain := Appchain[STI, AppTx, R, AppBlock]{
+		appchainStateExecution: sti,
+		rootCalculator:         NewStubRootCalculator(),
+		blockBuilder:           blockBuilder,
+		emiterAPI:              emiterAPI,
+		AppchainDB:             appchainDB,
+		TxBatchDB:              txBatchDB,
+		config:                 config,
+		multichainDB:           multichain,
+		subscriber:             subscriber,
+	}
+
+	for _, option := range options {
+		option(&appchain)
+	}
+
+	return appchain
 }
 
 type Appchain[STI StateTransitionInterface[appTx, R], appTx apptypes.AppTransaction[R], R apptypes.Receipt, AppBlock apptypes.AppchainBlock] struct {
@@ -117,6 +118,7 @@ type Appchain[STI StateTransitionInterface[appTx, R], appTx apptypes.AppTransact
 	TxBatchDB    kv.RoDB
 	config       AppchainConfig
 	multichainDB *MultichainStateAccess
+	subscriber   *Subscriber
 }
 
 func (a *Appchain[STI, appTx, R, AppBlock]) Run(
@@ -124,6 +126,7 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 	streamConstructor EventStreamWrapperConstructor[appTx, R],
 ) error {
 	logger := log.Ctx(ctx)
+	logger.Error().Msg("Starting appchain...")
 	logger.Info().Msg("Appchain run started")
 
 	ctx = utility.CtxWithValidatorID(ctx, a.config.ValidatorID)
@@ -131,7 +134,14 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 	vid := utility.ValidatorIDFromCtx(ctx)
 	cid := utility.ChainIDFromCtx(ctx)
 
-	go a.RunEmitterAPI(ctx)
+	emitterErrChan := make(chan error)
+
+	go a.RunEmitterAPI(ctx, emitterErrChan)
+
+	err := <-emitterErrChan
+	if err != nil {
+		panic(err)
+	}
 
 	if a.config.PrometheusPort != "" {
 		go startPrometheusServer(ctx, a.config.PrometheusPort)
@@ -175,7 +185,28 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 		break
 	}
 
-	var eventStream Streamer[appTx, R]
+	var (
+		eventStream       Streamer[appTx, R]
+		votingBlocks      *Voting[apptypes.ExternalBlock]
+		votingCheckpoints *Voting[apptypes.Checkpoint]
+	)
+
+	err = a.AppchainDB.View(ctx, func(tx kv.Tx) error {
+		votingBlocks, err = NewVotingFromStorage(tx, apptypes.MakeExternalBlock, nil)
+		if err != nil {
+			return err
+		}
+
+		votingCheckpoints, err = NewVotingFromStorage(tx, apptypes.MakeCheckpoint, nil)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
 
 	if streamConstructor == nil {
 		logger.Info().Msg("NewMdbxEventStreamWrapper")
@@ -185,6 +216,10 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 			startEventPos,
 			a.TxBatchDB,
 			logger,
+			a.AppchainDB,
+			a.subscriber,
+			votingBlocks,
+			votingCheckpoints,
 		)
 	} else {
 		eventStream, err = streamConstructor(filepath.Join(a.config.EventStreamDir, "epoch_1.data"),
@@ -192,6 +227,10 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 			startEventPos,
 			a.TxBatchDB,
 			logger,
+			a.AppchainDB,
+			a.subscriber,
+			votingBlocks,
+			votingCheckpoints,
 		)
 	}
 
@@ -200,6 +239,13 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 
 		return fmt.Errorf("failed to create event stream: %w", err)
 	}
+
+	defer func() {
+		streamErr := eventStream.Close()
+		if streamErr != nil {
+			logger.Error().Err(streamErr).Msg("Error closing event stream")
+		}
+	}()
 
 	var (
 		previousBlockNumber uint64
@@ -277,7 +323,7 @@ runFor:
 					processedReceipts []R
 				)
 
-				processedReceipts, extTxs, err = a.appchainStateExecution.ProcessBatch(batch, rwtx)
+				processedReceipts, extTxs, err = a.appchainStateExecution.ProcessBatch(ctx, batch, rwtx)
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to process batch")
 
@@ -365,6 +411,21 @@ runFor:
 					return fmt.Errorf("failed to write snapshot pos: %w", err)
 				}
 
+				// write voting
+				err = votingBlocks.StoreProgress(rwtx)
+				if err != nil {
+					logger.Error().Err(err).Msg("Failed to store progress block")
+
+					return fmt.Errorf("failed to store progress block: %w", err)
+				}
+
+				err = votingCheckpoints.StoreProgress(rwtx)
+				if err != nil {
+					logger.Error().Err(err).Msg("Failed to store progress checkpoint")
+
+					return fmt.Errorf("failed to store progress checkpoint: %w", err)
+				}
+
 				err = rwtx.Commit()
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to commit")
@@ -408,13 +469,17 @@ runFor:
 	return nil
 }
 
-func (a *Appchain[STI, appTx, R, AppBlock]) RunEmitterAPI(ctx context.Context) {
+func (a *Appchain[STI, appTx, R, AppBlock]) RunEmitterAPI(ctx context.Context, errCh chan error) {
 	logger := log.Ctx(ctx)
 
 	lis, err := (&net.ListenConfig{}).Listen(ctx, "tcp", a.config.EmitterPort)
 	if err != nil {
-		logger.Fatal().Err(err).Str("port", a.config.EmitterPort).Msg("Failed to create listener")
+		errCh <- fmt.Errorf("failed to create listener: %w, port %q", err, a.config.EmitterPort)
+
+		return
 	}
+
+	close(errCh)
 
 	logger.Info().Str("port", a.config.EmitterPort).Msg("Starting gRPC server")
 
@@ -460,10 +525,24 @@ func (a *Appchain[STI, appTx, R, AppBlock]) RunEmitterAPI(ctx context.Context) {
 	case err = <-serveErr:
 		// Serve exited on its own (listener error, etc.)
 		if err != nil {
-			logger.Fatal().Err(err).Msg("gRPC server crashed")
+			logger.Panic().Err(err).Msg("gRPC server crashed")
 		}
 
 		logger.Info().Msg("gRPC server exited")
+	}
+}
+
+func (a *Appchain[STI, appTx, R, AppBlock]) Shutdown() {
+	if a.multichainDB != nil {
+		a.multichainDB.Close()
+	}
+
+	if a.TxBatchDB != nil {
+		a.TxBatchDB.Close()
+	}
+
+	if a.AppchainDB != nil {
+		a.AppchainDB.Close()
 	}
 }
 
@@ -534,7 +613,7 @@ func TransactionToProto(
 	protoTxs := make([]*emitterproto.ExternalTransaction, len(txs))
 
 	for i, tx := range txs {
-		protoTxs[i].ChainId = tx.ChainID
+		protoTxs[i].ChainId = uint64(tx.ChainID)
 		protoTxs[i].Tx = tx.Tx
 	}
 
@@ -572,7 +651,7 @@ func startPrometheusServer(ctx context.Context, addr string) {
 	}()
 
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Ctx(ctx).Fatal().Err(err).Msg("metrics server crashed")
+		log.Ctx(ctx).Panic().Err(err).Msg("metrics server crashed")
 	}
 }
 

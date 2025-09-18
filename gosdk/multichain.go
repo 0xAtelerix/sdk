@@ -4,15 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
+	"sync"
 
 	"github.com/blocto/solana-go-sdk/client"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/fxamacker/cbor/v2"
+	"github.com/goccy/go-json"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
+	"github.com/mr-tron/base58"
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
@@ -21,7 +23,7 @@ import (
 const (
 	ChainIDBucket = "chainid"
 	EthBlocks     = "blocks"
-	EthReceipts   = "receipts"
+	EthReceipts   = "ethereum_receipts"
 	SolanaBlocks  = "solana_blocks"
 )
 
@@ -37,16 +39,20 @@ func SolanaTables() kv.TableCfg {
 	return kv.TableCfg{
 		ChainIDBucket: {},
 		SolanaBlocks:  {},
+		EthReceipts:   {},
 	}
 }
 
 type MultichainStateAccess struct {
-	stateAccessDB map[uint32]kv.RoDB
+	stateAccessDB map[apptypes.ChainType]kv.RoDB
+	mu            sync.RWMutex
 }
 
-func NewMultichainStateAccess(cfg map[uint32]string) (*MultichainStateAccess, error) {
+type MultichainConfig map[apptypes.ChainType]string // chainID, chainDBpath
+
+func NewMultichainStateAccess(cfg MultichainConfig) (*MultichainStateAccess, error) {
 	multichainStateDB := MultichainStateAccess{
-		stateAccessDB: make(map[uint32]kv.RoDB, len(cfg)),
+		stateAccessDB: make(map[apptypes.ChainType]kv.RoDB, len(cfg)),
 	}
 	for chainID, path := range cfg {
 		var tableCfg kv.TableCfg
@@ -58,7 +64,7 @@ func NewMultichainStateAccess(cfg map[uint32]string) (*MultichainStateAccess, er
 			tableCfg = SolanaTables()
 		default:
 			log.Warn().
-				Uint32("chainID", chainID).
+				Uint64("chainID", uint64(chainID)).
 				Msg("unknown chain type, using EVM tables by default")
 
 			tableCfg = EvmTables()
@@ -80,41 +86,51 @@ func NewMultichainStateAccess(cfg map[uint32]string) (*MultichainStateAccess, er
 	return &multichainStateDB, nil
 }
 
-//nolint:unparam // interface implementation
-func (sa *MultichainStateAccess) Close() error {
-	for _, db := range sa.stateAccessDB {
-		db.Close()
-	}
-
-	return nil
-}
-
 func (sa *MultichainStateAccess) EthBlock(
 	ctx context.Context,
 	block apptypes.ExternalBlock,
-) (*gethtypes.Block, error) {
-	if _, ok := sa.stateAccessDB[uint32(block.ChainID)]; !ok {
-		return nil, fmt.Errorf("%w %v", ErrUnknownChain, block.ChainID)
+) (*EthereumBlock, error) {
+	sa.mu.RLock()
+	defer sa.mu.RUnlock()
+
+	if _, ok := sa.stateAccessDB[apptypes.ChainType(block.ChainID)]; !ok {
+		return nil, fmt.Errorf("%w, no DB for chainID, %v", ErrUnknownChain, block.ChainID)
 	}
 
-	key := make([]byte, 40)
-	binary.BigEndian.PutUint64(key[:8], block.BlockNumber)
-	copy(key[8:], block.BlockHash[:])
+	key := EthBlockKey(block.BlockNumber, block.BlockHash)
 
-	ethBlock := gethtypes.Block{}
+	ethBlock := EthereumBlock{}
 
-	err := sa.stateAccessDB[uint32(block.ChainID)].View(ctx, func(tx kv.Tx) error {
+	err := sa.stateAccessDB[apptypes.ChainType(block.ChainID)].View(ctx, func(tx kv.Tx) error {
 		v, err := tx.GetOne(EthBlocks, key)
 		if err != nil {
 			return err
 		}
-		// todo fixme rlp or faster encoding
-		return rlp.DecodeBytes(v, &ethBlock)
+
+		return json.Unmarshal(v, &ethBlock)
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf(
+			"failed to read eth block: %w, chainID %d, block number %d, block hash %s",
+			err,
+			block.ChainID,
+			block.BlockNumber,
+			hex.EncodeToString(block.BlockHash[:]),
+		)
 	}
-	// todo verify block hash
+
+	ethBlockHash := ethBlock.Header.Hash()
+	if ethBlockHash != block.BlockHash {
+		return nil, fmt.Errorf(
+			"%w, chainID %d; got block number %d, hash %s; expected block number %d, hash %s",
+			ErrWrongBlock,
+			block.ChainID,
+			ethBlock.Header.Number.Uint64(),
+			hex.EncodeToString(ethBlockHash[:]),
+			block.BlockNumber,
+			hex.EncodeToString(block.BlockHash[:]),
+		)
+	}
 
 	return &ethBlock, nil
 }
@@ -122,36 +138,31 @@ func (sa *MultichainStateAccess) EthBlock(
 func (sa *MultichainStateAccess) EthReceipts(
 	ctx context.Context,
 	block apptypes.ExternalBlock,
-) ([]*gethtypes.Receipt, error) {
-	if _, ok := sa.stateAccessDB[uint32(block.ChainID)]; !ok {
-		return nil, fmt.Errorf("%w %v", ErrUnknownChain, block.ChainID)
+) ([]gethtypes.Receipt, error) {
+	sa.mu.RLock()
+	defer sa.mu.RUnlock()
+
+	if _, ok := sa.stateAccessDB[apptypes.ChainType(block.ChainID)]; !ok {
+		return nil, fmt.Errorf("%w, no DB for chainID, %v", ErrUnknownChain, block.ChainID)
 	}
 
-	key := make([]byte, 44)
-	binary.BigEndian.PutUint64(key[:8], block.BlockNumber)
-	copy(key[8:8+32], block.BlockHash[:])
+	key := EthReceiptKey(block.BlockNumber, block.BlockHash)
 
-	var blockReceipts []*gethtypes.Receipt
+	var blockReceipts []gethtypes.Receipt
 
-	err := sa.stateAccessDB[uint32(block.ChainID)].View(ctx, func(tx kv.Tx) error {
-		c, err := tx.Cursor(EthReceipts)
-		if err != nil {
-			return err
-		}
-
-		k, v, err := c.Seek(key)
-		for ; err == nil && len(k) == 44 && bytes.Equal(key[8:8+32], k[8:8+32]); k, v, err = c.Next() {
+	err := sa.stateAccessDB[apptypes.ChainType(block.ChainID)].View(ctx, func(tx kv.Tx) error {
+		return tx.ForPrefix(EthReceipts, key, func(_, v []byte) error {
 			r := gethtypes.Receipt{}
-			// todo fixme rlp or faster encoding
-			err = rlp.DecodeBytes(v, &r)
-			if err != nil {
-				return err
+
+			dbErr := json.Unmarshal(v, &r)
+			if dbErr != nil {
+				return dbErr
 			}
 
-			blockReceipts = append(blockReceipts, &r)
-		}
+			blockReceipts = append(blockReceipts, r)
 
-		return nil
+			return nil
+		})
 	})
 	if err != nil {
 		return nil, err
@@ -166,13 +177,15 @@ func (sa *MultichainStateAccess) SolanaBlock(
 	ctx context.Context,
 	block apptypes.ExternalBlock,
 ) (*client.Block, error) {
-	db, ok := sa.stateAccessDB[uint32(block.ChainID)]
+	sa.mu.RLock()
+	defer sa.mu.RUnlock()
+
+	db, ok := sa.stateAccessDB[apptypes.ChainType(block.ChainID)]
 	if !ok {
-		return nil, fmt.Errorf("%w %v", ErrUnknownChain, block.ChainID)
+		return nil, fmt.Errorf("%w, no DB for chainID, %v", ErrUnknownChain, block.ChainID)
 	}
 
-	key := make([]byte, 8)
-	binary.BigEndian.PutUint64(key, block.BlockNumber)
+	key := SolBlockKey(block.BlockNumber)
 
 	var solBlock client.Block
 
@@ -182,16 +195,25 @@ func (sa *MultichainStateAccess) SolanaBlock(
 			return err
 		}
 
-		return cbor.Unmarshal(v, &solBlock)
+		return json.Unmarshal(v, &solBlock)
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	////  todo ✅ Проверка целостности по хешу
-	//if solBlock.Blockhash != "" && block.BlockHash.String() != solBlock.Blockhash {
-	//	return nil, fmt.Errorf("block hash mismatch: expected %s, got %s", block.BlockHash.String(), solBlock.Blockhash)
-	//}
+	got, err := base58.Decode(solBlock.Blockhash)
+	if err != nil {
+		return nil, err
+	}
+
+	if !bytes.Equal(block.BlockHash[:], got) {
+		return nil, fmt.Errorf(
+			"%w: expected %s, got %s",
+			ErrWrongBlock,
+			string(block.BlockHash[:]),
+			solBlock.Blockhash,
+		)
+	}
 
 	return &solBlock, nil
 }
@@ -200,13 +222,73 @@ func (sa *MultichainStateAccess) SolanaBlock(
 // You can rely on received finalized external blocks that you have received from consensus.
 func (sa *MultichainStateAccess) ViewDB(
 	ctx context.Context,
-	chainID uint32,
+	chainID apptypes.ChainType,
 	fn func(tx kv.Tx) error,
 ) error {
+	sa.mu.RLock()
+	defer sa.mu.RUnlock()
+
 	db, ok := sa.stateAccessDB[chainID]
 	if !ok {
-		return fmt.Errorf("%w %d", ErrUnknownChain, chainID)
+		return fmt.Errorf("%w, no DB for chainID, %d", ErrUnknownChain, chainID)
 	}
 
 	return db.View(ctx, fn)
+}
+
+func (sa *MultichainStateAccess) Close() {
+	sa.mu.Lock()
+	defer sa.mu.Unlock()
+
+	for _, db := range sa.stateAccessDB {
+		db.Close()
+	}
+}
+
+// EthBlocks: [8 bytes blockNumber][32 bytes blockHash]  => total 40 bytes
+func EthBlockKey(num uint64, hash [32]byte) []byte {
+	key := make([]byte, 8+32)
+	binary.BigEndian.PutUint64(key[:8], num)
+	copy(key[8:], hash[:])
+
+	return key
+}
+
+// EthReceipts: [8 bytes blockNumber][32 bytes blockHash][4 bytes txIndex] => 44 bytes
+func EthReceiptKey(blockNumber uint64, blockHash [32]byte, txIndex ...uint32) []byte {
+	keyLength := 44
+	if txIndex == nil {
+		keyLength = 40
+	}
+
+	key := make([]byte, keyLength)
+	binary.BigEndian.PutUint64(key[:8], blockNumber)
+	copy(key[8:40], blockHash[:])
+
+	if len(txIndex) > 0 {
+		binary.BigEndian.PutUint32(key[40:], txIndex[0])
+	}
+
+	return key
+}
+
+// SolanaBlocks: [8 bytes blockNumber]  (you read by ExternalBlock.BlockNumber)
+// If you use Slot as BlockNumber, write Slot here.
+func SolBlockKey(num uint64) []byte {
+	key := make([]byte, 8)
+	binary.BigEndian.PutUint64(key, num)
+
+	return key
+}
+
+type EthereumBlock struct {
+	Header gethtypes.Header
+	Body   gethtypes.Body
+}
+
+func NewEthereumBlock(b *gethtypes.Block) *EthereumBlock {
+	return &EthereumBlock{
+		Header: *b.Header(),
+		Body:   *b.Body(),
+	}
 }

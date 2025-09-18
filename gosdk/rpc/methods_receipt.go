@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/fxamacker/cbor/v2"
+	"github.com/goccy/go-json"
 	"github.com/ledgerwatch/erigon-lib/kv"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
@@ -53,7 +53,7 @@ func (m *ReceiptMethods[R]) GetTransactionReceipt(ctx context.Context, params []
 			return ErrReceiptNotFound
 		}
 
-		return cbor.Unmarshal(value, &receiptResp)
+		return json.Unmarshal(value, &receiptResp)
 	})
 	if err != nil {
 		if errors.Is(err, ErrReceiptNotFound) {

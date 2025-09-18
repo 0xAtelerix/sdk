@@ -8,6 +8,13 @@ func (e SDKError) Error() string {
 
 const (
 	ErrCorruptedFile  = SDKError("corrupted file")
-	ErrUnknownChain   = SDKError("no DB for chainID")
+	ErrUnknownChain   = SDKError("unknown chain")
 	ErrMissingTxBatch = SDKError("missing tx batch")
+	ErrNoValidatorSet = SDKError("no valset")
+
+	ErrWrongBlock = SDKError("wrong block hash")
+
+	ErrUnsupportedEntityType = SDKError("unsupported entity type")
+	ErrMalformedKey          = SDKError("malformed key")
+	ErrUnsupportedFixture    = SDKError("unsupported type in FixtureWriter")
 )
