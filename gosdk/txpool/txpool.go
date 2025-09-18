@@ -136,7 +136,11 @@ func (p *TxPool[T, R]) CreateTransactionBatch(ctx context.Context) ([]byte, [][]
 		defer it.Close()
 
 		for k, v, curErr := it.First(); k != nil && curErr == nil; k, v, curErr = it.Next() {
-			transactions = append(transactions, v)
+			// Values returned by MDBX cursor are memory-mapped and only valid until the next cursor op.
+			// We must copy the value before we move/delete the cursor entry, otherwise data may be corrupted.
+			copied := make([]byte, len(v))
+			copy(copied, v)
+			transactions = append(transactions, copied)
 
 			// TODO: for data consistency we need to get a fetcher response on successful tx save first and only then delete from txpool
 			curErr = txn.Delete(txPoolBucket, k)
