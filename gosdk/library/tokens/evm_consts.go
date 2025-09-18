@@ -2,7 +2,6 @@ package tokens
 
 import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
@@ -26,29 +25,17 @@ const (
 	transferBatchSigABI  = "TransferBatch(address,address,address,uint256[],uint256[])"
 )
 
-func sigERC20ERC721Transfer() common.Hash {
-	return crypto.Keccak256Hash([]byte(sigERC20ERC721TransferABI))
-}
+//nolint:gochecknoglobals // private globals
+var (
+	sigERC20ERC721Transfer = crypto.Keccak256Hash([]byte(sigERC20ERC721TransferABI))
 
-func sigERC1155Single() common.Hash {
-	return crypto.Keccak256Hash([]byte(sigERC1155SingleABI))
-}
+	sigERC1155Single = crypto.Keccak256Hash([]byte(sigERC1155SingleABI))
+	sigERC1155Batch  = crypto.Keccak256Hash([]byte(sigERC1155BatchABI))
 
-func sigERC1155Batch() common.Hash {
-	return crypto.Keccak256Hash([]byte(sigERC1155BatchABI))
-}
-
-func transferSig() common.Hash {
-	return crypto.Keccak256Hash([]byte(transferSigABI))
-}
-
-func transferSingleSig() common.Hash {
-	return crypto.Keccak256Hash([]byte(transferSingleSigABI))
-}
-
-func transferBatchSig() common.Hash {
-	return crypto.Keccak256Hash([]byte(transferBatchSigABI))
-}
+	transferSig       = crypto.Keccak256Hash([]byte(transferSigABI))
+	transferSingleSig = crypto.Keccak256Hash([]byte(transferSingleSigABI))
+	transferBatchSig  = crypto.Keccak256Hash([]byte(transferBatchSigABI))
+)
 
 // ABI arg decoders for non-indexed data payloads
 //

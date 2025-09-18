@@ -43,7 +43,7 @@ func TestExtractErc20Transfer(t *testing.T) {
 
 	lg := gethtypes.Log{
 		Address: token,
-		Topics:  []common.Hash{sigERC20ERC721Transfer(), addrTopic(from), addrTopic(to)},
+		Topics:  []common.Hash{sigERC20ERC721Transfer, addrTopic(from), addrTopic(to)},
 		Data:    mustPack(t, erc20Data, amt),
 		Index:   0,
 	}
@@ -75,7 +75,7 @@ func TestExtractErc721Transfer(t *testing.T) {
 	lg := gethtypes.Log{
 		Address: token,
 		Topics: []common.Hash{
-			sigERC20ERC721Transfer(),
+			sigERC20ERC721Transfer,
 			addrTopic(from),
 			addrTopic(to),
 			common.BigToHash(tokenID),
@@ -112,7 +112,7 @@ func TestExtractErc1155Single(t *testing.T) {
 
 	lg := gethtypes.Log{
 		Address: token,
-		Topics:  []common.Hash{sigERC1155Single(), {}, addrTopic(from), addrTopic(to)},
+		Topics:  []common.Hash{sigERC1155Single, {}, addrTopic(from), addrTopic(to)},
 		Data:    mustPack(t, erc1155DataS, id, val),
 		Index:   2,
 	}
@@ -142,7 +142,7 @@ func TestExtractErc1155Batch(t *testing.T) {
 
 	lg := gethtypes.Log{
 		Address: token,
-		Topics:  []common.Hash{sigERC1155Batch(), {}, addrTopic(from), addrTopic(to)},
+		Topics:  []common.Hash{sigERC1155Batch, {}, addrTopic(from), addrTopic(to)},
 		Data:    mustPack(t, erc1155DataB, ids, vals),
 		Index:   3,
 	}
@@ -176,14 +176,14 @@ func TestMixedLogsOneReceipt(t *testing.T) {
 
 	erc20 := gethtypes.Log{
 		Address: token20,
-		Topics:  []common.Hash{sigERC20ERC721Transfer(), addrTopic(from), addrTopic(to)},
+		Topics:  []common.Hash{sigERC20ERC721Transfer, addrTopic(from), addrTopic(to)},
 		Data:    mustPack(t, erc20Data, big.NewInt(5)),
 		Index:   0,
 	}
 	erc721 := gethtypes.Log{
 		Address: token721,
 		Topics: []common.Hash{
-			sigERC20ERC721Transfer(),
+			sigERC20ERC721Transfer,
 			addrTopic(from),
 			addrTopic(to),
 			common.BigToHash(big.NewInt(77)),

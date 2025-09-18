@@ -42,7 +42,7 @@ func ExtractErcTransfers(r gethtypes.Receipt) []EvmTokenTransfer {
 		sig := lg.Topics[0]
 
 		switch sig {
-		case transferSig():
+		case transferSig:
 			// ERC-20 and ERC-721 share the same signature.
 			// Heuristic: topic count
 			// - ERC-20 Transfer(address indexed from, address indexed to, uint256 value)
@@ -93,7 +93,7 @@ func ExtractErcTransfers(r gethtypes.Receipt) []EvmTokenTransfer {
 				continue
 			}
 
-		case transferSingleSig():
+		case transferSingleSig:
 			// topics: [sig, operator, from, to]
 			if len(lg.Topics) != 4 {
 				continue
@@ -128,7 +128,7 @@ func ExtractErcTransfers(r gethtypes.Receipt) []EvmTokenTransfer {
 				LogIndex: lg.Index,
 			})
 
-		case transferBatchSig():
+		case transferBatchSig:
 			// topics: [sig, operator, from, to]
 			if len(lg.Topics) != 4 {
 				continue
