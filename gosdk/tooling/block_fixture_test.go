@@ -250,12 +250,12 @@ func TestEthereum_BlockAndReceipts_RoundTrip(t *testing.T) {
 	writerDB.Close()
 
 	// open read-only accessor and read back
-
-	mc, err := gosdk.NewMultichainStateAccess(gosdk.MultichainConfig{
+	chainDBs, err := gosdk.NewMultichainStateAccessDB(gosdk.MultichainConfig{
 		apptypes.ChainType(chainID): evmDBPath,
 	})
 	require.NoError(t, err)
 
+	mc := gosdk.NewMultichainStateAccess(chainDBs)
 	defer mc.Close()
 
 	ctx := context.Background()
@@ -308,11 +308,12 @@ func TestSolana_Block_RoundTrip(t *testing.T) {
 	writerDB.Close()
 
 	// open accessor and read back
-
-	mc, err := gosdk.NewMultichainStateAccess(gosdk.MultichainConfig{
+	chainDBs, err := gosdk.NewMultichainStateAccessDB(gosdk.MultichainConfig{
 		apptypes.ChainType(chainID): svmDBPath,
 	})
 	require.NoError(t, err)
+
+	mc := gosdk.NewMultichainStateAccess(chainDBs)
 
 	defer mc.Close()
 
@@ -401,11 +402,12 @@ func TestEthBlockFileIterator_Pipeline(t *testing.T) {
 
 	// --- Assert: read back using MultichainStateAccess
 
-	mc, err := gosdk.NewMultichainStateAccess(gosdk.MultichainConfig{
+	chainDBs, err := gosdk.NewMultichainStateAccessDB(gosdk.MultichainConfig{
 		apptypes.ChainType(1): evmDBPath,
 	})
 	require.NoError(t, err)
 
+	mc := gosdk.NewMultichainStateAccess(chainDBs)
 	defer mc.Close()
 
 	for _, w := range want {
@@ -513,12 +515,12 @@ func TestEthReceiptsFileIterator_Pipeline(t *testing.T) {
 	writerDB.Close()
 
 	// --- Assert: read back using MultichainStateAccess
-
-	mc, err := gosdk.NewMultichainStateAccess(gosdk.MultichainConfig{
+	chainDBs, err := gosdk.NewMultichainStateAccessDB(gosdk.MultichainConfig{
 		apptypes.ChainType(1): evmDBPath,
 	})
 	require.NoError(t, err)
 
+	mc := gosdk.NewMultichainStateAccess(chainDBs)
 	defer mc.Close()
 
 	for _, b := range blocks {
@@ -605,12 +607,12 @@ func TestSolBlockFileIterator_Pipeline(t *testing.T) {
 	writerDB.Close()
 
 	// --- Assert: read back using MultichainStateAccess
-
-	mc, err := gosdk.NewMultichainStateAccess(gosdk.MultichainConfig{
+	chainDBs, err := gosdk.NewMultichainStateAccessDB(gosdk.MultichainConfig{
 		gosdk.SolanaDevnetChainID: svmDBPath,
 	})
 	require.NoError(t, err)
 
+	mc := gosdk.NewMultichainStateAccess(chainDBs)
 	defer mc.Close()
 
 	for _, w := range want {

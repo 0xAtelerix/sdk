@@ -78,6 +78,8 @@ func TestEmitterCall(t *testing.T) {
 
 	// Создаем сервер с MDBX
 	srv := NewServer[*CustomTransaction[Receipt]](db, 1, nil)
+	srv.logger = &log.Logger
+
 	if err != nil {
 		t.Fatalf("Ошибка создания сервера: %v", err)
 	}
@@ -151,7 +153,7 @@ func TestEmitterCall(t *testing.T) {
 	}()
 
 	wg.Wait()
-	time.Sleep(time.Second)
+	time.Sleep(time.Second * 3)
 
 	// Подключение к серверу
 	conn, err := grpc.NewClient(

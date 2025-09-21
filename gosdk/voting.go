@@ -62,8 +62,8 @@ func NewVotingFromValidatorSet[T apptypes.ExternalEntity](validators *ValidatorS
 
 func (v *Voting[T]) SetValset(validators *ValidatorSet) {
 	total := getTotalVoting(validators)
-
 	v.totalVotingPower.Set(total)
+	v.threshold.Set(Threshold(total))
 }
 
 // NewVotingFromStorage restores voting state of the given entity type from DB.
