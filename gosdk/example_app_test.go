@@ -66,7 +66,11 @@ func TestExampleAppchain(t *testing.T) {
 	subscriber, err := NewSubscriber(t.Context(), appchainDB)
 	require.NoError(t, err)
 
-	multichainDB, err := NewMultichainStateAccess(config.MultichainStateDB)
+	chainDBs, err := NewMultichainStateAccessDB(config.MultichainStateDB)
+	require.NoError(t, err)
+
+	multichainDB := NewMultichainStateAccess(chainDBs)
+
 	require.NoError(t, err)
 
 	stateTransition := NewBatchProcesser[ExampleTransaction[ExampleReceipt], ExampleReceipt](

@@ -126,8 +126,7 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 	streamConstructor EventStreamWrapperConstructor[appTx, R],
 ) error {
 	logger := log.Ctx(ctx)
-	logger.Error().Msg("Starting appchain...")
-	logger.Info().Msg("Appchain run started")
+	logger.Warn().Msg("Appchain run started")
 
 	ctx = utility.CtxWithValidatorID(ctx, a.config.ValidatorID)
 	ctx = utility.CtxWithChainID(ctx, a.config.ChainID)
@@ -152,7 +151,6 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 		return err
 	}
 
-	// todo надо открывать в run. Отсутствие файла - не должно быть причиной падения
 	logger.Info().
 		Str("dir", a.config.EventStreamDir).
 		Int64("start event", startEventPos).
@@ -720,16 +718,6 @@ func ReadTxSnapshotPosition(tx kv.Tx, epoch uint32) int64 {
 	return int64(binary.BigEndian.Uint64(val))
 }
 
-func WriteTxSnapshotPosition(rwtx kv.RwTx, epoch uint32, pos int64) error {
-	key := make([]byte, 4)
-	binary.BigEndian.PutUint32(key, epoch)
-
-	val := make([]byte, 8)
-	binary.BigEndian.PutUint64(val, uint64(pos))
-
-	return rwtx.Put(TxSnapshot, key, val)
-}
-
 const currentEpoch = uint32(1)
 
 func GetLastStreamPositions(
@@ -746,8 +734,6 @@ func GetLastStreamPositions(
 		if dbErr != nil {
 			return dbErr
 		}
-
-		startTxPos = ReadTxSnapshotPosition(tx, currentEpoch)
 
 		return nil
 	})

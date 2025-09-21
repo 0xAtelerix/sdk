@@ -179,6 +179,8 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 					return nil
 				})
 				if err != nil {
+					ews.logger.Warn().Err(err).Msg("failed to view validator set")
+
 					continue
 				}
 			}

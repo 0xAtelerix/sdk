@@ -124,7 +124,7 @@ func (p *TxPool[T, R]) GetPendingTransactions(ctx context.Context) ([]T, error) 
 
 // GetAllTransactions получает все транзакции (generic)
 func (p *TxPool[T, R]) CreateTransactionBatch(ctx context.Context) ([]byte, [][]byte, error) {
-	log.Warn().Msg("creating transaction batch")
+	log.Debug().Msg("creating transaction batch")
 
 	var (
 		transactions [][]byte

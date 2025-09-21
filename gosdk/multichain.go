@@ -49,11 +49,8 @@ type MultichainStateAccess struct {
 }
 
 type MultichainConfig map[apptypes.ChainType]string // chainID, chainDBpath
-
-func NewMultichainStateAccess(cfg MultichainConfig) (*MultichainStateAccess, error) {
-	multichainStateDB := MultichainStateAccess{
-		stateAccessDB: make(map[apptypes.ChainType]kv.RoDB, len(cfg)),
-	}
+func NewMultichainStateAccessDB(cfg MultichainConfig) (map[apptypes.ChainType]kv.RoDB, error) {
+	stateAccessDBs := make(map[apptypes.ChainType]kv.RoDB)
 	for chainID, path := range cfg {
 		var tableCfg kv.TableCfg
 
@@ -80,10 +77,20 @@ func NewMultichainStateAccess(cfg MultichainConfig) (*MultichainStateAccess, err
 			return nil, fmt.Errorf("failed to initialize %v db: %w", chainID, err)
 		}
 
-		multichainStateDB.stateAccessDB[chainID] = stateAccessDB
+		stateAccessDBs[chainID] = stateAccessDB
 	}
 
-	return &multichainStateDB, nil
+	return stateAccessDBs, nil
+}
+
+func NewMultichainStateAccess(
+	stateAccessDBs map[apptypes.ChainType]kv.RoDB,
+) *MultichainStateAccess {
+	multichainStateDB := MultichainStateAccess{
+		stateAccessDB: stateAccessDBs,
+	}
+
+	return &multichainStateDB
 }
 
 func (sa *MultichainStateAccess) EthBlock(
