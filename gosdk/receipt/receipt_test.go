@@ -76,7 +76,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 
 			var getErr error
 
-			retrievedReceipt, getErr = getReceipt(tx, txHash[:], &TestReceipt{})
+			retrievedReceipt, getErr = GetReceipt(tx, txHash[:], &TestReceipt{})
 
 			return getErr
 		})
@@ -118,7 +118,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 
 				txHash := originalReceipt.TxHash()
 
-				retrievedReceipt, getErr = getReceipt(tx, txHash[:], &TestReceipt{})
+				retrievedReceipt, getErr = GetReceipt(tx, txHash[:], &TestReceipt{})
 				if getErr != nil {
 					return getErr
 				}
@@ -140,7 +140,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 		err := db.View(tr.Context(), func(tx kv.Tx) error {
 			var receipt TestReceipt
 
-			_, dbErr := getReceipt(tx, nonExistentHash[:], &receipt)
+			_, dbErr := GetReceipt(tx, nonExistentHash[:], &receipt)
 			// Should return an error for non-existent receipt
 			assert.Error(tr, dbErr)
 
@@ -203,7 +203,7 @@ func TestReceiptBatchOperations(t *testing.T) {
 
 				txHash := originalReceipt.TxHash()
 
-				retrievedReceipt, getErr = getReceipt(tx, txHash[:], &TestReceipt{})
+				retrievedReceipt, getErr = GetReceipt(tx, txHash[:], &TestReceipt{})
 				if getErr != nil {
 					return getErr
 				}
@@ -265,7 +265,7 @@ func BenchmarkGetReceipt(b *testing.B) {
 	for range b.N {
 		err = db.View(b.Context(), func(tx kv.Tx) error {
 			txHash := receipt.TxHash()
-			_, dbErr := getReceipt(tx, txHash[:], &TestReceipt{})
+			_, dbErr := GetReceipt(tx, txHash[:], &TestReceipt{})
 
 			return dbErr
 		})
@@ -301,7 +301,7 @@ func TestReceiptErrorHandling(t *testing.T) {
 		err = db.View(tr.Context(), func(tx kv.Tx) error {
 			txHash := receipt.TxHash()
 
-			retrievedReceipt, getErr := getReceipt(tx, txHash[:], &TestReceipt{})
+			retrievedReceipt, getErr := GetReceipt(tx, txHash[:], &TestReceipt{})
 			if getErr != nil {
 				return getErr
 			}
@@ -330,7 +330,7 @@ func TestReceiptErrorHandling(t *testing.T) {
 		err = db.View(tr.Context(), func(tx kv.Tx) error {
 			txHash := receipt.TxHash()
 
-			retrievedReceipt, getErr := getReceipt(tx, txHash[:], &TestReceipt{})
+			retrievedReceipt, getErr := GetReceipt(tx, txHash[:], &TestReceipt{})
 			if getErr != nil {
 				return getErr
 			}

@@ -24,8 +24,7 @@ func StoreReceipt[R apptypes.Receipt](tx kv.RwTx, receipt R) error {
 	return tx.Put(ReceiptBucket, key[:], value)
 }
 
-// Only used to test cases as of now, For user we have rpc method
-func getReceipt[R apptypes.Receipt](tx kv.Tx, txHash []byte, receipt R) (R, error) {
+func GetReceipt[R apptypes.Receipt](tx kv.Tx, txHash []byte, receipt R) (R, error) {
 	value, err := tx.GetOne(ReceiptBucket, txHash)
 	if err != nil {
 		return receipt, err

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/goccy/go-json"
 	"github.com/ledgerwatch/erigon-lib/kv"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
@@ -44,20 +43,13 @@ func (m *ReceiptMethods[R]) GetTransactionReceipt(ctx context.Context, params []
 	var receiptResp R
 
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
-		value, getErr := tx.GetOne(receipt.ReceiptBucket, hash[:])
-		if getErr != nil {
-			return getErr
-		}
+		receiptResp, err = receipt.GetReceipt(tx, hash[:], receiptResp)
 
-		if len(value) == 0 {
-			return ErrReceiptNotFound
-		}
-
-		return json.Unmarshal(value, &receiptResp)
+		return err
 	})
 	if err != nil {
-		if errors.Is(err, ErrReceiptNotFound) {
-			return nil, err
+		if errors.Is(err, receipt.ErrNoReceipts) {
+			return nil, ErrReceiptNotFound
 		}
 
 		return nil, fmt.Errorf("%w: %w", ErrFailedToGetReceipt, err)
