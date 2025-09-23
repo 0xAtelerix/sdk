@@ -611,8 +611,10 @@ func TransactionToProto(
 	protoTxs := make([]*emitterproto.ExternalTransaction, len(txs))
 
 	for i, tx := range txs {
-		protoTxs[i].ChainId = uint64(tx.ChainID)
-		protoTxs[i].Tx = tx.Tx
+		protoTxs[i] = &emitterproto.ExternalTransaction{
+			ChainId: uint64(tx.ChainID),
+			Tx:      tx.Tx,
+		}
 	}
 
 	return &emitterproto.GetExternalTransactionsResponse_BlockTransactions{
