@@ -28,8 +28,16 @@ type Error struct {
 	Data    string `json:"data,omitempty"`
 }
 
+// CORSConfig holds CORS configuration for the RPC server
+type CORSConfig struct {
+	AllowOrigin  string
+	AllowMethods string
+	AllowHeaders string
+}
+
 // StandardRPCServer provides standard blockchain RPC methods
 type StandardRPCServer struct {
 	logger        *zerolog.Logger
 	customMethods map[string]func(context.Context, []any) (any, error)
+	corsConfig    *CORSConfig
 }
