@@ -172,20 +172,20 @@ func (s *AppchainEmitterServer[appTx, R]) GetExternalTransactions(
 	count := uint32(0)
 
 	for k, v, err := cursor.Seek(startKey); err == nil && count < limit; k, v, err = cursor.Next() {
-		if len(k) < 10 {
+		if len(k) != 8 {
 			break
 		}
 
 		blockNumber := binary.BigEndian.Uint64(k[:8])
 
-		tx := &emitterproto.ExternalTransaction{}
-		if err := proto.Unmarshal(v, tx); err != nil {
+		blocktxs := &emitterproto.GetExternalTransactionsResponse_BlockTransactions{}
+		if err := proto.Unmarshal(v, blocktxs); err != nil {
 			s.logger.Error().Err(err).Msg("Transaction deserialization failed")
 
 			return nil, fmt.Errorf("transaction deserialization failed: %w", err)
 		}
 
-		blockMap[blockNumber] = append(blockMap[blockNumber], tx)
+		blockMap[blockNumber] = append(blockMap[blockNumber], blocktxs.GetExternalTransactions()...)
 		count++
 	}
 
