@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 
 const (
 	healthStatusHealthy = "healthy"
+	jsonRPCVersion      = "2.0"
 )
 
 // NewStandardRPCServer creates a new standard RPC server with optional CORS configuration.
@@ -69,14 +71,42 @@ func (s *StandardRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 
 	s.setCORSHeaders(w, "POST, OPTIONS")
 
-	var req JSONRPCRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.writeError(w, -32700, "Parse error", req.ID)
+	// Read the entire request body
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		s.writeError(w, -32700, "Parse error", nil)
+
+		return
+	}
+	defer r.Body.Close()
+
+	// Try to decode as batch request (array) first
+	var batchReq []JSONRPCRequest
+	if err := json.Unmarshal(body, &batchReq); err != nil {
+		// If not an array, try single request
+		var singleReq JSONRPCRequest
+		if err := json.Unmarshal(body, &singleReq); err != nil {
+			s.writeError(w, -32700, "Parse error", nil)
+
+			return
+		}
+		// Handle single request
+		s.handleSingleRequest(w, r, singleReq)
 
 		return
 	}
 
-	if req.JSONRPC != "2.0" {
+	// Handle batch request
+	s.handleBatchRequest(w, r, batchReq)
+}
+
+// handleSingleRequest processes a single JSON-RPC request
+func (s *StandardRPCServer) handleSingleRequest(
+	w http.ResponseWriter,
+	r *http.Request,
+	req JSONRPCRequest,
+) {
+	if req.JSONRPC != jsonRPCVersion {
 		s.writeError(w, -32600, "Invalid Request", req.ID)
 
 		return
@@ -97,13 +127,75 @@ func (s *StandardRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := JSONRPCResponse{
-		JSONRPC: "2.0",
+		JSONRPC: jsonRPCVersion,
 		Result:  result,
 		ID:      req.ID,
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	}
+}
+
+// handleBatchRequest processes a batch of JSON-RPC requests
+func (s *StandardRPCServer) handleBatchRequest(
+	w http.ResponseWriter,
+	r *http.Request,
+	batchReq []JSONRPCRequest,
+) {
+	if len(batchReq) == 0 {
+		s.writeError(w, -32600, "Invalid Request - empty batch", nil)
+
+		return
+	}
+
+	responses := make([]JSONRPCResponse, 0, len(batchReq))
+
+	for _, req := range batchReq {
+		if req.JSONRPC != jsonRPCVersion {
+			responses = append(responses, JSONRPCResponse{
+				JSONRPC: jsonRPCVersion,
+				Error:   &Error{Code: -32600, Message: "Invalid Request"},
+				ID:      req.ID,
+			})
+
+			continue
+		}
+
+		handler, exists := s.customMethods[req.Method]
+		if !exists {
+			responses = append(responses, JSONRPCResponse{
+				JSONRPC: jsonRPCVersion,
+				Error: &Error{
+					Code:    -32601,
+					Message: fmt.Errorf("%w: %s", ErrMethodNotFound, req.Method).Error(),
+				},
+				ID: req.ID,
+			})
+
+			continue
+		}
+
+		result, err := handler(r.Context(), req.Params)
+		if err != nil {
+			responses = append(responses, JSONRPCResponse{
+				JSONRPC: jsonRPCVersion,
+				Error:   &Error{Code: -32603, Message: err.Error()},
+				ID:      req.ID,
+			})
+
+			continue
+		}
+
+		responses = append(responses, JSONRPCResponse{
+			JSONRPC: jsonRPCVersion,
+			Result:  result,
+			ID:      req.ID,
+		})
+	}
+
+	if err := json.NewEncoder(w).Encode(responses); err != nil {
+		http.Error(w, "Failed to encode batch response", http.StatusInternalServerError)
 	}
 }
 
