@@ -17,10 +17,11 @@ const (
 	healthStatusHealthy = "healthy"
 )
 
-// NewStandardRPCServer creates a new standard RPC server
-func NewStandardRPCServer() *StandardRPCServer {
+// NewStandardRPCServer creates a new standard RPC server with optional CORS configuration.
+func NewStandardRPCServer(corsConfig *CORSConfig) *StandardRPCServer {
 	return &StandardRPCServer{
 		customMethods: make(map[string]func(context.Context, []any) (any, error)),
+		corsConfig:    corsConfig,
 	}
 }
 
@@ -66,10 +67,7 @@ func (s *StandardRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	s.setCORSHeaders(w, "POST, OPTIONS")
 
 	var req JSONRPCRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -117,10 +115,7 @@ func (s *StandardRPCServer) healthcheck(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	s.setCORSHeaders(w, "GET")
 
 	healthStatus := map[string]any{
 		"status":      healthStatusHealthy,
@@ -130,6 +125,30 @@ func (s *StandardRPCServer) healthcheck(w http.ResponseWriter, r *http.Request) 
 
 	if err := json.NewEncoder(w).Encode(healthStatus); err != nil {
 		http.Error(w, "Failed to encode health response", http.StatusInternalServerError)
+	}
+}
+
+// setCORSHeaders sets CORS headers based on the configuration
+func (s *StandardRPCServer) setCORSHeaders(w http.ResponseWriter, defaultMethods string) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.corsConfig != nil {
+		if s.corsConfig.AllowOrigin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", s.corsConfig.AllowOrigin)
+		}
+		if s.corsConfig.AllowMethods != "" {
+			w.Header().Set("Access-Control-Allow-Methods", s.corsConfig.AllowMethods)
+		} else {
+			w.Header().Set("Access-Control-Allow-Methods", defaultMethods)
+		}
+		if s.corsConfig.AllowHeaders != "" {
+			w.Header().Set("Access-Control-Allow-Headers", s.corsConfig.AllowHeaders)
+		} else {
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		}
+	} else {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", defaultMethods)
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	}
 }
 

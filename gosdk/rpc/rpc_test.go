@@ -99,7 +99,7 @@ func setupTestEnvironment(
 	txPool := txpool.NewTxPool[TestTransaction[TestReceipt]](localDB)
 
 	// Create RPC server
-	server = NewStandardRPCServer()
+	server = NewStandardRPCServer(nil)
 
 	// Add standard methods to maintain compatibility with existing tests
 	AddStandardMethods(server, appchainDB, txPool)
@@ -430,7 +430,7 @@ func ExampleStandardRPCServer() {
 	// This example shows how to set up and use the StandardRPCServer
 
 	// Create RPC server
-	server := NewStandardRPCServer()
+	server := NewStandardRPCServer(nil)
 
 	// Add custom method
 	server.AddCustomMethod("ping", func(_ context.Context, _ []any) (any, error) {
