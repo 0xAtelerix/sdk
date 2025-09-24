@@ -1,0 +1,8 @@
+version: v2
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: gosdk/proto
+    opt: paths=source_relative
+  - remote: buf.build/grpc/go:v1.5.1
+    out: gosdk/proto
+    opt: paths=source_relative

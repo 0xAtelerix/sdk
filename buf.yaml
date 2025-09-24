@@ -1,0 +1,6 @@
+version: v2
+lint:
+  use:
+    - STANDARD
+modules:
+  - path: proto
