@@ -5,7 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -425,25 +425,6 @@ func BenchmarkRPCServer_getChainInfo(b *testing.B) {
 	}
 }
 
-// Example usage test
-func ExampleStandardRPCServer() {
-	// This example shows how to set up and use the StandardRPCServer
-
-	// Create RPC server
-	server := NewStandardRPCServer(nil)
-
-	// Add custom method
-	server.AddCustomMethod("ping", func(_ context.Context, _ []any) (any, error) {
-		return "pong", nil
-	})
-
-	// Start server (commented out for example)
-	// server.StartHTTPServer(8545)
-
-	_, _ = fmt.Println("RPC server configured successfully")
-	// Output: RPC server configured successfully
-}
-
 func TestStandardRPCServer_healthEndpoint(t *testing.T) {
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
@@ -489,4 +470,191 @@ func TestStandardRPCServer_healthEndpoint_wrongMethod(t *testing.T) {
 	server.healthcheck(rr, req)
 
 	assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+}
+
+func TestStandardRPCServer_batchRequests(t *testing.T) {
+	server := NewStandardRPCServer(nil)
+
+	// Add test methods
+	server.AddCustomMethod("add", func(_ context.Context, params []any) (any, error) {
+		a, ok := params[0].(float64)
+		if !ok {
+			return nil, errors.New(
+				"invalid parameter type",
+			)
+		}
+
+		b, ok := params[1].(float64)
+		if !ok {
+			return nil, errors.New(
+				"invalid parameter type",
+			)
+		}
+
+		return a + b, nil
+	})
+
+	server.AddCustomMethod("multiply", func(_ context.Context, params []any) (any, error) {
+		a, ok := params[0].(float64)
+		if !ok {
+			return nil, errors.New(
+				"invalid parameter type",
+			)
+		}
+
+		b, ok := params[1].(float64)
+		if !ok {
+			return nil, errors.New(
+				"invalid parameter type",
+			)
+		}
+
+		return a * b, nil
+	})
+
+	// Test batch request with multiple valid calls
+	batchReq := []JSONRPCRequest{
+		{
+			JSONRPC: "2.0",
+			Method:  "add",
+			Params:  []any{2, 3},
+			ID:      1,
+		},
+		{
+			JSONRPC: "2.0",
+			Method:  "multiply",
+			Params:  []any{4, 5},
+			ID:      2,
+		},
+	}
+
+	reqBody, err := json.Marshal(batchReq)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	server.handleRPC(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	var batchResp []JSONRPCResponse
+
+	err = json.Unmarshal(rr.Body.Bytes(), &batchResp)
+	require.NoError(t, err)
+
+	assert.Len(t, batchResp, 2)
+	assert.InDelta(t, float64(5), batchResp[0].Result, 0.001) // 2 + 3 = 5
+	assert.InDelta(t, float64(1), batchResp[0].ID, 0.001)
+	assert.InDelta(t, float64(20), batchResp[1].Result, 0.001) // 4 * 5 = 20
+	assert.InDelta(t, float64(2), batchResp[1].ID, 0.001)
+}
+
+func TestStandardRPCServer_batchRequestsWithErrors(t *testing.T) {
+	server := NewStandardRPCServer(nil)
+
+	// Add only one method
+	server.AddCustomMethod("add", func(_ context.Context, params []any) (any, error) {
+		a, ok := params[0].(float64)
+		if !ok {
+			return nil, errors.New(
+				"invalid parameter type",
+			)
+		}
+
+		b, ok := params[1].(float64)
+		if !ok {
+			return nil, errors.New(
+				"invalid parameter type",
+			)
+		}
+
+		return a + b, nil
+	})
+
+	// Test batch request with mix of valid and invalid calls
+	batchReq := []JSONRPCRequest{
+		{
+			JSONRPC: "2.0",
+			Method:  "add",
+			Params:  []any{2, 3},
+			ID:      1,
+		},
+		{
+			JSONRPC: "2.0",
+			Method:  "nonexistent",
+			Params:  []any{},
+			ID:      2,
+		},
+		{
+			JSONRPC: "2.0",
+			Method:  "add",
+			Params:  []any{4, 5},
+			ID:      3,
+		},
+	}
+
+	reqBody, err := json.Marshal(batchReq)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	server.handleRPC(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	var batchResp []JSONRPCResponse
+
+	err = json.Unmarshal(rr.Body.Bytes(), &batchResp)
+	require.NoError(t, err)
+
+	assert.Len(t, batchResp, 3)
+
+	// First request should succeed
+	assert.NotNil(t, batchResp[0].Result)
+	assert.InDelta(t, float64(5), batchResp[0].Result, 0.001)
+	assert.InDelta(t, float64(1), batchResp[0].ID, 0.001)
+	assert.Nil(t, batchResp[0].Error)
+
+	// Second request should fail
+	assert.Nil(t, batchResp[1].Result)
+	assert.InDelta(t, float64(2), batchResp[1].ID, 0.001)
+	assert.NotNil(t, batchResp[1].Error)
+	assert.Equal(t, -32601, batchResp[1].Error.Code)
+
+	// Third request should succeed
+	assert.NotNil(t, batchResp[2].Result)
+	assert.InDelta(t, float64(9), batchResp[2].Result, 0.001)
+	assert.InDelta(t, float64(3), batchResp[2].ID, 0.001)
+	assert.Nil(t, batchResp[2].Error)
+}
+
+func TestStandardRPCServer_emptyBatchRequest(t *testing.T) {
+	server := NewStandardRPCServer(nil)
+
+	// Test empty batch request
+	batchReq := []JSONRPCRequest{}
+
+	reqBody, err := json.Marshal(batchReq)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	server.handleRPC(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	var errorResp JSONRPCResponse
+
+	err = json.Unmarshal(rr.Body.Bytes(), &errorResp)
+	require.NoError(t, err)
+
+	assert.NotNil(t, errorResp.Error)
+	assert.Equal(t, -32600, errorResp.Error.Code)
+	assert.Contains(t, errorResp.Error.Message, "empty batch")
 }
