@@ -19,7 +19,6 @@ func (*StandardRPCServer) writeError(
 	w http.ResponseWriter,
 	code int,
 	message string,
-	id any,
 ) {
 	response := JSONRPCResponse{
 		JSONRPC: jsonRPCVersion,
@@ -27,7 +26,7 @@ func (*StandardRPCServer) writeError(
 			Code:    code,
 			Message: message,
 		},
-		ID: id,
+		ID: nil,
 	}
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		http.Error(w, "Failed to encode error response", http.StatusInternalServerError)

@@ -25,6 +25,11 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
 
+const (
+	testSuccessMessage        = "success"
+	testShouldNotReachMessage = "should not reach here"
+)
+
 // TestTransaction - test transaction implementation
 type TestTransaction[R TestReceipt] struct {
 	From  string `json:"from"  cbor:"1,keyasint"`
@@ -34,12 +39,13 @@ type TestTransaction[R TestReceipt] struct {
 
 func (t TestTransaction[R]) Hash() [32]byte {
 	s := t.From + t.To + strconv.Itoa(t.Value)
+
 	return sha256.Sum256([]byte(s))
 }
 
-func (t TestTransaction[R]) Process(
+func (TestTransaction[R]) Process(
 	_ kv.RwTx,
-) (receipt R, txs []apptypes.ExternalTransaction, err error) {
+) (rec R, txs []apptypes.ExternalTransaction, err error) {
 	return
 }
 
@@ -658,7 +664,7 @@ type testMiddleware struct {
 }
 
 func (m *testMiddleware) ProcessRequest(
-	w http.ResponseWriter,
+	_ http.ResponseWriter,
 	r *http.Request,
 ) error {
 	m.requestProcessed = true
@@ -675,8 +681,8 @@ func (m *testMiddleware) ProcessRequest(
 
 func (m *testMiddleware) ProcessResponse(
 	w http.ResponseWriter,
-	r *http.Request,
-	resp JSONRPCResponse,
+	_ *http.Request,
+	_ JSONRPCResponse,
 ) error {
 	m.responseProcessed = true
 	// Add a header to the response to verify middleware ran
@@ -692,14 +698,19 @@ type failingResponseMiddleware struct {
 	failID any
 }
 
-func (m *failingResponseMiddleware) ProcessRequest(w http.ResponseWriter, r *http.Request) error {
+func (*failingResponseMiddleware) ProcessRequest(_ http.ResponseWriter, _ *http.Request) error {
 	return nil
 }
 
-func (m *failingResponseMiddleware) ProcessResponse(w http.ResponseWriter, r *http.Request, resp JSONRPCResponse) error {
+func (m *failingResponseMiddleware) ProcessResponse(
+	_ http.ResponseWriter,
+	_ *http.Request,
+	resp JSONRPCResponse,
+) error {
 	if resp.ID == m.failID {
 		return fmt.Errorf("middleware failed for response ID %v", m.failID)
 	}
+
 	return nil
 }
 
@@ -714,8 +725,8 @@ func TestStandardRPCServer_middleware(t *testing.T) {
 	server.middlewares = []Middleware{mw}
 
 	// Add a method that just returns success
-	server.AddMethod("test", func(_ context.Context, params []any) (any, error) {
-		return "success", nil
+	server.AddMethod("test", func(_ context.Context, _ []any) (any, error) {
+		return testSuccessMessage, nil
 	})
 
 	// Test single request
@@ -748,7 +759,7 @@ func TestStandardRPCServer_middlewareBlocksRequest(t *testing.T) {
 	server.middlewares = []Middleware{mw}
 
 	server.AddMethod("test", func(_ context.Context, _ []any) (any, error) {
-		return "should not reach here", nil
+		return testShouldNotReachMessage, nil
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBufferString(`{
@@ -783,7 +794,7 @@ func TestStandardRPCServer_middlewareBatch(t *testing.T) {
 	server := NewStandardRPCServer(nil)
 	server.middlewares = []Middleware{mw}
 
-	server.AddMethod("batch_test", func(_ context.Context, params []any) (any, error) {
+	server.AddMethod("batch_test", func(_ context.Context, _ []any) (any, error) {
 		return "batch_success", nil
 	})
 
@@ -822,14 +833,19 @@ func TestStandardRPCServer_middlewareBatchPartialFailure(t *testing.T) {
 	server := NewStandardRPCServer(nil)
 	server.middlewares = []Middleware{&failingResponseMiddleware{failID: float64(2)}}
 
-	server.AddMethod("test_method", func(_ context.Context, params []any) (any, error) {
-		return "success", nil
+	server.AddMethod("test_method", func(_ context.Context, _ []any) (any, error) {
+		return testSuccessMessage, nil
 	})
 
 	// Batch with 3 requests - middleware will fail for ID 2
 	batchReq := []JSONRPCRequest{
 		{JSONRPC: "2.0", Method: "test_method", Params: []any{}, ID: 1},
-		{JSONRPC: "2.0", Method: "test_method", Params: []any{}, ID: 2}, // This will fail middleware
+		{
+			JSONRPC: "2.0",
+			Method:  "test_method",
+			Params:  []any{},
+			ID:      2,
+		}, // This will fail middleware
 		{JSONRPC: "2.0", Method: "test_method", Params: []any{}, ID: 3},
 	}
 	reqBody, err := json.Marshal(batchReq)
@@ -837,6 +853,7 @@ func TestStandardRPCServer_middlewareBatchPartialFailure(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
 	req.Header.Set("Content-Type", "application/json")
+
 	w := httptest.NewRecorder()
 
 	server.handleRPC(w, req)
@@ -844,25 +861,26 @@ func TestStandardRPCServer_middlewareBatchPartialFailure(t *testing.T) {
 	assert.Equal(t, 200, w.Code)
 
 	var responses []JSONRPCResponse
+
 	err = json.Unmarshal(w.Body.Bytes(), &responses)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, responses, 3)
 
 	// First response should succeed
-	assert.Equal(t, float64(1), responses[0].ID)
-	assert.Equal(t, "success", responses[0].Result)
+	assert.InEpsilon(t, float64(1), responses[0].ID, 0.001)
+	assert.Equal(t, testSuccessMessage, responses[0].Result)
 	assert.Nil(t, responses[0].Error)
 
 	// Second response should fail due to middleware
-	assert.Equal(t, float64(2), responses[1].ID)
+	assert.InEpsilon(t, float64(2), responses[1].ID, 0.001)
 	assert.Nil(t, responses[1].Result)
 	assert.NotNil(t, responses[1].Error)
 	assert.Equal(t, -32603, responses[1].Error.Code)
 	assert.Contains(t, responses[1].Error.Message, "middleware failed")
 
 	// Third response should succeed
-	assert.Equal(t, float64(3), responses[2].ID)
-	assert.Equal(t, "success", responses[2].Result)
+	assert.InEpsilon(t, float64(3), responses[2].ID, 0.001)
+	assert.Equal(t, testSuccessMessage, responses[2].Result)
 	assert.Nil(t, responses[2].Error)
 }
 
@@ -871,8 +889,8 @@ func TestStandardRPCServer_middlewareRequestBlocksBatch(t *testing.T) {
 	server := NewStandardRPCServer(nil)
 	server.middlewares = []Middleware{mw}
 
-	server.AddMethod("test_method", func(_ context.Context, params []any) (any, error) {
-		return "should not reach here", nil
+	server.AddMethod("test_method", func(_ context.Context, _ []any) (any, error) {
+		return testShouldNotReachMessage, nil
 	})
 
 	// Batch request - request middleware should block the entire batch
@@ -885,6 +903,7 @@ func TestStandardRPCServer_middlewareRequestBlocksBatch(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
 	req.Header.Set("Content-Type", "application/json")
+
 	w := httptest.NewRecorder()
 
 	server.handleRPC(w, req)
@@ -895,8 +914,9 @@ func TestStandardRPCServer_middlewareRequestBlocksBatch(t *testing.T) {
 	assert.False(t, mw.responseProcessed) // Response middleware shouldn't run
 
 	var response JSONRPCResponse
+
 	err = json.Unmarshal(w.Body.Bytes(), &response)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, response.Error)
 	assert.Equal(t, -32000, response.Error.Code)
 	assert.Equal(t, "Middleware blocked request", response.Error.Message)
@@ -909,8 +929,8 @@ func TestStandardRPCServer_middlewareMultipleResponseFailures(t *testing.T) {
 		&failingResponseMiddleware{failID: float64(4)},
 	}
 
-	server.AddMethod("test_method", func(_ context.Context, params []any) (any, error) {
-		return "success", nil
+	server.AddMethod("test_method", func(_ context.Context, _ []any) (any, error) {
+		return testSuccessMessage, nil
 	})
 
 	// Batch with 5 requests - middleware will fail for IDs 2 and 4
@@ -926,6 +946,7 @@ func TestStandardRPCServer_middlewareMultipleResponseFailures(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
 	req.Header.Set("Content-Type", "application/json")
+
 	w := httptest.NewRecorder()
 
 	server.handleRPC(w, req)
@@ -933,34 +954,35 @@ func TestStandardRPCServer_middlewareMultipleResponseFailures(t *testing.T) {
 	assert.Equal(t, 200, w.Code)
 
 	var responses []JSONRPCResponse
+
 	err = json.Unmarshal(w.Body.Bytes(), &responses)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, responses, 5)
 
 	// First response should succeed
-	assert.Equal(t, float64(1), responses[0].ID)
-	assert.Equal(t, "success", responses[0].Result)
+	assert.InEpsilon(t, float64(1), responses[0].ID, 0.001)
+	assert.Equal(t, testSuccessMessage, responses[0].Result)
 	assert.Nil(t, responses[0].Error)
 
 	// Second response should fail
-	assert.Equal(t, float64(2), responses[1].ID)
+	assert.InEpsilon(t, float64(2), responses[1].ID, 0.001)
 	assert.Nil(t, responses[1].Result)
 	assert.NotNil(t, responses[1].Error)
 	assert.Equal(t, -32603, responses[1].Error.Code)
 
 	// Third response should succeed
-	assert.Equal(t, float64(3), responses[2].ID)
-	assert.Equal(t, "success", responses[2].Result)
+	assert.InEpsilon(t, float64(3), responses[2].ID, 0.001)
+	assert.Equal(t, testSuccessMessage, responses[2].Result)
 	assert.Nil(t, responses[2].Error)
 
 	// Fourth response should fail
-	assert.Equal(t, float64(4), responses[3].ID)
+	assert.InEpsilon(t, float64(4), responses[3].ID, 0.001)
 	assert.Nil(t, responses[3].Result)
 	assert.NotNil(t, responses[3].Error)
 	assert.Equal(t, -32603, responses[3].Error.Code)
 
 	// Fifth response should succeed
-	assert.Equal(t, float64(5), responses[4].ID)
-	assert.Equal(t, "success", responses[4].Result)
+	assert.InEpsilon(t, float64(5), responses[4].ID, 0.001)
+	assert.Equal(t, testSuccessMessage, responses[4].Result)
 	assert.Nil(t, responses[4].Error)
 }

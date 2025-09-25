@@ -64,6 +64,7 @@ func (s *StandardRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+
 		return
 	}
 
@@ -77,7 +78,8 @@ func (s *StandardRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 	// Read the entire request body
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		s.writeError(w, -32700, "Parse error", nil)
+		s.writeError(w, -32700, "Parse error")
+
 		return
 	}
 	defer r.Body.Close()
@@ -88,7 +90,8 @@ func (s *StandardRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		// If not an array, try single request
 		var singleReq JSONRPCRequest
 		if err := json.Unmarshal(body, &singleReq); err != nil {
-			s.writeError(w, -32700, "Parse error", nil)
+			s.writeError(w, -32700, "Parse error")
+
 			return
 		}
 		// Handle single request
@@ -101,18 +104,18 @@ func (s *StandardRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 			} else {
 				response = newErrorResponse(&Error{Code: -32603, Message: err.Error()}, response.ID)
 			}
-			return
 		}
 
+		// Encode the final response (either original or middleware error)
 		if err := json.NewEncoder(w).Encode(response); err != nil {
-			s.writeError(w, http.StatusInternalServerError, "Failed to encode response", nil)
+			s.writeError(w, http.StatusInternalServerError, "Failed to encode response")
 		}
 
 		return
 	}
 
 	// Handle batch request
-	responses := s.handleBatchRequest(w, r, batchReq)
+	responses := s.handleBatchRequest(r, batchReq)
 	// Process response middlewares for each response in batch
 	for i := range responses {
 		if err := s.processResponseMiddlewares(w, r, responses[i]); err != nil {
@@ -133,7 +136,6 @@ func (s *StandardRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 
 // handleBatchRequest processes a batch of JSON-RPC requests
 func (s *StandardRPCServer) handleBatchRequest(
-	w http.ResponseWriter,
 	r *http.Request,
 	batchReq []JSONRPCRequest,
 ) []JSONRPCResponse {
@@ -192,9 +194,9 @@ func (s *StandardRPCServer) processRequestMiddlewares(
 		if err := mw.ProcessRequest(w, r); err != nil {
 			middlewareErr := &Error{}
 			if errors.As(err, &middlewareErr) {
-				s.writeError(w, middlewareErr.Code, middlewareErr.Message, nil)
+				s.writeError(w, middlewareErr.Code, middlewareErr.Message)
 			} else {
-				s.writeError(w, -32603, err.Error(), nil)
+				s.writeError(w, -32603, err.Error())
 			}
 
 			return true // Indicate that the request was blocked
@@ -215,6 +217,7 @@ func (s *StandardRPCServer) processResponseMiddlewares(
 			return err
 		}
 	}
+
 	return nil
 }
 
