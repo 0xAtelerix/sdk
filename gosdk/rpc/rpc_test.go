@@ -30,6 +30,11 @@ const (
 	testShouldNotReachMessage = "should not reach here"
 )
 
+var (
+	errInvalidParameterType = errors.New("invalid parameter type")
+	errMiddlewareFailed     = errors.New("middleware failed")
+)
+
 // TestTransaction - test transaction implementation
 type TestTransaction[R TestReceipt] struct {
 	From  string `json:"from"  cbor:"1,keyasint"`
@@ -472,16 +477,12 @@ func TestStandardRPCServer_batchRequests(t *testing.T) {
 	server.AddMethod("add", func(_ context.Context, params []any) (any, error) {
 		a, ok := params[0].(float64)
 		if !ok {
-			return nil, errors.New(
-				"invalid parameter type",
-			)
+			return nil, errInvalidParameterType
 		}
 
 		b, ok := params[1].(float64)
 		if !ok {
-			return nil, errors.New(
-				"invalid parameter type",
-			)
+			return nil, errInvalidParameterType
 		}
 
 		return a + b, nil
@@ -490,16 +491,12 @@ func TestStandardRPCServer_batchRequests(t *testing.T) {
 	server.AddMethod("multiply", func(_ context.Context, params []any) (any, error) {
 		a, ok := params[0].(float64)
 		if !ok {
-			return nil, errors.New(
-				"invalid parameter type",
-			)
+			return nil, errInvalidParameterType
 		}
 
 		b, ok := params[1].(float64)
 		if !ok {
-			return nil, errors.New(
-				"invalid parameter type",
-			)
+			return nil, errInvalidParameterType
 		}
 
 		return a * b, nil
@@ -551,16 +548,12 @@ func TestStandardRPCServer_batchRequestsWithErrors(t *testing.T) {
 	server.AddMethod("add", func(_ context.Context, params []any) (any, error) {
 		a, ok := params[0].(float64)
 		if !ok {
-			return nil, errors.New(
-				"invalid parameter type",
-			)
+			return nil, errInvalidParameterType
 		}
 
 		b, ok := params[1].(float64)
 		if !ok {
-			return nil, errors.New(
-				"invalid parameter type",
-			)
+			return nil, errInvalidParameterType
 		}
 
 		return a + b, nil
@@ -708,7 +701,7 @@ func (m *failingResponseMiddleware) ProcessResponse(
 	resp JSONRPCResponse,
 ) error {
 	if resp.ID == m.failID {
-		return fmt.Errorf("middleware failed for response ID %v", m.failID)
+		return fmt.Errorf("middleware failed for response ID %v: %w", m.failID, errMiddlewareFailed)
 	}
 
 	return nil

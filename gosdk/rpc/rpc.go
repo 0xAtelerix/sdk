@@ -176,6 +176,13 @@ func (s *StandardRPCServer) executeRequest(
 		}, req.ID)
 	}
 
+	if methodHandler == nil {
+		return newErrorResponse(&Error{
+			Code:    -32601,
+			Message: fmt.Sprintf("Method %s not implemented", req.Method),
+		}, req.ID)
+	}
+
 	// Process method handlers
 	result, err := methodHandler(ctx, req.Params)
 	if err != nil {
