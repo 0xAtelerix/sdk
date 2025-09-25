@@ -99,7 +99,7 @@ func AddTxPoolMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 ) {
 	methods := NewTxPoolMethods(txpool)
 
-	server.AddCustomMethod("sendTransaction", methods.SendTransaction)
-	server.AddCustomMethod("getTransactionByHash", methods.GetTransactionByHash)
-	server.AddCustomMethod("getPendingTransactions", methods.GetPendingTransactions)
+	server.AddMethod("sendTransaction", methods.SendTransaction)
+	server.AddMethod("getTransactionByHash", methods.GetTransactionByHash)
+	server.AddMethod("getPendingTransactions", methods.GetPendingTransactions)
 }

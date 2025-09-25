@@ -65,5 +65,5 @@ func AddReceiptMethods[R apptypes.Receipt](
 ) {
 	methods := NewReceiptMethods[R](appchainDB)
 
-	server.AddCustomMethod("getTransactionReceipt", methods.GetTransactionReceipt)
+	server.AddMethod("getTransactionReceipt", methods.GetTransactionReceipt)
 }

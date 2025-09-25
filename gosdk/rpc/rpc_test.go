@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -33,14 +34,13 @@ type TestTransaction[R TestReceipt] struct {
 
 func (t TestTransaction[R]) Hash() [32]byte {
 	s := t.From + t.To + strconv.Itoa(t.Value)
-
 	return sha256.Sum256([]byte(s))
 }
 
-func (TestTransaction[R]) Process(
+func (t TestTransaction[R]) Process(
 	_ kv.RwTx,
-) (r TestReceipt, txs []apptypes.ExternalTransaction, err error) {
-	return TestReceipt{ReceiptStatus: apptypes.ReceiptConfirmed}, nil, nil
+) (receipt R, txs []apptypes.ExternalTransaction, err error) {
+	return
 }
 
 // TestReceipt - test receipt implementation
@@ -139,6 +139,8 @@ func makeJSONRPCRequest(
 
 	return rr
 }
+
+// ============= BASIC RPC METHODS =============
 
 func TestStandardRPCServer_sendTransaction(t *testing.T) {
 	server, _, cleanup := setupTestEnvironment(t)
@@ -323,12 +325,14 @@ func TestStandardRPCServer_getTransactionReceipt(t *testing.T) {
 	assert.NotNil(t, receiptResponse.Result)
 }
 
+// ============= CUSTOM METHODS & ERROR HANDLING =============
+
 func TestStandardRPCServer_customMethod(t *testing.T) {
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
 	// Add a custom method
-	server.AddCustomMethod("customTest", func(_ context.Context, params []any) (any, error) {
+	server.AddMethod("customTest", func(_ context.Context, params []any) (any, error) {
 		return map[string]any{
 			"message": "custom method works",
 			"params":  params,
@@ -404,26 +408,7 @@ func TestStandardRPCServer_wrongHTTPMethod(t *testing.T) {
 	assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
 }
 
-// Benchmark tests
-func BenchmarkRPCServer_getChainInfo(b *testing.B) {
-	server, _, cleanup := setupTestEnvironment(&testing.T{})
-	defer cleanup()
-
-	b.ResetTimer()
-
-	for range b.N {
-		req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBufferString(`{
-			"jsonrpc": "2.0",
-			"method": "getChainInfo",
-			"params": [],
-			"id": 1
-		}`))
-		req.Header.Set("Content-Type", "application/json")
-
-		rr := httptest.NewRecorder()
-		server.handleRPC(rr, req)
-	}
-}
+// ============= HEALTH ENDPOINT =============
 
 func TestStandardRPCServer_healthEndpoint(t *testing.T) {
 	server, _, cleanup := setupTestEnvironment(t)
@@ -472,11 +457,13 @@ func TestStandardRPCServer_healthEndpoint_wrongMethod(t *testing.T) {
 	assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
 }
 
+// ============= BATCH REQUESTS =============
+
 func TestStandardRPCServer_batchRequests(t *testing.T) {
 	server := NewStandardRPCServer(nil)
 
 	// Add test methods
-	server.AddCustomMethod("add", func(_ context.Context, params []any) (any, error) {
+	server.AddMethod("add", func(_ context.Context, params []any) (any, error) {
 		a, ok := params[0].(float64)
 		if !ok {
 			return nil, errors.New(
@@ -494,7 +481,7 @@ func TestStandardRPCServer_batchRequests(t *testing.T) {
 		return a + b, nil
 	})
 
-	server.AddCustomMethod("multiply", func(_ context.Context, params []any) (any, error) {
+	server.AddMethod("multiply", func(_ context.Context, params []any) (any, error) {
 		a, ok := params[0].(float64)
 		if !ok {
 			return nil, errors.New(
@@ -555,7 +542,7 @@ func TestStandardRPCServer_batchRequestsWithErrors(t *testing.T) {
 	server := NewStandardRPCServer(nil)
 
 	// Add only one method
-	server.AddCustomMethod("add", func(_ context.Context, params []any) (any, error) {
+	server.AddMethod("add", func(_ context.Context, params []any) (any, error) {
 		a, ok := params[0].(float64)
 		if !ok {
 			return nil, errors.New(
@@ -649,12 +636,331 @@ func TestStandardRPCServer_emptyBatchRequest(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 
-	var errorResp JSONRPCResponse
+	var errorResp []JSONRPCResponse
 
 	err = json.Unmarshal(rr.Body.Bytes(), &errorResp)
 	require.NoError(t, err)
 
-	assert.NotNil(t, errorResp.Error)
-	assert.Equal(t, -32600, errorResp.Error.Code)
-	assert.Contains(t, errorResp.Error.Message, "empty batch")
+	assert.Len(t, errorResp, 1)
+	assert.NotNil(t, errorResp[0].Error)
+	assert.Equal(t, -32600, errorResp[0].Error.Code)
+	assert.Contains(t, errorResp[0].Error.Message, "empty batch")
+}
+
+// Test middleware functionality
+
+type testMiddleware struct {
+	requestProcessed  bool
+	responseProcessed bool
+	shouldError       bool
+	contextKey        string
+	contextValue      string
+}
+
+func (m *testMiddleware) ProcessRequest(
+	w http.ResponseWriter,
+	r *http.Request,
+) error {
+	m.requestProcessed = true
+	if m.shouldError {
+		return &Error{Code: -32000, Message: "Middleware blocked request"}
+	}
+	// Add something to request headers for testing
+	if m.contextKey != "" {
+		r.Header.Set(m.contextKey, m.contextValue)
+	}
+
+	return nil
+}
+
+func (m *testMiddleware) ProcessResponse(
+	w http.ResponseWriter,
+	r *http.Request,
+	resp JSONRPCResponse,
+) error {
+	m.responseProcessed = true
+	// Add a header to the response to verify middleware ran
+	if m.contextKey != "" {
+		w.Header().Set("X-Middleware-Test", m.contextValue)
+	}
+
+	return nil
+}
+
+// Middleware that fails response processing for a specific ID
+type failingResponseMiddleware struct {
+	failID any
+}
+
+func (m *failingResponseMiddleware) ProcessRequest(w http.ResponseWriter, r *http.Request) error {
+	return nil
+}
+
+func (m *failingResponseMiddleware) ProcessResponse(w http.ResponseWriter, r *http.Request, resp JSONRPCResponse) error {
+	if resp.ID == m.failID {
+		return fmt.Errorf("middleware failed for response ID %v", m.failID)
+	}
+	return nil
+}
+
+// ============= MIDDLEWARE =============
+
+func TestStandardRPCServer_middleware(t *testing.T) {
+	mw := &testMiddleware{
+		contextKey:   "test_key",
+		contextValue: "test_value",
+	}
+	server := NewStandardRPCServer(nil)
+	server.middlewares = []Middleware{mw}
+
+	// Add a method that just returns success
+	server.AddMethod("test", func(_ context.Context, params []any) (any, error) {
+		return "success", nil
+	})
+
+	// Test single request
+	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBufferString(`{
+		"jsonrpc": "2.0",
+		"method": "test",
+		"params": [],
+		"id": 1
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	server.handleRPC(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.True(t, mw.requestProcessed)
+	assert.True(t, mw.responseProcessed)
+	assert.Equal(t, "test_value", rr.Header().Get("X-Middleware-Test"))
+
+	var response JSONRPCResponse
+
+	err := json.Unmarshal(rr.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Equal(t, "success", response.Result)
+}
+
+func TestStandardRPCServer_middlewareBlocksRequest(t *testing.T) {
+	mw := &testMiddleware{shouldError: true}
+	server := NewStandardRPCServer(nil)
+	server.middlewares = []Middleware{mw}
+
+	server.AddMethod("test", func(_ context.Context, _ []any) (any, error) {
+		return "should not reach here", nil
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBufferString(`{
+		"jsonrpc": "2.0",
+		"method": "test",
+		"params": [],
+		"id": 1
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	server.handleRPC(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.True(t, mw.requestProcessed)
+	assert.False(t, mw.responseProcessed) // Response middleware shouldn't run on request error
+
+	var response JSONRPCResponse
+
+	err := json.Unmarshal(rr.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.NotNil(t, response.Error)
+	assert.Equal(t, -32000, response.Error.Code)
+	assert.Equal(t, "Middleware blocked request", response.Error.Message)
+}
+
+func TestStandardRPCServer_middlewareBatch(t *testing.T) {
+	mw := &testMiddleware{
+		contextKey:   "batch_test",
+		contextValue: "batch_value",
+	}
+	server := NewStandardRPCServer(nil)
+	server.middlewares = []Middleware{mw}
+
+	server.AddMethod("batch_test", func(_ context.Context, params []any) (any, error) {
+		return "batch_success", nil
+	})
+
+	batchReq := []JSONRPCRequest{
+		{
+			JSONRPC: "2.0",
+			Method:  "batch_test",
+			Params:  []any{},
+			ID:      1,
+		},
+	}
+	reqBody, err := json.Marshal(batchReq)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	server.handleRPC(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.True(t, mw.requestProcessed)
+	assert.True(t, mw.responseProcessed)
+
+	var responses []JSONRPCResponse
+
+	err = json.Unmarshal(rr.Body.Bytes(), &responses)
+	require.NoError(t, err)
+	assert.Len(t, responses, 1)
+	require.NoError(t, err)
+	assert.Len(t, responses, 1)
+	assert.Equal(t, "batch_success", responses[0].Result)
+}
+
+func TestStandardRPCServer_middlewareBatchPartialFailure(t *testing.T) {
+	server := NewStandardRPCServer(nil)
+	server.middlewares = []Middleware{&failingResponseMiddleware{failID: float64(2)}}
+
+	server.AddMethod("test_method", func(_ context.Context, params []any) (any, error) {
+		return "success", nil
+	})
+
+	// Batch with 3 requests - middleware will fail for ID 2
+	batchReq := []JSONRPCRequest{
+		{JSONRPC: "2.0", Method: "test_method", Params: []any{}, ID: 1},
+		{JSONRPC: "2.0", Method: "test_method", Params: []any{}, ID: 2}, // This will fail middleware
+		{JSONRPC: "2.0", Method: "test_method", Params: []any{}, ID: 3},
+	}
+	reqBody, err := json.Marshal(batchReq)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.handleRPC(w, req)
+
+	assert.Equal(t, 200, w.Code)
+
+	var responses []JSONRPCResponse
+	err = json.Unmarshal(w.Body.Bytes(), &responses)
+	assert.NoError(t, err)
+	assert.Len(t, responses, 3)
+
+	// First response should succeed
+	assert.Equal(t, float64(1), responses[0].ID)
+	assert.Equal(t, "success", responses[0].Result)
+	assert.Nil(t, responses[0].Error)
+
+	// Second response should fail due to middleware
+	assert.Equal(t, float64(2), responses[1].ID)
+	assert.Nil(t, responses[1].Result)
+	assert.NotNil(t, responses[1].Error)
+	assert.Equal(t, -32603, responses[1].Error.Code)
+	assert.Contains(t, responses[1].Error.Message, "middleware failed")
+
+	// Third response should succeed
+	assert.Equal(t, float64(3), responses[2].ID)
+	assert.Equal(t, "success", responses[2].Result)
+	assert.Nil(t, responses[2].Error)
+}
+
+func TestStandardRPCServer_middlewareRequestBlocksBatch(t *testing.T) {
+	mw := &testMiddleware{shouldError: true}
+	server := NewStandardRPCServer(nil)
+	server.middlewares = []Middleware{mw}
+
+	server.AddMethod("test_method", func(_ context.Context, params []any) (any, error) {
+		return "should not reach here", nil
+	})
+
+	// Batch request - request middleware should block the entire batch
+	batchReq := []JSONRPCRequest{
+		{JSONRPC: "2.0", Method: "test_method", Params: []any{}, ID: 1},
+		{JSONRPC: "2.0", Method: "test_method", Params: []any{}, ID: 2},
+	}
+	reqBody, err := json.Marshal(batchReq)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.handleRPC(w, req)
+
+	// Request middleware blocks the entire request, so we should get an error response
+	assert.Equal(t, 200, w.Code)
+	assert.True(t, mw.requestProcessed)
+	assert.False(t, mw.responseProcessed) // Response middleware shouldn't run
+
+	var response JSONRPCResponse
+	err = json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(t, err)
+	assert.NotNil(t, response.Error)
+	assert.Equal(t, -32000, response.Error.Code)
+	assert.Equal(t, "Middleware blocked request", response.Error.Message)
+}
+
+func TestStandardRPCServer_middlewareMultipleResponseFailures(t *testing.T) {
+	server := NewStandardRPCServer(nil)
+	server.middlewares = []Middleware{
+		&failingResponseMiddleware{failID: float64(2)},
+		&failingResponseMiddleware{failID: float64(4)},
+	}
+
+	server.AddMethod("test_method", func(_ context.Context, params []any) (any, error) {
+		return "success", nil
+	})
+
+	// Batch with 5 requests - middleware will fail for IDs 2 and 4
+	batchReq := []JSONRPCRequest{
+		{JSONRPC: "2.0", Method: "test_method", Params: []any{}, ID: 1},
+		{JSONRPC: "2.0", Method: "test_method", Params: []any{}, ID: 2}, // Will fail
+		{JSONRPC: "2.0", Method: "test_method", Params: []any{}, ID: 3},
+		{JSONRPC: "2.0", Method: "test_method", Params: []any{}, ID: 4}, // Will fail
+		{JSONRPC: "2.0", Method: "test_method", Params: []any{}, ID: 5},
+	}
+	reqBody, err := json.Marshal(batchReq)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.handleRPC(w, req)
+
+	assert.Equal(t, 200, w.Code)
+
+	var responses []JSONRPCResponse
+	err = json.Unmarshal(w.Body.Bytes(), &responses)
+	assert.NoError(t, err)
+	assert.Len(t, responses, 5)
+
+	// First response should succeed
+	assert.Equal(t, float64(1), responses[0].ID)
+	assert.Equal(t, "success", responses[0].Result)
+	assert.Nil(t, responses[0].Error)
+
+	// Second response should fail
+	assert.Equal(t, float64(2), responses[1].ID)
+	assert.Nil(t, responses[1].Result)
+	assert.NotNil(t, responses[1].Error)
+	assert.Equal(t, -32603, responses[1].Error.Code)
+
+	// Third response should succeed
+	assert.Equal(t, float64(3), responses[2].ID)
+	assert.Equal(t, "success", responses[2].Result)
+	assert.Nil(t, responses[2].Error)
+
+	// Fourth response should fail
+	assert.Equal(t, float64(4), responses[3].ID)
+	assert.Nil(t, responses[3].Result)
+	assert.NotNil(t, responses[3].Error)
+	assert.Equal(t, -32603, responses[3].Error.Code)
+
+	// Fifth response should succeed
+	assert.Equal(t, float64(5), responses[4].ID)
+	assert.Equal(t, "success", responses[4].Result)
+	assert.Nil(t, responses[4].Error)
 }
