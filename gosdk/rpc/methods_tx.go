@@ -103,5 +103,5 @@ func AddTransactionMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt]
 ) {
 	methods := NewTransactionMethods(txpool, appchainDB)
 
-	server.AddCustomMethod("getTransactionStatus", methods.GetTransactionStatus)
+	server.AddMethod("getTransactionStatus", methods.GetTransactionStatus)
 }

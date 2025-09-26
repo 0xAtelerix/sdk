@@ -9,23 +9,36 @@ import (
 	"github.com/goccy/go-json"
 )
 
+const (
+	healthStatusHealthy = "healthy"
+	jsonRPCVersion      = "2.0"
+)
+
 // writeError writes a JSON-RPC error response
 func (*StandardRPCServer) writeError(
 	w http.ResponseWriter,
 	code int,
 	message string,
-	id any,
 ) {
 	response := JSONRPCResponse{
-		JSONRPC: "2.0",
+		JSONRPC: jsonRPCVersion,
 		Error: &Error{
 			Code:    code,
 			Message: message,
 		},
-		ID: id,
+		ID: nil,
 	}
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		http.Error(w, "Failed to encode error response", http.StatusInternalServerError)
+	}
+}
+
+// newErrorResponse creates a standard JSON-RPC error response
+func newErrorResponse(err *Error, id any) JSONRPCResponse {
+	return JSONRPCResponse{
+		JSONRPC: jsonRPCVersion,
+		Error:   err,
+		ID:      id,
 	}
 }
 
