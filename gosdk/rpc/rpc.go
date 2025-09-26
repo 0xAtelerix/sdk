@@ -57,6 +57,7 @@ func (s *StandardRPCServer) StartHTTPServer(ctx context.Context, addr string) er
 // handleRPC handles incoming JSON-RPC requests
 func (s *StandardRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
+		s.setCORSHeaders(w, "POST, OPTIONS")
 		w.WriteHeader(http.StatusOK)
 
 		return

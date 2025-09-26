@@ -979,3 +979,125 @@ func TestStandardRPCServer_middlewareMultipleResponseFailures(t *testing.T) {
 	assert.Equal(t, testSuccessMessage, responses[4].Result)
 	assert.Nil(t, responses[4].Error)
 }
+
+// ============= CORS TESTS =============
+
+func TestStandardRPCServer_corsHeaders(t *testing.T) {
+	tests := []struct {
+		name            string
+		corsConfig      *CORSConfig
+		expectedOrigin  string
+		expectedMethods string
+		expectedHeaders string
+	}{
+		{
+			name: "custom CORS config",
+			corsConfig: &CORSConfig{
+				AllowOrigin:  "https://example.com",
+				AllowMethods: "GET, POST, PUT",
+				AllowHeaders: "Content-Type, Authorization",
+			},
+			expectedOrigin:  "https://example.com",
+			expectedMethods: "GET, POST, PUT",
+			expectedHeaders: "Content-Type, Authorization",
+		},
+		{
+			name: "partial CORS config - only origin",
+			corsConfig: &CORSConfig{
+				AllowOrigin: "https://test.com",
+			},
+			expectedOrigin:  "https://test.com",
+			expectedMethods: "POST, OPTIONS",
+			expectedHeaders: "Content-Type",
+		},
+		{
+			name: "partial CORS config - only methods",
+			corsConfig: &CORSConfig{
+				AllowMethods: "GET, POST, OPTIONS",
+			},
+			expectedOrigin:  "*",
+			expectedMethods: "GET, POST, OPTIONS",
+			expectedHeaders: "Content-Type",
+		},
+		{
+			name: "partial CORS config - only headers",
+			corsConfig: &CORSConfig{
+				AllowHeaders: "X-Custom-Header, Content-Type",
+			},
+			expectedOrigin:  "*",
+			expectedMethods: "POST, OPTIONS",
+			expectedHeaders: "X-Custom-Header, Content-Type",
+		},
+		{
+			name:            "nil CORS config - defaults",
+			corsConfig:      nil,
+			expectedOrigin:  "*",
+			expectedMethods: "POST, OPTIONS",
+			expectedHeaders: "Content-Type",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := NewStandardRPCServer(tt.corsConfig)
+
+			// Test RPC endpoint
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"/rpc",
+				bytes.NewReader(
+					[]byte(`{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}`),
+				),
+			)
+			w := httptest.NewRecorder()
+
+			server.handleRPC(w, req)
+
+			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+			assert.Equal(t, tt.expectedOrigin, w.Header().Get("Access-Control-Allow-Origin"))
+			assert.Equal(t, tt.expectedMethods, w.Header().Get("Access-Control-Allow-Methods"))
+			assert.Equal(t, tt.expectedHeaders, w.Header().Get("Access-Control-Allow-Headers"))
+		})
+	}
+}
+
+func TestStandardRPCServer_corsOptionsPreflight(t *testing.T) {
+	server := NewStandardRPCServer(&CORSConfig{
+		AllowOrigin:  "https://example.com",
+		AllowMethods: "GET, POST, PUT, OPTIONS",
+		AllowHeaders: "Content-Type, Authorization",
+	})
+
+	req := httptest.NewRequest(http.MethodOptions, "/rpc", nil)
+	req.Header.Set("Origin", "https://example.com")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	req.Header.Set("Access-Control-Request-Headers", "Content-Type")
+
+	w := httptest.NewRecorder()
+	server.handleRPC(w, req)
+
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	assert.Equal(t, "https://example.com", w.Header().Get("Access-Control-Allow-Origin"))
+	assert.Equal(t, "GET, POST, PUT, OPTIONS", w.Header().Get("Access-Control-Allow-Methods"))
+	assert.Equal(t, "Content-Type, Authorization", w.Header().Get("Access-Control-Allow-Headers"))
+	assert.Equal(t, 200, w.Code)
+}
+
+func TestStandardRPCServer_corsHealthEndpoint(t *testing.T) {
+	server := NewStandardRPCServer(&CORSConfig{
+		AllowOrigin:  "https://health.example.com",
+		AllowMethods: "GET, HEAD",
+		AllowHeaders: "Accept",
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	w := httptest.NewRecorder()
+
+	server.healthcheck(w, req)
+
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	assert.Equal(t, "https://health.example.com", w.Header().Get("Access-Control-Allow-Origin"))
+	assert.Equal(t, "GET, HEAD", w.Header().Get("Access-Control-Allow-Methods"))
+	assert.Equal(t, "Accept", w.Header().Get("Access-Control-Allow-Headers"))
+	assert.Equal(t, 200, w.Code)
+}
