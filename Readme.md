@@ -3,7 +3,7 @@
 
 Pelagos Go SDK is the toolkit Pelagos validators expect you to use when you author an appchain. An appchain is your application-specific runtime packaged as a Docker container that runs alongside the validator stack, consumes consensus snapshots, and publishes deterministic side effects. The Go SDK supplies the runtime harness for loading consensus batches, sequencing your transactions, coordinating multichain reads, and emitting external transactions that other chains must see.
 
-This README concentrates on that Go-centric workflow. It assumes you will start from the public example repository, adapt its `docker-compose` topology, and keep all deterministic logic inside the container that hosts your appchain. 
+This README concentrates on that Go-centric workflow. It assumes you will start from the public [example](https://github.com/0xAtelerix/example) repository, adapt its `docker-compose` topology, and keep all deterministic logic inside the container that hosts your appchain. 
 
 ## Table of contents
 
