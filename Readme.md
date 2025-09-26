@@ -5,6 +5,46 @@ Pelagos Go SDK is the toolkit Pelagos validators expect you to use when you auth
 
 This README concentrates on that Go-centric workflow. It assumes you will start from the public example repository, adapt its `docker-compose` topology, and keep all deterministic logic inside the container that hosts your appchain. 
 
+## Table of contents
+
+- [Introduction](#introduction)
+- [TL;DR Quickstart](#tldr-quickstart)
+- [Repository orientation](#repository-orientation)
+- [Quickstart](#quickstart)
+- [State management and batch processing](#state-management-and-batch-processing)
+- [Multichain data access and synchronization](#multichain-data-access-and-synchronization)
+- [External transactions](#external-transactions)
+- [Designing custom transaction formats](#designing-custom-transaction-formats)
+- [Extending JSON-RPC APIs](#extending-json-rpc-apis)
+- [Testing and debugging routines](#testing-and-debugging-routines)
+- [Determinism checklist](#determinism-checklist)
+- [FAQ](#faq)
+- [Glossary](#glossary)
+
+## TL;DR Quickstart
+
+Use the public example as a starting point. Replace placeholders with your own values as you customize.
+
+```bash
+# 1) Clone the example template next to this SDK repo
+git clone https://github.com/0xAtelerix/example my-appchain
+cd my-appchain
+
+# 2) Launch validator + fetcher + your appchain container
+docker compose up --build
+
+# 3) Probe health (HTTP server in your appchain's process)
+# Replace <rpc_host>:<rpc_port> with the port you configured
+curl -s http://<rpc_host>:<rpc_port>/health
+
+# 4) Send a transaction via JSON-RPC (method names provided by the SDK helpers)
+curl -s -X POST http://<rpc_host>:<rpc_port>/rpc -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"sendTransaction","params":[{"sender":"0xabc...","value":1}]}'
+
+# 5) Rebuild just your appchain service as you iterate
+docker compose build appchain && docker compose up appchain
+```
+
 ## Repository orientation
 
 The Go SDK lives under `gosdk/`. The directories and modules below map to the core capabilities your appchain will plug together:
@@ -20,7 +60,7 @@ The Go SDK lives under `gosdk/`. The directories and modules below map to the co
 - **Token helpers (`gosdk/library/tokens/`)** – includes reference codecs for reading token balances and transfers from multichain data sets when your appchain logic depends on them.
 - **Generated gRPC bindings (`gosdk/proto/`)** – packages the emitter and health service stubs so your runtime can expose the same APIs validators call to stream execution outputs and monitor liveness.
 
-## Quick start via the example appchain
+## Quickstart
 
 The fastest path to a working Pelagos appchain is to fork [`0xAtelerix/example`](https://github.com/0xAtelerix/example) and use it as your integration harness.
 
@@ -28,15 +68,15 @@ The fastest path to a working Pelagos appchain is to fork [`0xAtelerix/example`]
 2. **Review the Docker composition.** The root `docker-compose.yml` spins up:
     - a validator service with the consensus stack and MDBX volumes that mirror what runs in production,
     - a fetcher that requests transaction batches and external payloads from validators,
-    - your appchain container, built from the local Dockerfile, which links to the validator(and supporting services (PostgreSQL, Redis, or other caches) when the example demonstrates richer workflows).
-3. **Run the stack.** From the example repository, execute `docker-compose up --build`. This compiles your appchain binary, builds the container image, and starts the validator, fetcher, and appchain services. Keep the compose logs open; they surface consensus progress, batch ingestion, and RPC traffic that help diagnose configuration issues.
+    - your appchain container, built from the local Dockerfile, which links to the validator network, and supporting services (PostgreSQL, Redis, or other caches) when the example demonstrates richer workflows.
+3. **Run the stack.** From the example repository, execute `docker-compose up --build`. This compiles your appchain binary, builds the container image, and starts the validator, fetcher, and appchain services. Keep the compose logs open; they show consensus progress, batch ingestion, and RPC traffic for diagnosis.
 4. **Insert your business logic.** Modify the Go modules inside the example project to:
     - implement your `Transaction` and `Receipt` types,
     - implement your `StateTransitionInterface` and batch processor,
     - extend the JSON-RPC server for custom submission or query endpoints,
     - subscribe to external datasets through `MultichainStateAccess` when your appchain must block on foreign chain data.
       The example keeps these hooks in isolated packages so you can replace them without rewriting the compose workflow.
-5. **Iterate with docker-compose.** Each code change only requires rebuilding the appchain container (`docker-compose build appchain`) or restarting the stack (`docker-compose up --build appchain`) to verify deterministic behavior against the validator snapshot stream.
+5. **Iterate with docker-compose.** Rebuild the appchain container (`docker-compose build appchain`) or restart the service (`docker-compose up --build appchain`) to verify deterministic behavior against the validator snapshot stream.
 
 Once the template behaves as expected locally, you can push the forked repository to your Pelagos validator partners for staging. They reuse the same compose topology, ensuring your appchain container integrates with the network exactly as tested.
 
@@ -84,11 +124,11 @@ As your business logic grows you can extend `ProcessBatch` to derive external tr
 
 The same example test also shows how to bootstrap multichain reads: it creates a `Subscriber`, opens the MDBX databases via `NewMultichainStateAccessDB`, and then constructs `MultichainStateAccess`. Turning that into a real workflow involves three extra steps.
 
-1. **Describe the data you need.** During startup, call the subscriber helpers before you run the appchain. `appchainCtx` is the context you pass into `Appchain.Run`, so canceling it tears down the subscriptions cleanly:
+1. **Describe the data you need.** During startup, call the subscriber helpers before you run the appchain. Use concrete chain IDs and SDK address types:
 
    ```go
-   subscriber.SubscribeEthContract(appchainCtx, common.HexToAddress(counterManager))
-   subscriber.SubscribeSolanaAddress(appchainCtx, mySolanaProgram)
+   subscriber.SubscribeEthContract(gosdk.EthereumSepoliaChainID, gosdk.EthereumAddress{/* fill bytes */})
+   subscriber.SubscribeSolanaAddress(gosdk.SolanaDevnetChainID, gosdk.SolanaAddress{/* fill bytes */})
    ```
 
    These declarations tell the fetcher which external logs and blocks must be present before a batch is handed to your runtime. You only subscribe to what your logic actually reads, which keeps MDBX snapshots small and deterministic.
@@ -187,3 +227,58 @@ Your appchain’s RPC surface is how wallets, indexers, and backend services sub
 3. **Add custom endpoints.** Use `server.AddCustomMethod` to register domain-specific calls that read from your MDBX state or query derived caches. Handlers receive a `context.Context` plus raw parameters, so you can layer validation, authentication, or tracing before touching storage.
 
 4. **Expose health and observability hooks.** The standard server already mounts a `/health` endpoint. Pair it with Prometheus metrics or structured logs emitted from your handlers so operators can monitor latency, error rates, and txpool backlog. When running under Docker Compose, map the HTTP port in `docker-compose.yml` so local tooling can probe the service.
+
+### JSON-RPC quick example
+
+```bash
+curl -s -X POST http://<rpc_host>:<rpc_port>/rpc -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"sendTransaction","params":[{"sender":"0xabc...","value":1}]}'
+
+curl -s -X POST http://<rpc_host>:<rpc_port>/rpc -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":2,"method":"getPendingTransactions","params":[]}'
+
+curl -s -X POST http://<rpc_host>:<rpc_port>/rpc -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":3,"method":"getTransactionStatus","params":["<tx_hash>"]}'
+```
+
+## Testing and debugging routines
+
+Pelagos appchains stay reliable when you exercise their state transition, multichain reads, and IO boundaries before shipping. The SDK gives you several hooks for building fast feedback loops.
+
+1. **Lean on Go’s standard tooling.** Run `go test ./...` or `make tests` to execute your unit and integration suites with the same flags the repository uses (`-short -failfast -shuffle=on`). When you suspect shared-memory bugs, promote the run to `make race-tests`; the race detector works well against the MDBX harness because the test fixture opens real databases under `t.TempDir()`.
+2. **Promote the example test into an integration harness.** `gosdk/example_app_test.go` already shows how to build an `Appchain` with `MakeAppchainConfig`, in-memory txpool storage, and a temporary MDBX state directory. Expand that scaffold by feeding synthetic batches into your `StateTransitionInterface` and asserting on the receipts that `ProcessBatch` returns. For end-to-end simulations, pass a custom `EventStreamWrapperConstructor` into `Appchain.Run` so the test can inject recorded `apptypes.Batch` objects instead of relying on live consensus files.
+3. **Replay consensus snapshots offline.** Point `AppchainConfig.EventStreamDir` and `TxStreamDir` at archived validator outputs and let `NewMdbxEventStreamWrapper` stream them back through your runtime. Because the wrapper blocks until every referenced tx batch and external block is present, you can deterministically replay a problematic epoch and capture logs or metrics while stepping through `ProcessBatch`.
+4. **Inspect MDBX state directly.** You can open the same databases that the runtime uses from standalone tools: `AppchainConfig.AppchainDBPath` stores your chain state, while `MultichainStateAccess` exposes helper methods such as `ViewDB`, `EthBlockKey`, `EthReceiptKey`, and `SolBlockKey` for ad-hoc queries against external datasets. Embed these calls inside Go tests or temporary admin RPCs to confirm that the data you expect to gate on has actually arrived.
+5. **Turn up observability.** Assign a structured logger via `AppchainConfig.Logger` (for example, the console writer pattern from `TestExampleAppchain`) so every batch, block, and external payload shows up in your test logs. Set `AppchainConfig.PrometheusPort` before starting `Appchain.Run`; the runtime will expose counters and histograms such as `appchain_processed_blocks_total`, `appchain_block_processing_duration_seconds`, `appchain_event_stream_position_bytes`, and MDBX wait metrics from `gosdk/metrics.go`. Scraping them in Docker Compose or `go test` helps surface regressions early.
+6. **Probe the runtime interfaces.** The gRPC emitter starts automatically on `AppchainConfig.EmitterPort`, serving the proto definitions under `gosdk/proto`. Use `grpcurl` or integration tests to call `Emitter.GetCheckpoints` and `Health.Check`. On the HTTP side, wire your JSON-RPC server to the same fixture so tests can push transactions through `TxPoolInterface.GetPendingTransactions` and verify they settle with the expected receipts.
+
+Regularly combining these checks—unit tests around pure logic, replay tests with real snapshots, and observability sweeps—gives you confidence that a Dockerized appchain will behave deterministically once validators execute it.
+
+## Determinism checklist
+
+The SDK assumes every validator will replay the exact same state transitions. Keep your logic deterministic:
+
+- Avoid `time.Now`, random values, or network I/O inside `Process`/`ProcessBatch`.
+- Do all writes through the provided `kv.RwTx`. Do not write to external services during batch processing.
+- Iterate maps or collections deterministically (e.g., sort keys before range when order matters).
+- Derive any needed nonces/ids from batch inputs (transaction bytes, hashes, or external block references) rather than local state.
+- Ensure your transaction encoding is stable (exported fields with explicit CBOR tags as shown in this README).
+- Keep logging outside the state mutation path or ensure logs do not affect control flow.
+
+## FAQ
+
+**What runs where?** Your appchain logic runs inside your Docker image. Validators run consensus, fetchers, and host your image alongside them.
+
+**How do I access other chains?** Use `MultichainStateAccess` after declaring subscriptions. The SDK blocks `ProcessBlock` until referenced external blocks/receipts are present.
+
+**How do I emit cross-chain payloads?** Return `apptypes.ExternalTransaction` from your state transition. Validators and a TSS appchain handle signing and broadcast.
+
+**How do I submit transactions?** Start the JSON-RPC server and use the standard methods added via `rpc.AddStandardMethods`.
+
+## Glossary
+
+- Appchain: Your deterministic runtime packaged as a Docker image.
+- Batch: Ordered set of transactions the runtime processes atomically.
+- External block: Reference to finalized data from another chain used in processing.
+- Fetcher: Service that hydrates MDBX snapshots for multichain reads.
+- TSS appchain: Threshold-signing service that transports external transactions.
