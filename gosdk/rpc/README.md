@@ -1,7 +1,7 @@
 # Atelerix RPC Server
 
 A lightweight, composable JSON-RPC 2.0 server for blockchain applications with HTTP middleware support.
-
+standard methods/headers)
 ## Table of Contents
 
 - [Quick Start](#quick-start)
@@ -101,7 +101,7 @@ func (m *AuthMiddleware) ProcessResponse(w http.ResponseWriter, r *http.Request,
 }
 
 // Usage
-server := rpc.NewStandardRPCServer()
+server := rpc.NewStandardRPCServer(nil)
 server.AddMiddleware(&AuthMiddleware{})
 ```
 
@@ -261,7 +261,7 @@ type Middleware interface {
 
 ```go
 // Test with middleware
-server := rpc.NewStandardRPCServer()
+server := rpc.NewStandardRPCServer(nil)
 server.AddMiddleware(&MyMiddleware{})
 server.AddMethod("test", func(ctx context.Context, params []any) (any, error) {
     return "ok", nil
