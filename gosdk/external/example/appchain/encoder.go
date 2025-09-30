@@ -17,19 +17,19 @@ var (
 
 // TransferData represents a token transfer operation
 type TransferData struct {
-	To     common.Address
-	Amount *big.Int
-	Token  common.Address
+	To     common.Address `abi:"to"`
+	Amount *big.Int       `abi:"amount"`
+	Token  common.Address `abi:"token"`
 }
 
 // SwapData represents a DeFi swap operation
 type SwapData struct {
-	TokenIn      common.Address
-	TokenOut     common.Address
-	AmountIn     *big.Int
-	MinAmountOut *big.Int
-	Deadline     *big.Int
-	Slippage     uint16
+	TokenIn      common.Address `abi:"tokenIn"`
+	TokenOut     common.Address `abi:"tokenOut"`
+	AmountIn     *big.Int       `abi:"amountIn"`
+	MinAmountOut *big.Int       `abi:"minAmountOut"`
+	Deadline     *big.Int       `abi:"deadline"`
+	Slippage     uint16         `abi:"slippage"`
 }
 
 // Encoder handles ABI-based encoding for appchain operations

@@ -4,6 +4,7 @@ import (
 	"math/big"
 
 	"github.com/blocto/solana-go-sdk/rpc"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 type (
@@ -25,7 +26,18 @@ type Balances interface {
 	SolanaBalances | EthereumBalances
 }
 
-type EthereumBalances struct{}
+type EthereumBalances struct {
+	Standard Standard
+
+	// Optional per-standard metadata:
+	TokenID *big.Int   `json:"tokenId,omitempty"` // ERC-721 / ERC-1155 single
+	IDs     []*big.Int `json:"ids,omitempty"`     // ERC-1155 batch
+	Values  []*big.Int `json:"values,omitempty"`  // ERC-1155 batch
+
+	// Provenance:
+	TxHash   common.Hash `json:"txHash"`
+	LogIndex uint        `json:"logIndex"`
+}
 
 type SolanaBalances struct {
 	PreTokenBalances  []rpc.TransactionMetaTokenBalance
