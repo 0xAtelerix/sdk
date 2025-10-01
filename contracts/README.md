@@ -63,6 +63,7 @@ contracts/
    RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY # Any EVM-compatible chain RPC
    PRIVATE_KEY=your_private_key_without_0x_prefix
    EXPLORER_API_KEY=YOUR_EXPLORER_API_KEY  # Optional, for verification
+   SOURCE_CHAIN_ID=42  # Chain ID for AppChain registration (optional, defaults to 42)
    ```
 
 ### Deploy Pelagos & AppChain

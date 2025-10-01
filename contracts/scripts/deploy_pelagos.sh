@@ -1,181 +1,258 @@
 #!/bin/bash
 
-# Pelagos & AppChain Deployment Script (Chain-Agnostic)
-# This script follows the deployment pattern:
-# 1. Deploy Pelagos registry contract
-# 2. Deploy AppChain contract
-# 3. Register AppChain on Pelagos
+# Pelagos & AppChain Deployment Script
+# Usage: ./deploy_pelagos.sh [options]
+# Options:
+#   --private-key KEY       Private key for deployment
+#   --rpc-url URL          RPC URL
+#   --no-verify            Skip contract verification
+#   --env-file FILE        Path to .env file (default: .env)
+#   --source-chain-id ID   Source chain ID (default: 42)
 
 set -e
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+# Default values
+PRIVATE_KEY=""
+RPC_URL=""
+VERIFY=true
+ENV_FILE=".env"
+SOURCE_CHAIN_ID=42
 
-echo -e "${GREEN}🚀 Pelagos & AppChain Deployment${NC}"
-echo "============================================="
+# Load .env file if it exists
+load_env_file() {
+    local env_file="$1"
+    if [ -f "$env_file" ]; then
+        echo "📄 Loading environment from $env_file"
+        while IFS='=' read -r key value; do
+            # Skip empty lines and comments
+            [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
+            # Remove quotes from value if present
+            value=$(echo "$value" | sed 's/^"\(.*\)"$/\1/' | sed "s/^'\(.*\)'$/\1/")
+            # Set our script variables if they match
+            case $key in
+                RPC_URL) RPC_URL="$value" ;;
+                PRIVATE_KEY) PRIVATE_KEY="$value" ;;
+                ETHERSCAN_API_KEY) export ETHERSCAN_API_KEY="$value" ;;
+                SOURCE_CHAIN_ID) SOURCE_CHAIN_ID="$value" ;;
+            esac
+        done < "$env_file"
+        echo "✅ Environment loaded"
+        echo ""
+    fi
+}
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --private-key)
+            PRIVATE_KEY="$2"
+            shift 2
+            ;;
+        --rpc-url)
+            RPC_URL="$2"
+            shift 2
+            ;;
+        --env-file)
+            ENV_FILE="$2"
+            shift 2
+            ;;
+        --source-chain-id)
+            SOURCE_CHAIN_ID="$2"
+            shift 2
+            ;;
+        --no-verify)
+            VERIFY=false
+            shift
+            ;;
+        --help|-h)
+            echo "Usage: $0 [options]"
+            echo "Options:"
+            echo "  --private-key KEY       Private key for deployment"
+            echo "  --rpc-url URL          RPC URL"
+            echo "  --no-verify            Skip contract verification"
+            echo "  --env-file FILE        Path to .env file (default: .env)"
+            echo "  --source-chain-id ID   Source chain ID for registration (default: 42)"
+            echo "  --help                 Show this help message"
+            echo ""
+            echo "Environment Variables (.env file):"
+            echo "  PRIVATE_KEY=0xyour_private_key"
+            echo "  RPC_URL=https://eth-sepolia.g.alchemy.com/v2/..."
+            echo "  ETHERSCAN_API_KEY=your_etherscan_api_key"
+            echo "  SOURCE_CHAIN_ID=42"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
 
 # Navigate to contracts root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONTRACTS_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$CONTRACTS_ROOT"
 
-# Check environment file
-if [ ! -f ".env" ]; then
-    echo -e "${RED}❌ Error: .env file not found${NC}"
-    echo "Copy .env.example to .env and fill in your values"
+# Load environment file
+load_env_file "$ENV_FILE"
+
+# Check if private key is provided
+if [ -z "$PRIVATE_KEY" ]; then
+    echo "❌ Error: Private key is required"
+    echo "Provide it via --private-key, or set PRIVATE_KEY in .env file"
+    echo "Use --help for more information"
     exit 1
 fi
 
-# Load environment variables
-source .env
-
-# Validate required environment variables
-if [ -z "$RPC_URL" ] || [ -z "$PRIVATE_KEY" ]; then
-    echo -e "${RED}❌ Error: Missing required environment variables${NC}"
-    echo "Required: RPC_URL, PRIVATE_KEY"
+# Check if RPC URL is provided
+if [ -z "$RPC_URL" ]; then
+    echo "❌ Error: RPC URL is required"
+    echo "Provide it via --rpc-url, or set RPC_URL in .env file"
+    echo "Use --help for more information"
     exit 1
 fi
 
-# Optional block explorer verification (Etherscan, etc.)
-VERIFY_FLAG=""
-if [ -n "$EXPLORER_API_KEY" ]; then
-    VERIFY_FLAG="--verify --etherscan-api-key $EXPLORER_API_KEY"
-fi
-
-echo -e "${YELLOW}📋 Configuration:${NC}"
+echo "🚀 Deploying Pelagos & AppChain..."
 echo "RPC URL: $RPC_URL"
-echo "Contracts Root: $CONTRACTS_ROOT"
+echo "Source Chain ID: $SOURCE_CHAIN_ID"
 echo ""
 
-# Get deployer address
-DEPLOYER_ADDRESS=$(cast wallet address --private-key "$PRIVATE_KEY")
-echo -e "${BLUE}Deployer Address: $DEPLOYER_ADDRESS${NC}"
-echo ""
+# Check if Foundry is available
+if ! command -v forge &> /dev/null; then
+    echo "❌ Error: Foundry (forge) is required. Install it first:"
+    echo "   curl -L https://foundry.paradigm.xyz | bash"
+    echo "   foundryup"
+    exit 1
+fi
+
+# Clean and compile contracts
+echo "📦 Compiling contracts..."
+forge clean
 
 # Step 1: Deploy Pelagos contract
-echo -e "${BLUE}📦 Step 1: Deploying Pelagos contract...${NC}"
-PELAGOS_ADDRESS=$(forge create pelacli/Pelagos.sol:Pelagos \
-    --rpc-url "$RPC_URL" \
-    --private-key "$PRIVATE_KEY" \
-    $VERIFY_FLAG \
-    --json | jq -r '.deployedTo')
+echo ""
+echo "📦 Step 1: Deploying Pelagos contract..."
 
-if [ $? -ne 0 ] || [ -z "$PELAGOS_ADDRESS" ]; then
-    echo -e "${RED}❌ Pelagos deployment failed${NC}"
+# Build forge command
+FORGE_CMD="forge create --private-key \"$PRIVATE_KEY\" --rpc-url \"$RPC_URL\" --broadcast --force"
+if [ "$VERIFY" = true ]; then
+    FORGE_CMD="$FORGE_CMD --verify"
+    echo "🔍 Contract verification enabled"
+fi
+FORGE_CMD="$FORGE_CMD pelacli/Pelagos.sol:Pelagos"
+
+# Execute the command
+DEPLOY_OUTPUT=$(eval "$FORGE_CMD")
+
+# Extract contract address from output
+PELAGOS_ADDRESS=$(echo "$DEPLOY_OUTPUT" | grep -o "Deployed to: 0x[0-9a-fA-F]*" | cut -d' ' -f3)
+
+if [ -z "$PELAGOS_ADDRESS" ]; then
+    # Fallback: look for any Ethereum address (but skip the first one which is usually the sender)
+    PELAGOS_ADDRESS=$(echo "$DEPLOY_OUTPUT" | grep -o "0x[0-9a-fA-F]\{40\}" | sed -n '2p')
+fi
+
+if [ -z "$PELAGOS_ADDRESS" ]; then
+    echo "❌ Pelagos deployment failed!"
+    echo "Output: $DEPLOY_OUTPUT"
     exit 1
 fi
 
-echo -e "${GREEN}✅ Pelagos deployed at: $PELAGOS_ADDRESS${NC}"
+echo ""
+echo "✅ Pelagos deployed successfully!"
+echo "📋 Pelagos Address: $PELAGOS_ADDRESS"
 echo ""
 
 # Step 2: Deploy AppChain contract
-echo -e "${BLUE}📦 Step 2: Deploying AppChain contract...${NC}"
-APPCHAIN_ADDRESS=$(forge create pelacli/AppChain.sol:AppChain \
-    --rpc-url "$RPC_URL" \
-    --private-key "$PRIVATE_KEY" \
-    --constructor-args "$PELAGOS_ADDRESS" \
-    $VERIFY_FLAG \
-    --json | jq -r '.deployedTo')
+echo "📦 Step 2: Deploying AppChain contract..."
 
-if [ $? -ne 0 ] || [ -z "$APPCHAIN_ADDRESS" ]; then
-    echo -e "${RED}❌ AppChain deployment failed${NC}"
+# Build forge command
+FORGE_CMD="forge create --private-key \"$PRIVATE_KEY\" --rpc-url \"$RPC_URL\" --broadcast --force"
+if [ "$VERIFY" = true ]; then
+    FORGE_CMD="$FORGE_CMD --verify"
+fi
+FORGE_CMD="$FORGE_CMD pelacli/AppChain.sol:AppChain --constructor-args \"$PELAGOS_ADDRESS\""
+
+# Execute the command
+DEPLOY_OUTPUT=$(eval "$FORGE_CMD")
+
+# Extract contract address from output
+APPCHAIN_ADDRESS=$(echo "$DEPLOY_OUTPUT" | grep -o "Deployed to: 0x[0-9a-fA-F]*" | cut -d' ' -f3)
+
+if [ -z "$APPCHAIN_ADDRESS" ]; then
+    # Fallback: look for any Ethereum address (but skip the first one which is usually the sender)
+    APPCHAIN_ADDRESS=$(echo "$DEPLOY_OUTPUT" | grep -o "0x[0-9a-fA-F]\{40\}" | sed -n '2p')
+fi
+
+if [ -z "$APPCHAIN_ADDRESS" ]; then
+    echo "❌ AppChain deployment failed!"
+    echo "Output: $DEPLOY_OUTPUT"
     exit 1
 fi
 
-echo -e "${GREEN}✅ AppChain deployed at: $APPCHAIN_ADDRESS${NC}"
+echo ""
+echo "✅ AppChain deployed successfully!"
+echo "📋 AppChain Address: $APPCHAIN_ADDRESS"
 echo ""
 
 # Step 3: Register AppChain in Pelagos
-echo -e "${BLUE}📦 Step 3: Registering AppChain in Pelagos (source chain ID: 42)...${NC}"
+echo "📦 Step 3: Registering AppChain in Pelagos..."
 cast send "$PELAGOS_ADDRESS" \
     "registerAppchainContract(uint256,address)" \
-    42 \
+    "$SOURCE_CHAIN_ID" \
     "$APPCHAIN_ADDRESS" \
     --rpc-url "$RPC_URL" \
     --private-key "$PRIVATE_KEY"
 
 if [ $? -ne 0 ]; then
-    echo -e "${RED}❌ AppChain registration failed${NC}"
+    echo "❌ AppChain registration failed"
     exit 1
 fi
 
-echo -e "${GREEN}✅ AppChain registered successfully${NC}"
+echo "✅ AppChain registered successfully"
 echo ""
 
 # Step 4: Verify registration
-echo -e "${BLUE}📦 Step 4: Verifying registration...${NC}"
+echo "📦 Step 4: Verifying registration..."
 REGISTERED_ADDRESS=$(cast call "$PELAGOS_ADDRESS" \
     "appchainContracts(uint256)(address)" \
-    42 \
+    "$SOURCE_CHAIN_ID" \
     --rpc-url "$RPC_URL")
 
 echo "Registered contract: $REGISTERED_ADDRESS"
 echo "Expected contract:   $APPCHAIN_ADDRESS"
 
 if [ "$REGISTERED_ADDRESS" = "$APPCHAIN_ADDRESS" ]; then
-    echo -e "${GREEN}✅ Registration verified!${NC}"
+    echo "✅ Registration verified!"
 else
-    echo -e "${RED}❌ Registration verification failed${NC}"
+    echo "❌ Registration verification failed"
     exit 1
 fi
 
 echo ""
-echo -e "${GREEN}🎉 Deployment Complete!${NC}"
+echo "🎉 Deployment Complete!"
 echo "============================================="
-echo -e "${YELLOW}Contract Addresses:${NC}"
-echo "Pelagos:  $PELAGOS_ADDRESS"
-echo "AppChain: $APPCHAIN_ADDRESS"
+echo "Contract Addresses:"
+echo "  Pelagos:  $PELAGOS_ADDRESS"
+echo "  AppChain: $APPCHAIN_ADDRESS"
 echo ""
-echo -e "${YELLOW}Deployment Summary:${NC}"
-echo "1. ✅ Pelagos registry contract deployed"
-echo "2. ✅ AppChain contract deployed"
-echo "3. ✅ AppChain registered on Pelagos (chain ID: 42)"
-echo ""
-echo -e "${YELLOW}Next Steps:${NC}"
-echo "1. Update your application config with these addresses"
-echo "2. Test the deployment with: cast call $PELAGOS_ADDRESS 'owner()(address)' --rpc-url $RPC_URL"
-echo ""
+echo "Deployment Summary:"
+echo "  1. ✅ Pelagos registry contract deployed"
+echo "  2. ✅ AppChain contract deployed"
+echo "  3. ✅ AppChain registered on Pelagos (chain ID: $SOURCE_CHAIN_ID)"
 
-echo -e "${GREEN}✅ Deployment completed successfully!${NC}"
-echo ""
-
-# Find the latest run file
-LATEST_RUN=$(find broadcast/DeployComplete.s.sol/11155111/ -name "run-*.json" | sort | tail -1)
-
-if [ ! -f "$LATEST_RUN" ]; then
-    echo -e "${RED}❌ Could not find deployment artifacts${NC}"
-    exit 1
-fi
-
-# Extract addresses using jq
-PELAGOS_ADDRESS=$(jq -r '.transactions[] | select(.contractName == "Pelagos") | .contractAddress' "$LATEST_RUN" | head -1)
-APPCHAIN_ADDRESS=$(jq -r '.transactions[] | select(.contractName == "AppChain") | .contractAddress' "$LATEST_RUN" | head -1)
-
-# Convert to lowercase for consistency
-PELAGOS_ADDRESS=$(echo "$PELAGOS_ADDRESS" | tr '[:upper:]' '[:lower:]')
-APPCHAIN_ADDRESS=$(echo "$APPCHAIN_ADDRESS" | tr '[:upper:]' '[:lower:]')
-
-if [ "$PELAGOS_ADDRESS" = "null" ] || [ "$APPCHAIN_ADDRESS" = "null" ]; then
-    echo -e "${RED}❌ Could not extract contract addresses${NC}"
-    exit 1
+if [ "$VERIFY" = true ]; then
+    echo ""
+    echo "🔍 Contract verification: Enabled"
+    echo "   💡 Note: For verification, ETHERSCAN_API_KEY must be set in .env"
+else
+    echo ""
+    echo "🔍 Contract verification: Disabled (use without --no-verify to enable)"
 fi
 
 echo ""
-echo -e "${GREEN}🎉 Deployment Complete!${NC}"
-echo "========================="
-echo -e "${YELLOW}Contract Addresses:${NC}"
-echo "Pelagos:  $PELAGOS_ADDRESS"
-echo "AppChain: $APPCHAIN_ADDRESS"
-echo ""
-echo -e "${YELLOW}Etherscan Links:${NC}"
-echo "Pelagos:  https://sepolia.etherscan.io/address/$PELAGOS_ADDRESS"
-echo "AppChain: https://sepolia.etherscan.io/address/$APPCHAIN_ADDRESS"
-echo ""
-echo -e "${YELLOW}Next Steps:${NC}"
-echo "1. Update your .env file with the contract addresses above"
-echo "2. Run tests: cd .. && go test ./external -v"
-echo "3. Test external transactions"
+echo "📝 Next steps:"
+echo "   • Update AppchainContractAddress in your application config"
+echo "   • Example: const AppchainContractAddress = \"$APPCHAIN_ADDRESS\""
+

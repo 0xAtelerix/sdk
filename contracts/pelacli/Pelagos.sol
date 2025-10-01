@@ -12,7 +12,7 @@ contract Pelagos {
 
     // Event emitted when an external transaction is processed
     event ExternalTransactionProcessed(
-        uint256 indexed fromChainID,
+        uint256 indexed fromChainId,
         uint256 indexed sequenceNumber,
         bytes32 indexed nonceHash,
         bytes payload
@@ -22,10 +22,10 @@ contract Pelagos {
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     // Event emitted when an appchain is registered
-    event AppchainRegistered(uint256 indexed sourceChainID, address indexed appchainContract);
+    event AppchainRegistered(uint256 indexed sourceChainId, address indexed appchainContract);
 
     // Event emitted when an appchain is unregistered
-    event AppchainUnregistered(uint256 indexed sourceChainID);
+    event AppchainUnregistered(uint256 indexed sourceChainId);
 
     // Contract owner (should be set to the consensus system)
     address public owner;
@@ -61,16 +61,16 @@ contract Pelagos {
 
     /**
      * @dev Process an external transaction from an appchain
-     * @param fromChainID The chain ID of the source appchain  
+     * @param fromChainId The chain ID of the source appchain  
      * @param nonceHash The deterministic hash for replay protection (includes sourceChain, targetChain, block, payload, txIndex)
      * @param payload The encoded transaction payload
      */
     function processExternalTransaction(
-        uint256 fromChainID,
+        uint256 fromChainId,
         bytes32 nonceHash,
         bytes calldata payload
     ) external onlyOwner {
-        require(fromChainID > 0, "Pelagos: invalid chain ID");
+        require(fromChainId > 0, "Pelagos: invalid chain ID");
         require(nonceHash != bytes32(0), "Pelagos: invalid nonce hash");
         require(payload.length > 0, "Pelagos: empty payload");
 
@@ -82,27 +82,27 @@ contract Pelagos {
         totalProcessedTransactions++;
 
         // Emit event for indexing and monitoring
-        emit ExternalTransactionProcessed(fromChainID, totalProcessedTransactions, nonceHash, payload);
+        emit ExternalTransactionProcessed(fromChainId, totalProcessedTransactions, nonceHash, payload);
 
-        // Route to appropriate appchain contract based on fromChainID
-        _processPayload(fromChainID, nonceHash, payload);
+        // Route to appropriate appchain contract based on fromChainId
+        _processPayload(fromChainId, nonceHash, payload);
     }
 
     /**
      * @dev Internal function to process the payload by routing to appropriate appchain contract
-     * @param fromChainID The source chain ID
+     * @param fromChainId The source chain ID
      * @param nonceHash The nonce hash
      * @param payload The transaction payload
      */
-    function _processPayload(uint256 fromChainID, bytes32 nonceHash, bytes calldata payload) internal {
-        address appchainContract = appchainContracts[fromChainID];
+    function _processPayload(uint256 fromChainId, bytes32 nonceHash, bytes calldata payload) internal {
+        address appchainContract = appchainContracts[fromChainId];
         
         if (appchainContract != address(0)) {
             // Route to specific appchain contract
             (bool success,) = appchainContract.call(
                 abi.encodeWithSignature(
                     "processExternalTransaction(uint256,bytes32,bytes)",
-                    fromChainID,
+                    fromChainId,
                     nonceHash,
                     payload
                 )
@@ -117,24 +117,24 @@ contract Pelagos {
 
     /**
      * @dev Register an appchain contract for a specific source chain ID
-     * @param sourceChainID The source chain ID to register
+     * @param sourceChainId The source chain ID to register
      * @param appchainContract The appchain contract address
      */
-    function registerAppchainContract(uint256 sourceChainID, address appchainContract) external onlyOwner {
-        require(sourceChainID > 0, "Pelagos: invalid source chain ID");
+    function registerAppchainContract(uint256 sourceChainId, address appchainContract) external onlyOwner {
+        require(sourceChainId > 0, "Pelagos: invalid source chain ID");
         require(appchainContract != address(0), "Pelagos: invalid appchain contract address");
         
-        appchainContracts[sourceChainID] = appchainContract;
-        emit AppchainRegistered(sourceChainID, appchainContract);
+        appchainContracts[sourceChainId] = appchainContract;
+        emit AppchainRegistered(sourceChainId, appchainContract);
     }
 
     /**
      * @dev Unregister an appchain contract for a specific source chain ID
-     * @param sourceChainID The source chain ID to unregister
+     * @param sourceChainId The source chain ID to unregister
      */
-    function unregisterAppchainContract(uint256 sourceChainID) external onlyOwner {
-        delete appchainContracts[sourceChainID];
-        emit AppchainUnregistered(sourceChainID);
+    function unregisterAppchainContract(uint256 sourceChainId) external onlyOwner {
+        delete appchainContracts[sourceChainId];
+        emit AppchainUnregistered(sourceChainId);
     }
 
 }
