@@ -375,6 +375,7 @@ func TestPopFinalized_NoThreshold_NoOp(t *testing.T) {
 
 func openVotingDB(t *testing.T) kv.RwDB {
 	t.Helper()
+
 	db, err := mdbx.NewMDBX(mdbxlog.New()).
 		Path(t.TempDir()).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
@@ -405,6 +406,8 @@ func mkCP(chain, num uint64, b0 byte) apptypes.Checkpoint {
 }
 
 func TestStoreNewVotingFromStorage_ExternalBlock_RoundTrip(t *testing.T) {
+	t.Parallel()
+
 	db := openVotingDB(t)
 	defer db.Close()
 
@@ -488,6 +491,8 @@ func TestStoreNewVotingFromStorage_ExternalBlock_RoundTrip(t *testing.T) {
 }
 
 func TestStoreNewVotingFromStorage_Checkpoint_RoundTrip(t *testing.T) {
+	t.Parallel()
+
 	db := openVotingDB(t)
 	defer db.Close()
 
@@ -552,6 +557,8 @@ func TestStoreNewVotingFromStorage_Checkpoint_RoundTrip(t *testing.T) {
 }
 
 func TestStoreNewVotingFromStorage_PopFinalized_PrunesState(t *testing.T) {
+	t.Parallel()
+
 	db := openVotingDB(t)
 	defer db.Close()
 
@@ -591,6 +598,8 @@ func TestStoreNewVotingFromStorage_PopFinalized_PrunesState(t *testing.T) {
 }
 
 func TestStoreNewVotingFromStorage_DoubleVoteProtectionPersists(t *testing.T) {
+	t.Parallel()
+
 	db := openVotingDB(t)
 	defer db.Close()
 

@@ -16,6 +16,8 @@ import (
 )
 
 func TestExtractErc20Transfer(t *testing.T) {
+	t.Parallel()
+
 	token := tests.Addr(0xAA)
 	from := tests.Addr(0x01)
 	to := tests.Addr(0x02)
@@ -49,6 +51,8 @@ func TestExtractErc20Transfer(t *testing.T) {
 }
 
 func TestExtractErc721Transfer(t *testing.T) {
+	t.Parallel()
+
 	token := tests.Addr(0xBB)
 	from := tests.Addr(0x03)
 	to := tests.Addr(0x04)
@@ -85,6 +89,8 @@ func TestExtractErc721Transfer(t *testing.T) {
 }
 
 func TestExtractErc1155Single(t *testing.T) {
+	t.Parallel()
+
 	token := tests.Addr(0xCC)
 	from := tests.Addr(0x05)
 	to := tests.Addr(0x06)
@@ -116,6 +122,8 @@ func TestExtractErc1155Single(t *testing.T) {
 }
 
 func TestExtractErc1155Batch(t *testing.T) {
+	t.Parallel()
+
 	token := tests.Addr(0xDD)
 	from := tests.Addr(0x07)
 	to := tests.Addr(0x08)
@@ -160,6 +168,8 @@ func TestExtractErc1155Batch(t *testing.T) {
 }
 
 func TestMixedLogsOneReceipt(t *testing.T) {
+	t.Parallel()
+
 	token20 := tests.Addr(0xA1)
 	token721 := tests.Addr(0xA2)
 	from := tests.Addr(0x10)
@@ -196,6 +206,8 @@ func TestMixedLogsOneReceipt(t *testing.T) {
 }
 
 func TestIgnoresNonTransferLogs(t *testing.T) {
+	t.Parallel()
+
 	// random signature
 	otherSig := crypto.Keccak256Hash([]byte("SomethingElse(bytes32)"))
 
@@ -214,6 +226,8 @@ func TestIgnoresNonTransferLogs(t *testing.T) {
 }
 
 func TestDefaultRegistry_ERC20(t *testing.T) {
+	t.Parallel()
+
 	reg := NewDefaultEvmTransferRegistry()
 
 	token := tests.Addr(0xAA)
@@ -246,6 +260,8 @@ func TestDefaultRegistry_ERC20(t *testing.T) {
 }
 
 func TestDefaultRegistry_ERC721(t *testing.T) {
+	t.Parallel()
+
 	reg := NewDefaultEvmTransferRegistry()
 
 	token := tests.Addr(0xBB)
@@ -284,6 +300,8 @@ func TestDefaultRegistry_ERC721(t *testing.T) {
 }
 
 func TestDefaultRegistry_ERC1155_Single(t *testing.T) {
+	t.Parallel()
+
 	reg := NewDefaultEvmTransferRegistry()
 
 	token := tests.Addr(0xCC)
@@ -316,6 +334,8 @@ func TestDefaultRegistry_ERC1155_Single(t *testing.T) {
 }
 
 func TestDefaultRegistry_ERC1155_Batch(t *testing.T) {
+	t.Parallel()
+
 	reg := NewDefaultEvmTransferRegistry()
 
 	token := tests.Addr(0xDD)
@@ -358,6 +378,8 @@ func TestDefaultRegistry_ERC1155_Batch(t *testing.T) {
 }
 
 func TestRegisterEvent_WETH_Deposit_Generic(t *testing.T) {
+	t.Parallel()
+
 	type wethDeposit struct {
 		Dst common.Address `abi:"dst"`
 		Wad *big.Int       `abi:"wad"`

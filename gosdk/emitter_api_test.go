@@ -271,8 +271,8 @@ func TestEmitterCall_PropertyBased(t *testing.T) {
 	t.Parallel()
 
 	rapid.Check(t, func(tr *rapid.T) {
-		t.Run(tr.Name(), func(t *testing.T) {
-			dbPath := t.TempDir()
+		t.Run(tr.Name(), func(tt *testing.T) {
+			dbPath := tt.TempDir()
 
 			db, err := mdbx.NewMDBX(mdbxlog.New()).
 				Path(dbPath).
@@ -289,7 +289,7 @@ func TestEmitterCall_PropertyBased(t *testing.T) {
 
 			tx, err := db.BeginRw(t.Context())
 			if err != nil {
-				t.Fatalf("DB: %v", err)
+				tr.Fatalf("DB: %v", err)
 			}
 			defer tx.Rollback()
 
@@ -339,7 +339,7 @@ func TestEmitterCall_PropertyBased(t *testing.T) {
 
 			defer func() {
 				connErr := conn.Close()
-				require.NoError(t, connErr)
+				require.NoError(tr, connErr)
 			}()
 
 			client := emitterproto.NewEmitterClient(conn)
@@ -359,12 +359,12 @@ func TestEmitterCall_PropertyBased(t *testing.T) {
 
 			res, err := client.GetCheckpoints(ctx, req)
 			if err != nil {
-				t.Fatalf("Ошибка вызова GetCheckpoints: %v", err)
+				tr.Fatalf("Ошибка вызова GetCheckpoints: %v", err)
 			}
 
 			chainIDRes, err := client.GetChainID(ctx, &emptypb.Empty{})
 			if err != nil {
-				t.Fatalf("GetChainID: %v", err)
+				tr.Fatalf("GetChainID: %v", err)
 			}
 
 			// ✅ Проверяем, что чекпоинты в ответе соответствуют условиям запроса
@@ -381,7 +381,7 @@ func TestEmitterCall_PropertyBased(t *testing.T) {
 
 			// ✅ Проверяем, что количество чекпоинтов соответствует лимиту
 			if len(res.GetCheckpoints()) != len(expectedCheckpoints) {
-				t.Fatalf(
+				tr.Fatalf(
 					"Ошибка: ожидалось %d чекпоинтов, получено %d",
 					len(expectedCheckpoints),
 					len(res.GetCheckpoints()),
@@ -393,7 +393,7 @@ func TestEmitterCall_PropertyBased(t *testing.T) {
 
 			for i, chk := range res.GetCheckpoints() {
 				if chk.GetLatestBlockNumber() < startBlock {
-					t.Fatalf(
+					tr.Fatalf(
 						"Ошибка: чекпоинт %d меньше стартового блока %d",
 						chk.GetLatestBlockNumber(),
 						startBlock,
@@ -401,7 +401,7 @@ func TestEmitterCall_PropertyBased(t *testing.T) {
 				}
 
 				if chk.GetLatestBlockNumber() < prevBlockNumber {
-					t.Fatal("Ошибка: чекпоинты не отсортированы по LatestBlockNumber")
+					tr.Fatal("Ошибка: чекпоинты не отсортированы по LatestBlockNumber")
 				}
 
 				prevBlockNumber = chk.GetLatestBlockNumber()
@@ -415,7 +415,7 @@ func TestEmitterCall_PropertyBased(t *testing.T) {
 						chk.GetExternalTxRootHash(),
 						expected.ExternalTransactionsRoot[:],
 					) {
-					t.Fatal("Ошибка: данные чекпоинта не совпадают с записанными")
+					tr.Fatal("Ошибка: данные чекпоинта не совпадают с записанными")
 				}
 			}
 		})
