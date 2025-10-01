@@ -48,20 +48,34 @@ func createTestReceipt(data string, errorMsg string) *TestReceipt {
 	}
 }
 
-func TestStoreAndGetReceipt(t *testing.T) {
-	t.Parallel()
+func testDB(t *testing.T) (kv.RwDB, func()) {
+	t.Helper()
 
 	db := memdb.NewTestDB(t)
-	defer db.Close()
 
 	// Create tables
 	err := db.Update(t.Context(), func(tx kv.RwTx) error {
 		// Create the receipts bucket
 		return tx.CreateBucket(scheme.ReceiptBucket)
 	})
+	if err != nil {
+		db.Close()
+	}
+
 	require.NoError(t, err)
 
+	return db, db.Close
+}
+
+func TestStoreAndGetReceipt(t *testing.T) {
+	t.Parallel()
+
 	t.Run("successful store and retrieve", func(tr *testing.T) {
+		tr.Parallel()
+
+		db, cleanup := testDB(tr)
+		defer cleanup()
+
 		receipt := createTestReceipt("test-receipt-1", "")
 
 		caseErr := db.Update(tr.Context(), func(tx kv.RwTx) error {
@@ -91,6 +105,11 @@ func TestStoreAndGetReceipt(t *testing.T) {
 	})
 
 	t.Run("store multiple receipts", func(tr *testing.T) {
+		tr.Parallel()
+
+		db, cleanup := testDB(tr)
+		defer cleanup()
+
 		receipts := []*TestReceipt{
 			createTestReceipt("receipt-1", ""),
 			createTestReceipt("receipt-2", "some error"),
@@ -100,7 +119,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 		// Store all receipts
 		caseErr := db.Update(tr.Context(), func(tx kv.RwTx) error {
 			for _, receipt := range receipts {
-				if dbErr := StoreReceipt(tx, receipt); err != nil {
+				if dbErr := StoreReceipt(tx, receipt); dbErr != nil {
 					return dbErr
 				}
 			}
@@ -110,7 +129,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 		require.NoError(tr, caseErr)
 
 		// Retrieve all receipts and verify
-		err = db.View(tr.Context(), func(tx kv.Tx) error {
+		caseErr = db.View(tr.Context(), func(tx kv.Tx) error {
 			for _, originalReceipt := range receipts {
 				var (
 					retrievedReceipt *TestReceipt
@@ -132,10 +151,15 @@ func TestStoreAndGetReceipt(t *testing.T) {
 			return nil
 		})
 
-		require.NoError(tr, err)
+		require.NoError(tr, caseErr)
 	})
 
 	t.Run("get non-existent receipt", func(tr *testing.T) {
+		tr.Parallel()
+
+		db, cleanup := testDB(tr)
+		defer cleanup()
+
 		nonExistentHash := sha256.Sum256([]byte("non-existent"))
 
 		err := db.View(tr.Context(), func(tx kv.Tx) error {
@@ -155,17 +179,12 @@ func TestStoreAndGetReceipt(t *testing.T) {
 func TestReceiptBatchOperations(t *testing.T) {
 	t.Parallel()
 
-	// Test storing multiple receipts in a single transaction (like in the real use case)
-	db := memdb.NewTestDB(t)
-	defer db.Close()
-
-	// Create tables
-	err := db.Update(t.Context(), func(tx kv.RwTx) error {
-		return tx.CreateBucket(scheme.ReceiptBucket)
-	})
-	require.NoError(t, err)
-
 	t.Run("batch store receipts", func(tr *testing.T) {
+		tr.Parallel()
+
+		db, cleanup := testDB(tr)
+		defer cleanup()
+
 		receipts := make([]*TestReceipt, 100)
 
 		for i := range 100 {
@@ -182,9 +201,9 @@ func TestReceiptBatchOperations(t *testing.T) {
 		}
 
 		// Store all receipts in a single transaction
-		err = db.Update(tr.Context(), func(tx kv.RwTx) error {
+		err := db.Update(tr.Context(), func(tx kv.RwTx) error {
 			for _, receipt := range receipts {
-				if dbErr := StoreReceipt(tx, receipt); err != nil {
+				if dbErr := StoreReceipt(tx, receipt); dbErr != nil {
 					return dbErr
 				}
 			}
@@ -278,17 +297,12 @@ func BenchmarkGetReceipt(b *testing.B) {
 func TestReceiptErrorHandling(t *testing.T) {
 	t.Parallel()
 
-	// Create in-memory database
-	db := memdb.NewTestDB(t)
-	defer db.Close()
-
-	// Create tables
-	err := db.Update(t.Context(), func(tx kv.RwTx) error {
-		return tx.CreateBucket(scheme.ReceiptBucket)
-	})
-	require.NoError(t, err)
-
 	t.Run("error message serialization", func(tr *testing.T) {
+		tr.Parallel()
+
+		db, cleanup := testDB(tr)
+		defer cleanup()
+
 		// Test that error messages with special characters serialize correctly
 		specialErrorMsg := "error with unicode: \u6d4b\u8bd5 and symbols: !@#$%^&*()[]{}|;':\",./<>?"
 		receipt := createTestReceipt("unicode-error", specialErrorMsg)
@@ -315,6 +329,11 @@ func TestReceiptErrorHandling(t *testing.T) {
 	})
 
 	t.Run("long error message", func(tr *testing.T) {
+		tr.Parallel()
+
+		db, cleanup := testDB(tr)
+		defer cleanup()
+
 		// Test with a very long error message
 		longError := "this is a very long error message that simulates a detailed stack trace or " +
 			"comprehensive error description that might occur in complex transaction processing scenarios " +
@@ -349,6 +368,8 @@ func TestErrorMethodContract(t *testing.T) {
 	t.Parallel()
 
 	t.Run("error method contract for success", func(tr *testing.T) {
+		tr.Parallel()
+
 		receipt := createTestReceipt("success", "")
 		receipt.ErrorMsg = ""
 
@@ -361,6 +382,8 @@ func TestErrorMethodContract(t *testing.T) {
 	})
 
 	t.Run("error method contract for failure", func(tr *testing.T) {
+		tr.Parallel()
+
 		receipt := createTestReceipt("failure", "transaction failed")
 
 		// For failed transactions, Error() should return the error message
@@ -372,6 +395,8 @@ func TestErrorMethodContract(t *testing.T) {
 	})
 
 	t.Run("error and status consistency", func(tr *testing.T) {
+		tr.Parallel()
+
 		testCases := []struct {
 			name           string
 			errorMsg       string
@@ -384,6 +409,8 @@ func TestErrorMethodContract(t *testing.T) {
 
 		for _, tc := range testCases {
 			tr.Run(tc.name, func(tcr *testing.T) {
+				tcr.Parallel()
+
 				receipt := createTestReceipt(tc.name, tc.errorMsg)
 
 				assert.Equal(tcr, tc.expectedStatus, receipt.Status())

@@ -436,6 +436,8 @@ func TestRegisterEvent_WETH_Deposit_Generic(t *testing.T) {
 }
 
 func TestRegisterEvent_UniV2_Sync_Generic(t *testing.T) {
+	t.Parallel()
+
 	// UniswapV2 Pair Sync(uint112 reserve0, uint112 reserve1)
 	type UniV2Sync struct {
 		Reserve0 *big.Int `abi:"reserve0"`
@@ -514,6 +516,8 @@ type uniV2Swap struct {
 }
 
 func TestCustomEvent_UniswapV2_Swap_DecodeDirect(t *testing.T) {
+	t.Parallel()
+
 	// Build a synthetic log
 	pair := tests.Addr(0xAA)
 	sender := tests.Addr(0x01)
@@ -581,6 +585,8 @@ type SwapResult struct {
 }
 
 func TestCustomEvent_UniswapV2_Swap_Registry(t *testing.T) {
+	t.Parallel()
+
 	const abiJSON = `[
 	  {"type":"event","name":"Swap","inputs":[
 	    {"indexed":true,"name":"sender","type":"address"},
@@ -674,6 +680,8 @@ type DepositResult struct {
 }
 
 func TestCustomEvents_Approval_And_WETH_Deposit(t *testing.T) {
+	t.Parallel()
+
 	// ABIs
 	erc20ABI, err := abi.JSON(strings.NewReader(`[
 	  {"type":"event","name":"Approval","inputs":[

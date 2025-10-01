@@ -23,6 +23,7 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
 
+//nolint:paralleltest //uses full application
 func TestExampleAppchain(t *testing.T) {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
