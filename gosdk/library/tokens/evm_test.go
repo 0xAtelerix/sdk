@@ -11,18 +11,20 @@ import (
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
+
+	"github.com/0xAtelerix/sdk/gosdk/library/tests"
 )
 
 func TestExtractErc20Transfer(t *testing.T) {
-	token := addr(0xAA)
-	from := addr(0x01)
-	to := addr(0x02)
+	token := tests.Addr(0xAA)
+	from := tests.Addr(0x01)
+	to := tests.Addr(0x02)
 	amt := big.NewInt(123456789)
 
 	lg := gethtypes.Log{
 		Address: token,
-		Topics:  []common.Hash{SigTransfer, addrTopic(from), addrTopic(to)},
-		Data:    mustPack(t, erc20Data, amt),
+		Topics:  []common.Hash{SigTransfer, tests.AddrTopic(from), tests.AddrTopic(to)},
+		Data:    tests.MustPack(t, erc20Data, amt),
 		Index:   0,
 	}
 	rc := gethtypes.Receipt{
@@ -47,17 +49,17 @@ func TestExtractErc20Transfer(t *testing.T) {
 }
 
 func TestExtractErc721Transfer(t *testing.T) {
-	token := addr(0xBB)
-	from := addr(0x03)
-	to := addr(0x04)
+	token := tests.Addr(0xBB)
+	from := tests.Addr(0x03)
+	to := tests.Addr(0x04)
 	tokenID := big.NewInt(42)
 
 	lg := gethtypes.Log{
 		Address: token,
 		Topics: []common.Hash{
 			SigTransfer,
-			addrTopic(from),
-			addrTopic(to),
+			tests.AddrTopic(from),
+			tests.AddrTopic(to),
 			common.BigToHash(tokenID),
 		},
 		Data:  nil, // ERC-721 tokenId is indexed, no data
@@ -83,16 +85,16 @@ func TestExtractErc721Transfer(t *testing.T) {
 }
 
 func TestExtractErc1155Single(t *testing.T) {
-	token := addr(0xCC)
-	from := addr(0x05)
-	to := addr(0x06)
+	token := tests.Addr(0xCC)
+	from := tests.Addr(0x05)
+	to := tests.Addr(0x06)
 	id := big.NewInt(7)
 	val := big.NewInt(99)
 
 	lg := gethtypes.Log{
 		Address: token,
-		Topics:  []common.Hash{SigTransferSingle, {}, addrTopic(from), addrTopic(to)},
-		Data:    mustPack(t, erc1155DataS, id, val),
+		Topics:  []common.Hash{SigTransferSingle, {}, tests.AddrTopic(from), tests.AddrTopic(to)},
+		Data:    tests.MustPack(t, erc1155DataS, id, val),
 		Index:   2,
 	}
 	rc := gethtypes.Receipt{
@@ -114,16 +116,16 @@ func TestExtractErc1155Single(t *testing.T) {
 }
 
 func TestExtractErc1155Batch(t *testing.T) {
-	token := addr(0xDD)
-	from := addr(0x07)
-	to := addr(0x08)
+	token := tests.Addr(0xDD)
+	from := tests.Addr(0x07)
+	to := tests.Addr(0x08)
 	ids := []*big.Int{big.NewInt(1), big.NewInt(2), big.NewInt(3)}
 	vals := []*big.Int{big.NewInt(10), big.NewInt(20), big.NewInt(30)}
 
 	lg := gethtypes.Log{
 		Address: token,
-		Topics:  []common.Hash{SigTransferBatch, {}, addrTopic(from), addrTopic(to)},
-		Data:    mustPack(t, erc1155DataB, ids, vals),
+		Topics:  []common.Hash{SigTransferBatch, {}, tests.AddrTopic(from), tests.AddrTopic(to)},
+		Data:    tests.MustPack(t, erc1155DataB, ids, vals),
 		Index:   3,
 	}
 	rc := gethtypes.Receipt{
@@ -158,23 +160,23 @@ func TestExtractErc1155Batch(t *testing.T) {
 }
 
 func TestMixedLogsOneReceipt(t *testing.T) {
-	token20 := addr(0xA1)
-	token721 := addr(0xA2)
-	from := addr(0x10)
-	to := addr(0x11)
+	token20 := tests.Addr(0xA1)
+	token721 := tests.Addr(0xA2)
+	from := tests.Addr(0x10)
+	to := tests.Addr(0x11)
 
 	erc20 := gethtypes.Log{
 		Address: token20,
-		Topics:  []common.Hash{SigTransfer, addrTopic(from), addrTopic(to)},
-		Data:    mustPack(t, erc20Data, big.NewInt(5)),
+		Topics:  []common.Hash{SigTransfer, tests.AddrTopic(from), tests.AddrTopic(to)},
+		Data:    tests.MustPack(t, erc20Data, big.NewInt(5)),
 		Index:   0,
 	}
 	erc721 := gethtypes.Log{
 		Address: token721,
 		Topics: []common.Hash{
 			SigTransfer,
-			addrTopic(from),
-			addrTopic(to),
+			tests.AddrTopic(from),
+			tests.AddrTopic(to),
 			common.BigToHash(big.NewInt(77)),
 		},
 		Index: 1,
@@ -198,7 +200,7 @@ func TestIgnoresNonTransferLogs(t *testing.T) {
 	otherSig := crypto.Keccak256Hash([]byte("SomethingElse(bytes32)"))
 
 	lg := gethtypes.Log{
-		Address: addr(0xEE),
+		Address: tests.Addr(0xEE),
 		Topics:  []common.Hash{otherSig},
 		Index:   7,
 	}
@@ -214,15 +216,15 @@ func TestIgnoresNonTransferLogs(t *testing.T) {
 func TestDefaultRegistry_ERC20(t *testing.T) {
 	reg := NewDefaultEvmTransferRegistry()
 
-	token := addr(0xAA)
-	from := addr(0x01)
-	to := addr(0x02)
+	token := tests.Addr(0xAA)
+	from := tests.Addr(0x01)
+	to := tests.Addr(0x02)
 	amt := big.NewInt(123456789)
 
 	lg := &gethtypes.Log{
 		Address: token,
-		Topics:  []common.Hash{SigTransfer, addrTopic(from), addrTopic(to)},
-		Data:    mustPack(t, erc20Data, amt),
+		Topics:  []common.Hash{SigTransfer, tests.AddrTopic(from), tests.AddrTopic(to)},
+		Data:    tests.MustPack(t, erc20Data, amt),
 		Index:   0,
 	}
 	tx := common.HexToHash("0x1")
@@ -246,17 +248,17 @@ func TestDefaultRegistry_ERC20(t *testing.T) {
 func TestDefaultRegistry_ERC721(t *testing.T) {
 	reg := NewDefaultEvmTransferRegistry()
 
-	token := addr(0xBB)
-	from := addr(0x03)
-	to := addr(0x04)
+	token := tests.Addr(0xBB)
+	from := tests.Addr(0x03)
+	to := tests.Addr(0x04)
 	tokenID := big.NewInt(42)
 
 	lg := &gethtypes.Log{
 		Address: token,
 		Topics: []common.Hash{
 			SigTransfer,
-			addrTopic(from),
-			addrTopic(to),
+			tests.AddrTopic(from),
+			tests.AddrTopic(to),
 			common.BigToHash(tokenID),
 		},
 		Data:  nil, // ERC-721 tokenId is indexed, no data
@@ -284,16 +286,16 @@ func TestDefaultRegistry_ERC721(t *testing.T) {
 func TestDefaultRegistry_ERC1155_Single(t *testing.T) {
 	reg := NewDefaultEvmTransferRegistry()
 
-	token := addr(0xCC)
-	from := addr(0x05)
-	to := addr(0x06)
+	token := tests.Addr(0xCC)
+	from := tests.Addr(0x05)
+	to := tests.Addr(0x06)
 	id := big.NewInt(7)
 	val := big.NewInt(99)
 
 	lg := &gethtypes.Log{
 		Address: token,
-		Topics:  []common.Hash{SigTransferSingle, {}, addrTopic(from), addrTopic(to)},
-		Data:    mustPack(t, erc1155DataS, id, val),
+		Topics:  []common.Hash{SigTransferSingle, {}, tests.AddrTopic(from), tests.AddrTopic(to)},
+		Data:    tests.MustPack(t, erc1155DataS, id, val),
 		Index:   2,
 	}
 	tx := common.HexToHash("0x3")
@@ -316,16 +318,16 @@ func TestDefaultRegistry_ERC1155_Single(t *testing.T) {
 func TestDefaultRegistry_ERC1155_Batch(t *testing.T) {
 	reg := NewDefaultEvmTransferRegistry()
 
-	token := addr(0xDD)
-	from := addr(0x07)
-	to := addr(0x08)
+	token := tests.Addr(0xDD)
+	from := tests.Addr(0x07)
+	to := tests.Addr(0x08)
 	ids := []*big.Int{big.NewInt(1), big.NewInt(2), big.NewInt(3)}
 	vals := []*big.Int{big.NewInt(10), big.NewInt(20), big.NewInt(30)}
 
 	lg := &gethtypes.Log{
 		Address: token,
-		Topics:  []common.Hash{SigTransferBatch, {}, addrTopic(from), addrTopic(to)},
-		Data:    mustPack(t, erc1155DataB, ids, vals),
+		Topics:  []common.Hash{SigTransferBatch, {}, tests.AddrTopic(from), tests.AddrTopic(to)},
+		Data:    tests.MustPack(t, erc1155DataB, ids, vals),
 		Index:   3,
 	}
 	tx := common.HexToHash("0x4")
@@ -376,15 +378,15 @@ func TestRegisterEvent_WETH_Deposit_Generic(t *testing.T) {
 	require.NoError(t, err)
 
 	// build a matching log
-	weth := addr(0xEE)
-	dst := addr(0x33)
+	weth := tests.Addr(0xEE)
+	dst := tests.Addr(0x33)
 	wad := big.NewInt(777)
 	sig := crypto.Keccak256Hash([]byte("Deposit(address,uint256)"))
 
 	lg := &gethtypes.Log{
 		Address: weth,
-		Topics:  []common.Hash{sig, addrTopic(dst)},
-		Data:    mustPack(t, abi.Arguments{{Type: mustType(t, "uint256")}}, wad),
+		Topics:  []common.Hash{sig, tests.AddrTopic(dst)},
+		Data:    tests.MustPack(t, abi.Arguments{{Type: tests.MustType(t, "uint256")}}, wad),
 		Index:   9,
 	}
 	tx := common.HexToHash("0xabc")
@@ -430,7 +432,7 @@ func TestRegisterEvent_UniV2_Sync_Generic(t *testing.T) {
 	require.NoError(t, err)
 
 	// Build a log
-	pair := addr(0xAA)
+	pair := tests.Addr(0xAA)
 	sig := crypto.Keccak256Hash([]byte("Sync(uint112,uint112)"))
 	r0 := new(big.Int).SetUint64(12345)
 	r1 := new(big.Int).SetUint64(67890)
@@ -438,9 +440,9 @@ func TestRegisterEvent_UniV2_Sync_Generic(t *testing.T) {
 	lg := &gethtypes.Log{
 		Address: pair,
 		Topics:  []common.Hash{sig},
-		Data: mustPack(t, abi.Arguments{
-			{Type: mustType(t, "uint112")},
-			{Type: mustType(t, "uint112")},
+		Data: tests.MustPack(t, abi.Arguments{
+			{Type: tests.MustType(t, "uint112")},
+			{Type: tests.MustType(t, "uint112")},
 		}, r0, r1),
 		Index: 2,
 	}
@@ -487,22 +489,30 @@ type uniV2Swap struct {
 
 func TestCustomEvent_UniswapV2_Swap_DecodeDirect(t *testing.T) {
 	// Build a synthetic log
-	pair := addr(0xAA)
-	sender := addr(0x01)
-	dst := addr(0x02)
+	pair := tests.Addr(0xAA)
+	sender := tests.Addr(0x01)
+	dst := tests.Addr(0x02)
 
 	sig := crypto.Keccak256Hash([]byte("Swap(address,uint256,uint256,uint256,uint256,address)"))
 	dataArgs := abi.Arguments{
-		{Type: mustType(t, "uint256")}, // amount0In
-		{Type: mustType(t, "uint256")}, // amount1In
-		{Type: mustType(t, "uint256")}, // amount0Out
-		{Type: mustType(t, "uint256")}, // amount1Out
+		{Type: tests.MustType(t, "uint256")}, // amount0In
+		{Type: tests.MustType(t, "uint256")}, // amount1In
+		{Type: tests.MustType(t, "uint256")}, // amount0Out
+		{Type: tests.MustType(t, "uint256")}, // amount1Out
 	}
-	data := mustPack(t, dataArgs, big.NewInt(0), big.NewInt(1000), big.NewInt(500), big.NewInt(0))
+
+	data := tests.MustPack(
+		t,
+		dataArgs,
+		big.NewInt(0),
+		big.NewInt(1000),
+		big.NewInt(500),
+		big.NewInt(0),
+	)
 
 	lg := &gethtypes.Log{
 		Address: pair,
-		Topics:  []common.Hash{sig, addrTopic(sender), addrTopic(dst)},
+		Topics:  []common.Hash{sig, tests.AddrTopic(sender), tests.AddrTopic(dst)},
 		Data:    data,
 		Index:   0,
 	}
@@ -579,20 +589,20 @@ func TestCustomEvent_UniswapV2_Swap_Registry(t *testing.T) {
 	)
 
 	// Build a log
-	pair := addr(0xAB)
-	sender := addr(0x0A)
-	dst := addr(0x0B)
+	pair := tests.Addr(0xAB)
+	sender := tests.Addr(0x0A)
+	dst := tests.Addr(0x0B)
 	dataArgs := abi.Arguments{
-		{Type: mustType(t, "uint256")}, // amount0In
-		{Type: mustType(t, "uint256")}, // amount1In
-		{Type: mustType(t, "uint256")}, // amount0Out
-		{Type: mustType(t, "uint256")}, // amount1Out
+		{Type: tests.MustType(t, "uint256")}, // amount0In
+		{Type: tests.MustType(t, "uint256")}, // amount1In
+		{Type: tests.MustType(t, "uint256")}, // amount0Out
+		{Type: tests.MustType(t, "uint256")}, // amount1Out
 	}
-	data := mustPack(t, dataArgs, big.NewInt(10), big.NewInt(0), big.NewInt(0), big.NewInt(9))
+	data := tests.MustPack(t, dataArgs, big.NewInt(10), big.NewInt(0), big.NewInt(0), big.NewInt(9))
 
 	lg := &gethtypes.Log{
 		Address: pair,
-		Topics:  []common.Hash{sig, addrTopic(sender), addrTopic(dst)},
+		Topics:  []common.Hash{sig, tests.AddrTopic(sender), tests.AddrTopic(dst)},
 		Data:    data,
 		Index:   5,
 	}
@@ -689,15 +699,15 @@ func TestCustomEvents_Approval_And_WETH_Deposit(t *testing.T) {
 	)
 
 	// Build logs
-	token := addr(0xFE)
-	owner := addr(0x11)
-	spender := addr(0x22)
+	token := tests.Addr(0xFE)
+	owner := tests.Addr(0x11)
+	spender := tests.Addr(0x22)
 	amount := big.NewInt(1234)
 
 	lgApproval := &gethtypes.Log{
 		Address: token,
-		Topics:  []common.Hash{sigApproval, addrTopic(owner), addrTopic(spender)},
-		Data:    mustPack(t, abi.Arguments{{Type: mustType(t, "uint256")}}, amount),
+		Topics:  []common.Hash{sigApproval, tests.AddrTopic(owner), tests.AddrTopic(spender)},
+		Data:    tests.MustPack(t, abi.Arguments{{Type: tests.MustType(t, "uint256")}}, amount),
 		Index:   0,
 	}
 	rc := &gethtypes.Receipt{TxHash: common.HexToHash("0xabc")}
@@ -716,14 +726,14 @@ func TestCustomEvents_Approval_And_WETH_Deposit(t *testing.T) {
 	}
 
 	// WETH Deposit
-	weth := addr(0xEE)
-	dst := addr(0x33)
+	weth := tests.Addr(0xEE)
+	dst := tests.Addr(0x33)
 	wad := big.NewInt(777)
 
 	lgDeposit := &gethtypes.Log{
 		Address: weth,
-		Topics:  []common.Hash{sigDeposit, addrTopic(dst)},
-		Data:    mustPack(t, abi.Arguments{{Type: mustType(t, "uint256")}}, wad),
+		Topics:  []common.Hash{sigDeposit, tests.AddrTopic(dst)},
+		Data:    tests.MustPack(t, abi.Arguments{{Type: tests.MustType(t, "uint256")}}, wad),
 		Index:   1,
 	}
 
@@ -739,39 +749,4 @@ func TestCustomEvents_Approval_And_WETH_Deposit(t *testing.T) {
 	if dout[0].Wad.Cmp(wad) != 0 {
 		t.Fatal("deposit wad mismatch")
 	}
-}
-
-func mustType(t *testing.T, s string) abi.Type {
-	t.Helper()
-
-	tt, err := abi.NewType(s, "", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return tt
-}
-
-func addr(i byte) common.Address {
-	var a common.Address
-
-	a[19] = i
-
-	return a
-}
-
-func addrTopic(a common.Address) common.Hash {
-	var h common.Hash
-	copy(h[12:], a[:]) // ABI-encoded indexed address (left-padded to 32)
-
-	return h
-}
-
-func mustPack(t *testing.T, args abi.Arguments, vs ...any) []byte {
-	t.Helper()
-
-	b, err := args.Pack(vs...)
-	require.NoError(t, err)
-
-	return b
 }

@@ -3,6 +3,7 @@ package subscriber
 import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ledgerwatch/erigon-lib/kv"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/library"
@@ -18,7 +19,7 @@ func AddEVMEvent[T any](
 	a abi.ABI,
 	eventName string,
 	kind string,
-	fn func(tokens.Event[T]),
+	fn func(tokens.Event[T], kv.RwTx),
 ) (sig common.Hash, err error) {
 	// 1) register event → (sig, filter)
 	sig, filter, err := tokens.RegisterEvent[T](s.EVMEventRegistry, a, eventName, kind)

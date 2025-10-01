@@ -16,8 +16,8 @@ import (
 )
 
 type Subscriber struct {
-	ethContracts map[apptypes.ChainType]map[library.EthereumAddress]struct{} // chainID -> EthereumContractAddress
-	solAddresses map[apptypes.ChainType]map[library.SolanaAddress]struct{}   // chainID -> SolanaAddress
+	EthContracts map[apptypes.ChainType]map[library.EthereumAddress]struct{} // chainID -> EthereumContractAddress
+	SolAddresses map[apptypes.ChainType]map[library.SolanaAddress]struct{}   // chainID -> SolanaAddress
 
 	EVMEventRegistry *tokens.Registry[tokens.AppEvent]
 	EVMHandlers      map[string]AppEventHandler // value is tokens.EventFilter[T] for various Ts. Not persistent - MUST be initialized be a user
@@ -39,8 +39,8 @@ func NewSubscriber(ctx context.Context, tx kv.RoDB) (*Subscriber, error) {
 	defer roTx.Rollback()
 
 	sub := &Subscriber{
-		ethContracts:        make(map[apptypes.ChainType]map[library.EthereumAddress]struct{}),
-		solAddresses:        make(map[apptypes.ChainType]map[library.SolanaAddress]struct{}),
+		EthContracts:        make(map[apptypes.ChainType]map[library.EthereumAddress]struct{}),
+		SolAddresses:        make(map[apptypes.ChainType]map[library.SolanaAddress]struct{}),
 		EVMEventRegistry:    tokens.NewRegistry[tokens.AppEvent](),
 		EVMHandlers:         make(map[string]AppEventHandler),
 		SolanaEventRegistry: tokens.NewRegistry[tokens.AppEvent](),
@@ -48,7 +48,7 @@ func NewSubscriber(ctx context.Context, tx kv.RoDB) (*Subscriber, error) {
 		deletedSolAddresses: make(map[apptypes.ChainType]map[library.SolanaAddress]struct{}),
 	}
 
-	sub.ethContracts, sub.solAddresses, err = loadAllSubscriptions(roTx)
+	sub.EthContracts, sub.SolAddresses, err = loadAllSubscriptions(roTx)
 	if err != nil {
 		return nil, err
 	}
@@ -64,12 +64,12 @@ func (s *Subscriber) SubscribeEthContract(
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.ethContracts[chainID]; !ok {
-		s.ethContracts[chainID] = make(map[library.EthereumAddress]struct{})
+	if _, ok := s.EthContracts[chainID]; !ok {
+		s.EthContracts[chainID] = make(map[library.EthereumAddress]struct{})
 	}
 
 	delete(s.deletedEthContracts[chainID], contract)
-	s.ethContracts[chainID][contract] = struct{}{}
+	s.EthContracts[chainID][contract] = struct{}{}
 
 	if len(h) > 0 {
 		if s.EVMHandlers == nil {
@@ -92,7 +92,7 @@ func (s *Subscriber) UnsubscribeEthContract(
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.ethContracts[chainID]; !ok {
+	if _, ok := s.EthContracts[chainID]; !ok {
 		return
 	}
 
@@ -100,7 +100,7 @@ func (s *Subscriber) UnsubscribeEthContract(
 		s.deletedEthContracts[chainID] = make(map[library.EthereumAddress]struct{})
 	}
 
-	delete(s.ethContracts[chainID], contract)
+	delete(s.EthContracts[chainID], contract)
 
 	s.deletedEthContracts[chainID][contract] = struct{}{}
 
@@ -121,15 +121,15 @@ func (s *Subscriber) IsEthSubscription(
 	defer s.mu.RUnlock()
 
 	// if there is no subscriptions, give all blocks
-	if len(s.ethContracts[chainID]) == 0 {
+	if len(s.EthContracts[chainID]) == 0 {
 		return true
 	}
 
-	if _, ok := s.ethContracts[chainID]; !ok {
+	if _, ok := s.EthContracts[chainID]; !ok {
 		return false
 	}
 
-	_, ok := s.ethContracts[chainID][contract]
+	_, ok := s.EthContracts[chainID][contract]
 
 	return ok
 }
@@ -145,13 +145,13 @@ func (s *Subscriber) SubscribeSolanaAddress(
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.solAddresses[chainID]; !ok {
-		s.solAddresses[chainID] = make(map[library.SolanaAddress]struct{})
+	if _, ok := s.SolAddresses[chainID]; !ok {
+		s.SolAddresses[chainID] = make(map[library.SolanaAddress]struct{})
 	}
 
 	for _, address := range addresses {
 		delete(s.deletedSolAddresses[chainID], address)
-		s.solAddresses[chainID][address] = struct{}{}
+		s.SolAddresses[chainID][address] = struct{}{}
 	}
 }
 
@@ -163,15 +163,15 @@ func (s *Subscriber) IsSolanaSubscription(
 	defer s.mu.RUnlock()
 
 	// if there is no subscriptions, give all blocks
-	if len(s.solAddresses[chainID]) == 0 {
+	if len(s.SolAddresses[chainID]) == 0 {
 		return true
 	}
 
-	if _, ok := s.solAddresses[chainID]; !ok {
+	if _, ok := s.SolAddresses[chainID]; !ok {
 		return false
 	}
 
-	if _, ok := s.solAddresses[chainID][address]; !ok {
+	if _, ok := s.SolAddresses[chainID][address]; !ok {
 		return false
 	}
 
@@ -189,7 +189,7 @@ func (s *Subscriber) UnsubscribeSolanaAddress(
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.solAddresses[chainID]; !ok {
+	if _, ok := s.SolAddresses[chainID]; !ok {
 		return
 	}
 
@@ -198,7 +198,7 @@ func (s *Subscriber) UnsubscribeSolanaAddress(
 	}
 
 	for _, address := range addresses {
-		delete(s.solAddresses[chainID], address)
+		delete(s.SolAddresses[chainID], address)
 
 		s.deletedSolAddresses[chainID][address] = struct{}{}
 	}
@@ -214,7 +214,7 @@ func (s *Subscriber) Store(tx kv.RwTx) error {
 	}
 
 	// Ensure inner maps exist for chains referenced by pending ops
-	for chainID := range s.ethContracts {
+	for chainID := range s.EthContracts {
 		if evmSet[chainID] == nil {
 			evmSet[chainID] = make(map[library.EthereumAddress]struct{})
 		}
@@ -226,7 +226,7 @@ func (s *Subscriber) Store(tx kv.RwTx) error {
 		}
 	}
 
-	for chainID := range s.solAddresses {
+	for chainID := range s.SolAddresses {
 		if solSet[chainID] == nil {
 			solSet[chainID] = make(map[library.SolanaAddress]struct{})
 		}
@@ -252,13 +252,13 @@ func (s *Subscriber) Store(tx kv.RwTx) error {
 	}
 
 	// 3) Apply appends (merge additions)
-	for chainID, addSet := range s.ethContracts {
+	for chainID, addSet := range s.EthContracts {
 		for addr := range addSet {
 			evmSet[chainID][addr] = struct{}{}
 		}
 	}
 
-	for chainID, addSet := range s.solAddresses {
+	for chainID, addSet := range s.SolAddresses {
 		for addr := range addSet {
 			solSet[chainID][addr] = struct{}{}
 		}

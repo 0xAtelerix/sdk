@@ -45,6 +45,7 @@ type MultichainStateAccess struct {
 }
 
 type MultichainConfig map[apptypes.ChainType]string // chainID, chainDBpath
+
 func NewMultichainStateAccessDB(cfg MultichainConfig) (map[apptypes.ChainType]kv.RoDB, error) {
 	stateAccessDBs := make(map[apptypes.ChainType]kv.RoDB)
 	for chainID, path := range cfg {

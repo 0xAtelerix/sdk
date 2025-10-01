@@ -3,8 +3,14 @@ package subscriber
 import (
 	"bytes"
 	"encoding/binary"
+	"math/big"
+	"strings"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
@@ -13,6 +19,8 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/library"
+	"github.com/0xAtelerix/sdk/gosdk/library/tests"
+	"github.com/0xAtelerix/sdk/gosdk/library/tokens"
 	"github.com/0xAtelerix/sdk/gosdk/scheme"
 )
 
@@ -58,10 +66,14 @@ func Test_cmpAddr_Solana(t *testing.T) {
 
 func newSubscriber() *Subscriber {
 	return &Subscriber{
-		ethContracts:        make(map[apptypes.ChainType]map[library.EthereumAddress]struct{}),
-		solAddresses:        make(map[apptypes.ChainType]map[library.SolanaAddress]struct{}),
+		EthContracts:        make(map[apptypes.ChainType]map[library.EthereumAddress]struct{}),
+		SolAddresses:        make(map[apptypes.ChainType]map[library.SolanaAddress]struct{}),
 		deletedEthContracts: make(map[apptypes.ChainType]map[library.EthereumAddress]struct{}),
 		deletedSolAddresses: make(map[apptypes.ChainType]map[library.SolanaAddress]struct{}),
+
+		EVMEventRegistry:    tokens.NewRegistry[tokens.AppEvent](),
+		EVMHandlers:         make(map[string]AppEventHandler),
+		SolanaEventRegistry: tokens.NewRegistry[tokens.AppEvent](),
 	}
 }
 
@@ -233,7 +245,7 @@ func Test_IsSolanaSubscription(t *testing.T) {
 	addr := mkSol(0x09)
 
 	// Manually set up to avoid the current Subscribe bug.
-	s.solAddresses[chainID] = map[library.SolanaAddress]struct{}{addr: {}}
+	s.SolAddresses[chainID] = map[library.SolanaAddress]struct{}{addr: {}}
 
 	require.True(t, s.IsSolanaSubscription(chainID, addr))
 	require.False(t, s.IsSolanaSubscription(chainID, mkSol(0xAA)))
@@ -502,4 +514,288 @@ func Test_Store_Persistency_DeleteWholeChainThenReAdd(t *testing.T) {
 	require.Empty(t, gotSol)
 
 	require.Equal(t, map[library.EthereumAddress]struct{}{ethY: {}}, gotEth[library.BNBChainID])
+}
+
+const wethDepositkind = "weth.deposit"
+
+type wethDeposit struct {
+	Dst common.Address `abi:"dst"`
+	Wad *big.Int       `abi:"wad"`
+}
+
+func Test_AddEVMEvent_RegistersAndInvokesHandler_ForSubscribedEmitter(t *testing.T) {
+	t.Parallel()
+
+	// Arrange subscriber
+	s := newSubscriber()
+
+	chainID := apptypes.ChainType(1)
+	contract := mkEth(0xFE) // subscription key (converted to go-eth Address below)
+
+	// Build ABI: event Deposit(address indexed dst, uint256 wad)
+	a, err := abi.JSON(strings.NewReader(`[
+	  {"type":"event","name":"Deposit","inputs":[
+	    {"indexed":true,"name":"dst","type":"address"},
+	    {"indexed":false,"name":"wad","type":"uint256"}
+	  ]}
+	]`))
+	require.NoError(t, err)
+
+	var (
+		got    tokens.Event[wethDeposit]
+		called int
+	)
+
+	// Register + attach handler via AddEVMEvent
+	_, err = AddEVMEvent[wethDeposit](
+		s,
+		chainID,
+		contract,
+		a, "Deposit", wethDepositkind,
+		func(ev tokens.Event[wethDeposit], _ kv.RwTx) {
+			called++
+			got = ev
+		},
+	)
+	require.NoError(t, err)
+
+	// Build a matching log emitted by *the subscribed contract*.
+	wethAddr := common.BytesToAddress(bytesOf(contract))
+	dst := common.HexToAddress("0x00000000000000000000000000000000000000AA")
+	sig := crypto.Keccak256Hash([]byte("Deposit(address,uint256)"))
+
+	data := tests.MustPack(t, abi.Arguments{{Type: tests.MustType(t, "uint256")}}, big.NewInt(777))
+	lg := &gethtypes.Log{
+		Address: wethAddr, // <-- authoritative emitter!
+		Topics:  []common.Hash{sig, tests.AddrTopic(dst)},
+		Data:    data,
+		Index:   5,
+	}
+	txHash := common.HexToHash("0x123")
+
+	// Decode via registry
+	evs, matched, err := s.EVMEventRegistry.HandleLog(lg, txHash)
+	require.NoError(t, err)
+	require.True(t, matched)
+	require.Len(t, evs, 1)
+
+	// Gate by subscription using log.Address (NOT tx.To) — as batch loop does.
+	ok := s.IsEthSubscription(chainID, library.EthereumAddress(wethAddr))
+	require.True(t, ok, "emitter should be subscribed")
+
+	db := openTestDB(t)
+	defer db.Close()
+
+	tx, err := db.BeginRw(t.Context())
+	require.NoError(t, err)
+
+	defer tx.Rollback()
+
+	// Dispatch to the kind's handler
+	h, exists := s.EVMHandlers[wethDepositkind]
+	require.True(t, exists)
+	h.Handle(evs, tx)
+
+	// Assert handler received typed event
+	require.Equal(t, 1, called)
+	require.Equal(t, wethDepositkind, got.EventKind)
+	require.Equal(t, wethAddr.Hex(), got.Contract)
+	require.Equal(t, dst, got.SubscribedEvent.Dst)
+	require.Zero(t, got.SubscribedEvent.Wad.Cmp(big.NewInt(777)))
+	require.Equal(t, uint(5), got.LogIndex)
+	require.Equal(t, txHash.Hex(), got.TxHash)
+}
+
+func Test_AddEVMEvent_NotInvoked_WhenEmitterNotSubscribed(t *testing.T) {
+	t.Parallel()
+
+	s := newSubscriber()
+
+	chainID := apptypes.ChainType(1)
+	contract := mkEth(0xAA) // we subscribe this one
+
+	// ABI
+	a, err := abi.JSON(strings.NewReader(`[
+	  {"type":"event","name":"Deposit","inputs":[
+	    {"indexed":true,"name":"dst","type":"address"},
+	    {"indexed":false,"name":"wad","type":"uint256"}
+	  ]}
+	]`))
+	require.NoError(t, err)
+
+	var called int
+
+	_, err = AddEVMEvent[wethDeposit](
+		s, chainID, contract, a, "Deposit", wethDepositkind,
+		func(tokens.Event[wethDeposit], kv.RwTx) {
+			called++
+		},
+	)
+	require.NoError(t, err)
+
+	// Log comes from a DIFFERENT contract (not subscribed)
+	other := common.HexToAddress("0x0000000000000000000000000000000000000BAD")
+	sig := crypto.Keccak256Hash([]byte("Deposit(address,uint256)"))
+	dst := common.HexToAddress("0x00000000000000000000000000000000000000BB")
+	data := tests.MustPack(t, abi.Arguments{{Type: tests.MustType(t, "uint256")}}, big.NewInt(1))
+	lg := &gethtypes.Log{
+		Address: other, // <- not subscribed
+		Topics:  []common.Hash{sig, tests.AddrTopic(dst)},
+		Data:    data,
+		Index:   0,
+	}
+	txHash := common.HexToHash("0x9")
+
+	evs, matched, err := s.EVMEventRegistry.HandleLog(lg, txHash)
+	require.NoError(t, err)
+	require.True(t, matched)
+	require.Len(t, evs, 1)
+
+	// Subscription gate should block dispatch
+	ok := s.IsEthSubscription(chainID, library.EthereumAddress(other))
+	require.False(t, ok)
+
+	db := openTestDB(t)
+	defer db.Close()
+
+	tx, err := db.BeginRw(t.Context())
+	require.NoError(t, err)
+
+	defer tx.Rollback()
+
+	// (Simulate batch loop: since not subscribed, don't dispatch)
+	if ok {
+		s.EVMHandlers[wethDepositkind].Handle(evs, tx)
+	}
+
+	require.Equal(t, 0, called)
+}
+
+func Test_AddEVMEvent_MultipleKinds_DispatchSeparately(t *testing.T) {
+	t.Parallel()
+
+	s := newSubscriber()
+	chainID := apptypes.ChainType(1)
+
+	contractA := mkEth(0xA1)
+	contractB := mkEth(0xB2)
+
+	// Two ABIs with different events
+	abiA, err := abi.JSON(strings.NewReader(`[
+	  {"type":"event","name":"Deposit","inputs":[
+	    {"indexed":true,"name":"dst","type":"address"},
+	    {"indexed":false,"name":"wad","type":"uint256"}
+	  ]}
+	]`))
+	require.NoError(t, err)
+
+	type erc20Approval struct {
+		Owner   common.Address `abi:"owner"`
+		Spender common.Address `abi:"spender"`
+		Value   *big.Int       `abi:"value"`
+	}
+
+	abiB, err := abi.JSON(strings.NewReader(`[
+	  {"type":"event","name":"Approval","inputs":[
+	    {"indexed":true,"name":"owner","type":"address"},
+	    {"indexed":true,"name":"spender","type":"address"},
+	    {"indexed":false,"name":"value","type":"uint256"}
+	  ]}
+	]`))
+	require.NoError(t, err)
+
+	// Register + attach both
+	var depCalls, apprCalls int
+
+	_, err = AddEVMEvent[wethDeposit](s, chainID, contractA, abiA, "Deposit", wethDepositkind,
+		func(tokens.Event[wethDeposit], kv.RwTx) {
+			depCalls++
+		})
+	require.NoError(t, err)
+
+	_, _, err = tokens.RegisterEvent[erc20Approval](
+		s.EVMEventRegistry,
+		abiB,
+		"Approval",
+		"erc20.approval",
+	)
+	require.NoError(t, err)
+
+	// Attach handler manually (simulating AddEVMEvent-like attach)
+	s.SubscribeEthContract(chainID, contractB, NewEVMHandler("erc20.approval",
+		func(evs []tokens.AppEvent) []tokens.Event[erc20Approval] {
+			return tokens.Filter[erc20Approval](evs)
+		},
+		func(tokens.Event[erc20Approval], kv.RwTx) {
+			apprCalls++
+		},
+	))
+
+	// Build one log per contract/kind
+	// A: Deposit
+	dst := common.HexToAddress("0x00000000000000000000000000000000000000A5")
+	lgA := &gethtypes.Log{
+		Address: common.BytesToAddress(bytesOf(contractA)),
+		Topics: []common.Hash{
+			crypto.Keccak256Hash([]byte("Deposit(address,uint256)")),
+			tests.AddrTopic(dst),
+		},
+		Data: tests.MustPack(
+			t,
+			abi.Arguments{{Type: tests.MustType(t, "uint256")}},
+			big.NewInt(10),
+		),
+		Index: 1,
+	}
+
+	// B: Approval
+	owner := common.HexToAddress("0x0000000000000000000000000000000000000C01")
+	spender := common.HexToAddress("0x0000000000000000000000000000000000000C02")
+	lgB := &gethtypes.Log{
+		Address: common.BytesToAddress(bytesOf(contractB)),
+		Topics: []common.Hash{
+			crypto.Keccak256Hash([]byte("Approval(address,address,uint256)")),
+			tests.AddrTopic(owner),
+			tests.AddrTopic(spender),
+		},
+		Data: tests.MustPack(
+			t,
+			abi.Arguments{{Type: tests.MustType(t, "uint256")}},
+			big.NewInt(99),
+		),
+		Index: 2,
+	}
+
+	db := openTestDB(t)
+	defer db.Close()
+
+	tx, err := db.BeginRw(t.Context())
+	require.NoError(t, err)
+
+	defer tx.Rollback()
+
+	// Decode and dispatch both
+	for _, lg := range []*gethtypes.Log{lgA, lgB} {
+		evs, matched, err := s.EVMEventRegistry.HandleLog(lg, common.HexToHash("0xdeadbeef"))
+		require.NoError(t, err)
+		require.True(t, matched)
+
+		emitter := library.EthereumAddress(lg.Address)
+		if s.IsEthSubscription(chainID, emitter) {
+			// group-by-kind (as your batch loop would)
+			byKind := map[string][]tokens.AppEvent{}
+			for _, e := range evs {
+				byKind[e.Kind()] = append(byKind[e.Kind()], e)
+			}
+
+			for k, list := range byKind {
+				if h, ok := s.EVMHandlers[k]; ok {
+					h.Handle(list, tx)
+				}
+			}
+		}
+	}
+
+	require.Equal(t, 1, depCalls, "deposit handler should run once")
+	require.Equal(t, 1, apprCalls, "approval handler should run once")
 }

@@ -102,7 +102,7 @@ blockLoop:
 
 					for k, evs := range byKind {
 						if h, exists := b.Subscriber.EVMHandlers[k]; exists {
-							h.Handle(evs)
+							h.Handle(evs, dbtx)
 						}
 					}
 				}
