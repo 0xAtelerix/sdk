@@ -158,8 +158,3 @@ fi
 echo ""
 echo "📝 Next steps:"
 echo "   • Update your application config with: $EXAMPLE_ADDRESS"
-echo ""
-echo "🧪 Test the contract:"
-echo "   • Deposit: cast send $EXAMPLE_ADDRESS 'deposit(string,uint256)' 'ETH' 1000000000000000000 --rpc-url $RPC_URL --private-key $PRIVATE_KEY"
-echo "   • Swap:    cast send $EXAMPLE_ADDRESS 'swap(string,string,uint256)' 'ETH' 'USDC' 1000000000000000000 --rpc-url $RPC_URL --private-key $PRIVATE_KEY"
-echo ""
