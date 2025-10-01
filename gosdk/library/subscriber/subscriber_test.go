@@ -713,7 +713,7 @@ func Test_AddEVMEvent_MultipleKinds_DispatchSeparately(t *testing.T) {
 		})
 	require.NoError(t, err)
 
-	_, _, err = tokens.RegisterEvent[erc20Approval](
+	_, err = tokens.RegisterEvent[erc20Approval](
 		s.EVMEventRegistry,
 		abiB,
 		"Approval",
@@ -723,9 +723,6 @@ func Test_AddEVMEvent_MultipleKinds_DispatchSeparately(t *testing.T) {
 
 	// Attach handler manually (simulating AddEVMEvent-like attach)
 	s.SubscribeEthContract(chainID, contractB, NewEVMHandler("erc20.approval",
-		func(evs []tokens.AppEvent) []tokens.Event[erc20Approval] {
-			return tokens.Filter[erc20Approval](evs)
-		},
 		func(tokens.Event[erc20Approval], kv.RwTx) {
 			apprCalls++
 		},

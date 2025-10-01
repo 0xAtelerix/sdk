@@ -374,8 +374,10 @@ func TestRegisterEvent_WETH_Deposit_Generic(t *testing.T) {
 
 	// single registry whose result type is Event[wethDeposit]
 	reg := NewRegistry[AppEvent]()
-	_, eventFilter, err := RegisterEvent[wethDeposit](reg, a, "Deposit", "weth.deposit")
+	_, err = RegisterEvent[wethDeposit](reg, a, "Deposit", "weth.deposit")
 	require.NoError(t, err)
+
+	eventFilter := Filter[wethDeposit]
 
 	// build a matching log
 	weth := tests.Addr(0xEE)
@@ -428,8 +430,10 @@ func TestRegisterEvent_UniV2_Sync_Generic(t *testing.T) {
 	require.NoError(t, err)
 
 	reg := NewRegistry[AppEvent]()
-	_, eventFilter, err := RegisterEvent[UniV2Sync](reg, a, "Sync", "univ2.sync")
+	_, err = RegisterEvent[UniV2Sync](reg, a, "Sync", "univ2.sync")
 	require.NoError(t, err)
+
+	eventFilter := Filter[UniV2Sync]
 
 	// Build a log
 	pair := tests.Addr(0xAA)

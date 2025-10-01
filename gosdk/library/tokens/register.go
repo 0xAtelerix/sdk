@@ -34,10 +34,10 @@ func RegisterEvent[T any](
 	a abi.ABI,
 	eventName string,
 	kind string,
-) (common.Hash, EventFilter[T], error) {
+) (common.Hash, error) {
 	ev, ok := a.Events[eventName]
 	if !ok {
-		return common.Hash{}, nil, fmt.Errorf("%w: %s", ErrABIUnknownEvent, eventName)
+		return common.Hash{}, fmt.Errorf("%w: %s", ErrABIUnknownEvent, eventName)
 	}
 
 	sig := ev.ID
@@ -57,5 +57,5 @@ func RegisterEvent[T any](
 		},
 	)
 
-	return sig, Filter[T], nil
+	return sig, nil
 }

@@ -32,12 +32,11 @@ func (h HandlerFor[T]) Handle(evs []tokens.AppEvent, tx kv.RwTx) {
 // returns an interface to hide the type parameter
 func NewEVMHandler[T any](
 	kind string,
-	filter tokens.EventFilter[T],
 	fn func(tokens.Event[T], kv.RwTx),
 ) AppEventHandler {
 	return HandlerFor[T]{
 		EventKind: kind,
-		Filter:    filter,
+		Filter:    tokens.Filter[T],
 		Handler:   fn,
 	}
 }

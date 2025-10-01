@@ -423,7 +423,7 @@ func TestEmitterCall_PropertyBased(t *testing.T) {
 }
 
 func TestGetExternalTransactions_PropertyBased(t *testing.T) {
-	t.Skip()
+	t.Parallel()
 
 	rapid.Check(t, func(tr *rapid.T) {
 		t.Run(tr.Name(), func(t *testing.T) {
@@ -470,7 +470,7 @@ func TestGetExternalTransactions_PropertyBased(t *testing.T) {
 				}
 
 				if _, err = WriteExternalTransactions(tx, blockNumber, transactionMap[blockNumber]); err != nil {
-					tr.Fatalf("Ошибка записи транзакции: %v", err)
+					tr.Fatalf("external transaction storing to the DB failed: %v", err)
 				}
 			}
 

@@ -22,13 +22,13 @@ func AddEVMEvent[T any](
 	fn func(tokens.Event[T], kv.RwTx),
 ) (sig common.Hash, err error) {
 	// 1) register event → (sig, filter)
-	sig, filter, err := tokens.RegisterEvent[T](s.EVMEventRegistry, a, eventName, kind)
+	sig, err = tokens.RegisterEvent[T](s.EVMEventRegistry, a, eventName, kind)
 	if err != nil {
 		return common.Hash{}, err
 	}
 
 	// 2) attach handler (type-erased wrapper)
-	s.SubscribeEthContract(chainID, contract, NewEVMHandler(kind, filter, fn))
+	s.SubscribeEthContract(chainID, contract, NewEVMHandler(kind, fn))
 
 	return sig, nil
 }
