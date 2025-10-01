@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/library"
 )
 
 func TestBasicBuilder(t *testing.T) {
@@ -29,8 +29,8 @@ func TestBasicBuilder(t *testing.T) {
 		t.Fatalf("Failed to build Ethereum transaction: %v", err)
 	}
 
-	if ethTx.ChainID != gosdk.EthereumChainID {
-		t.Errorf("Expected ChainID %d, got %d", gosdk.EthereumChainID, ethTx.ChainID)
+	if ethTx.ChainID != library.EthereumChainID {
+		t.Errorf("Expected ChainID %d, got %d", library.EthereumChainID, ethTx.ChainID)
 	}
 
 	// Verify payload integrity
@@ -57,42 +57,42 @@ func TestChainHelperMethods(t *testing.T) {
 		{
 			"Ethereum",
 			func() *ExTxBuilder { return NewExTxBuilder().Ethereum() },
-			gosdk.EthereumChainID,
+			library.EthereumChainID,
 		},
 		{
 			"EthereumSepolia",
 			func() *ExTxBuilder { return NewExTxBuilder().EthereumSepolia() },
-			gosdk.EthereumSepoliaChainID,
+			library.EthereumSepoliaChainID,
 		},
 		{
 			"Polygon",
 			func() *ExTxBuilder { return NewExTxBuilder().Polygon() },
-			gosdk.PolygonChainID,
+			library.PolygonChainID,
 		},
 		{
 			"PolygonAmoy",
 			func() *ExTxBuilder { return NewExTxBuilder().PolygonAmoy() },
-			gosdk.PolygonAmoyChainID,
+			library.PolygonAmoyChainID,
 		},
 		{
 			"BSC",
 			func() *ExTxBuilder { return NewExTxBuilder().BSC() },
-			gosdk.BNBChainID,
+			library.BNBChainID,
 		},
 		{
 			"BSCTestnet",
 			func() *ExTxBuilder { return NewExTxBuilder().BSCTestnet() },
-			gosdk.BNBTestnetChainID,
+			library.BNBTestnetChainID,
 		},
 		{
 			"SolanaMainnet",
 			func() *ExTxBuilder { return NewExTxBuilder().SolanaMainnet() },
-			gosdk.SolanaChainID,
+			library.SolanaChainID,
 		},
 		{
 			"SolanaDevnet",
 			func() *ExTxBuilder { return NewExTxBuilder().SolanaDevnet() },
-			gosdk.SolanaDevnetChainID,
+			library.SolanaDevnetChainID,
 		},
 	}
 
@@ -138,10 +138,10 @@ func TestSolanaTransactions(t *testing.T) {
 		t.Fatalf("Failed to build Solana mainnet transaction: %v", err)
 	}
 
-	if mainnetTx.ChainID != gosdk.SolanaChainID {
+	if mainnetTx.ChainID != library.SolanaChainID {
 		t.Errorf(
 			"Expected ChainID %d for Solana mainnet, got %d",
-			gosdk.SolanaChainID,
+			library.SolanaChainID,
 			mainnetTx.ChainID,
 		)
 	}
@@ -155,10 +155,10 @@ func TestSolanaTransactions(t *testing.T) {
 		t.Fatalf("Failed to build Solana devnet transaction: %v", err)
 	}
 
-	if devnetTx.ChainID != gosdk.SolanaDevnetChainID {
+	if devnetTx.ChainID != library.SolanaDevnetChainID {
 		t.Errorf(
 			"Expected ChainID %d for Solana devnet, got %d",
-			gosdk.SolanaDevnetChainID,
+			library.SolanaDevnetChainID,
 			devnetTx.ChainID,
 		)
 	}
@@ -179,15 +179,15 @@ func TestValidation(t *testing.T) {
 
 	// Test valid transaction
 	tx, err := NewExTxBuilder().
-		SetChainID(gosdk.EthereumChainID).
+		SetChainID(library.EthereumChainID).
 		SetPayload([]byte(`{"test": "payload"}`)).
 		Build()
 	if err != nil {
 		t.Errorf("Unexpected error for valid transaction: %v", err)
 	}
 
-	if tx.ChainID != gosdk.EthereumChainID {
-		t.Errorf("Expected ChainID %d, got %d", gosdk.EthereumChainID, tx.ChainID)
+	if tx.ChainID != library.EthereumChainID {
+		t.Errorf("Expected ChainID %d, got %d", library.EthereumChainID, tx.ChainID)
 	}
 }
 
@@ -309,17 +309,17 @@ func TestMultiChainWorkflow(t *testing.T) {
 		{
 			"Ethereum",
 			func() *ExTxBuilder { return NewExTxBuilder().Ethereum() },
-			gosdk.EthereumChainID,
+			library.EthereumChainID,
 		},
 		{
 			"Polygon",
 			func() *ExTxBuilder { return NewExTxBuilder().Polygon() },
-			gosdk.PolygonChainID,
+			library.PolygonChainID,
 		},
 		{
 			"BSC",
 			func() *ExTxBuilder { return NewExTxBuilder().BSC() },
-			gosdk.BNBChainID,
+			library.BNBChainID,
 		},
 	}
 
@@ -427,22 +427,22 @@ func TestTestnetWorkflow(t *testing.T) {
 		{
 			"EthereumSepolia",
 			func() *ExTxBuilder { return NewExTxBuilder().EthereumSepolia() },
-			gosdk.EthereumSepoliaChainID,
+			library.EthereumSepoliaChainID,
 		},
 		{
 			"PolygonAmoy",
 			func() *ExTxBuilder { return NewExTxBuilder().PolygonAmoy() },
-			gosdk.PolygonAmoyChainID,
+			library.PolygonAmoyChainID,
 		},
 		{
 			"BSCTestnet",
 			func() *ExTxBuilder { return NewExTxBuilder().BSCTestnet() },
-			gosdk.BNBTestnetChainID,
+			library.BNBTestnetChainID,
 		},
 		{
 			"SolanaDevnet",
 			func() *ExTxBuilder { return NewExTxBuilder().SolanaDevnet() },
-			gosdk.SolanaDevnetChainID,
+			library.SolanaDevnetChainID,
 		},
 	}
 
@@ -514,10 +514,10 @@ func TestBuilderChaining(t *testing.T) {
 		t.Fatalf("Failed to build chained transaction: %v", err)
 	}
 
-	if tx.ChainID != gosdk.EthereumChainID {
+	if tx.ChainID != library.EthereumChainID {
 		t.Errorf(
 			"Expected ChainID %d from chained calls, got %d",
-			gosdk.EthereumChainID,
+			library.EthereumChainID,
 			tx.ChainID,
 		)
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/scheme"
 )
 
 func block(c, n uint64, h0 byte) apptypes.ExternalBlock {
@@ -378,8 +379,8 @@ func openVotingDB(t *testing.T) kv.RwDB {
 		Path(t.TempDir()).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return kv.TableCfg{
-				ExternalBlockVotingBucket: {},
-				CheckpointVotingBucket:    {},
+				scheme.ExternalBlockVotingBucket: {},
+				scheme.CheckpointVotingBucket:    {},
 			}
 		}).Open()
 	require.NoError(t, err)
@@ -523,7 +524,7 @@ func TestStoreNewVotingFromStorage_Checkpoint_RoundTrip(t *testing.T) {
 
 	defer rro.Rollback()
 
-	cur, err := rro.Cursor(CheckpointVotingBucket)
+	cur, err := rro.Cursor(scheme.CheckpointVotingBucket)
 	require.NoError(t, err)
 
 	defer cur.Close()

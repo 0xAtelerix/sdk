@@ -3,8 +3,8 @@ package external
 import (
 	"errors"
 
-	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/library"
 )
 
 // Static errors for validation.
@@ -56,56 +56,56 @@ func (b *ExTxBuilder) Build() (apptypes.ExternalTransaction, error) {
 
 // Ethereum sets chainID to Ethereum mainnet (1)
 func (b *ExTxBuilder) Ethereum() *ExTxBuilder {
-	b.chainID = gosdk.EthereumChainID
+	b.chainID = library.EthereumChainID
 
 	return b
 }
 
 // EthereumSepolia sets chainID to Ethereum Sepolia testnet (11155111)
 func (b *ExTxBuilder) EthereumSepolia() *ExTxBuilder {
-	b.chainID = gosdk.EthereumSepoliaChainID
+	b.chainID = library.EthereumSepoliaChainID
 
 	return b
 }
 
 // Polygon sets chainID to Polygon mainnet (137)
 func (b *ExTxBuilder) Polygon() *ExTxBuilder {
-	b.chainID = gosdk.PolygonChainID
+	b.chainID = library.PolygonChainID
 
 	return b
 }
 
 // PolygonAmoy sets chainID to Polygon Amoy testnet (80002)
 func (b *ExTxBuilder) PolygonAmoy() *ExTxBuilder {
-	b.chainID = gosdk.PolygonAmoyChainID
+	b.chainID = library.PolygonAmoyChainID
 
 	return b
 }
 
 // BSC sets chainID to Binance Smart Chain mainnet (56)
 func (b *ExTxBuilder) BSC() *ExTxBuilder {
-	b.chainID = gosdk.BNBChainID
+	b.chainID = library.BNBChainID
 
 	return b
 }
 
 // BSCTestnet sets chainID to Binance Smart Chain testnet (97)
 func (b *ExTxBuilder) BSCTestnet() *ExTxBuilder {
-	b.chainID = gosdk.BNBTestnetChainID
+	b.chainID = library.BNBTestnetChainID
 
 	return b
 }
 
 // SolanaMainnet sets chainID to Solana mainnet
 func (b *ExTxBuilder) SolanaMainnet() *ExTxBuilder {
-	b.chainID = gosdk.SolanaChainID
+	b.chainID = library.SolanaChainID
 
 	return b
 }
 
 // SolanaDevnet sets chainID to Solana devnet
 func (b *ExTxBuilder) SolanaDevnet() *ExTxBuilder {
-	b.chainID = gosdk.SolanaDevnetChainID
+	b.chainID = library.SolanaDevnetChainID
 
 	return b
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/receipt"
+	"github.com/0xAtelerix/sdk/gosdk/scheme"
 )
 
 // TransactionMethods provides comprehensive transaction-related RPC methods
@@ -55,7 +56,7 @@ func (m *TransactionMethods[appTx, R]) GetTransactionStatus(
 	var receiptResp R
 
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
-		value, getErr := tx.GetOne(receipt.ReceiptBucket, hash[:])
+		value, getErr := tx.GetOne(scheme.ReceiptBucket, hash[:])
 		if getErr != nil {
 			return getErr
 		}

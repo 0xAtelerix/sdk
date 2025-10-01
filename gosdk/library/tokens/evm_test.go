@@ -212,8 +212,7 @@ func TestIgnoresNonTransferLogs(t *testing.T) {
 }
 
 func TestDefaultRegistry_ERC20(t *testing.T) {
-	reg := NewRegistry[AppEvent]()
-	EnsureDefaultEvmTransfersInto(reg)
+	reg := NewDefaultEvmTransferRegistry()
 
 	token := addr(0xAA)
 	from := addr(0x01)
@@ -245,8 +244,7 @@ func TestDefaultRegistry_ERC20(t *testing.T) {
 }
 
 func TestDefaultRegistry_ERC721(t *testing.T) {
-	reg := NewRegistry[AppEvent]()
-	EnsureDefaultEvmTransfersInto(reg)
+	reg := NewDefaultEvmTransferRegistry()
 
 	token := addr(0xBB)
 	from := addr(0x03)
@@ -284,8 +282,7 @@ func TestDefaultRegistry_ERC721(t *testing.T) {
 }
 
 func TestDefaultRegistry_ERC1155_Single(t *testing.T) {
-	reg := NewRegistry[AppEvent]()
-	EnsureDefaultEvmTransfersInto(reg)
+	reg := NewDefaultEvmTransferRegistry()
 
 	token := addr(0xCC)
 	from := addr(0x05)
@@ -317,8 +314,7 @@ func TestDefaultRegistry_ERC1155_Single(t *testing.T) {
 }
 
 func TestDefaultRegistry_ERC1155_Batch(t *testing.T) {
-	reg := NewRegistry[AppEvent]()
-	EnsureDefaultEvmTransfersInto(reg)
+	reg := NewDefaultEvmTransferRegistry()
 
 	token := addr(0xDD)
 	from := addr(0x07)

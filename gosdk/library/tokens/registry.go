@@ -8,12 +8,6 @@ import (
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 )
 
-//nolint:gochecknoglobals // global singletons by design
-var (
-	EVMEventRegistry    = NewRegistry[AppEvent]()
-	SolanaEventRegistry = NewRegistry[AppEvent]()
-)
-
 // Meta carries useful provenance for the decoded event.
 type Meta struct {
 	Contract common.Address // lg.Address

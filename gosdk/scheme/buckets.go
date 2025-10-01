@@ -1,9 +1,7 @@
-package gosdk
+package scheme
 
 import (
 	"github.com/ledgerwatch/erigon-lib/kv"
-
-	"github.com/0xAtelerix/sdk/gosdk/receipt"
 )
 
 const (
@@ -16,15 +14,22 @@ const (
 	Snapshot         = "snapshot"
 	TxSnapshot       = "tx_snapshot"
 
-	processedBuckets       = "processed_buckets"
-	eventStreamPositionKey = "event_stream_pos"
+	ProcessedBuckets       = "processed_buckets"
+	EventStreamPositionKey = "event_stream_pos"
 
 	SubscriptionBucket        = "subscription_bucket"          // chainID -> []{address|contract}
 	ValsetBucket              = "validator_set_bucket"         // Epoch -> map[validatorID][stake] // map[uint32][uint64]
 	ExternalBlockVotingBucket = "external_block_voting_bucket" // Chain|Block|Hash -> {votedStake, []{Epoch, Signer}}
 	CheckpointVotingBucket    = "checkpoint_voting_bucket"     // Chain|Block|Hash -> {votedStake, []{Epoch, Signer}}
 
-	TxBuckets = "txbatch"
+	TxBuckets     = "txbatch"
+	ReceiptBucket = "receipts" // tx-hash -> receipt
+
+	// Multichain
+	ChainIDBucket = "chainid"
+	EthBlocks     = "blocks"
+	EthReceipts   = "ethereum_receipts"
+	SolanaBlocks  = "solana_blocks"
 )
 
 func TxBucketsTables() kv.TableCfg {
@@ -41,7 +46,7 @@ func DefaultTables() kv.TableCfg {
 		ConfigBucket:              {},
 		StateBucket:               {},
 		Snapshot:                  {},
-		receipt.ReceiptBucket:     {},
+		ReceiptBucket:             {},
 		EthReceipts:               {},
 		SubscriptionBucket:        {},
 		ValsetBucket:              {},

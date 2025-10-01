@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/library"
 )
 
 type EventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
@@ -116,7 +117,7 @@ func (ews *EventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 		for _, ref := range expectedTxBatches {
 			txsRaw, ok := collected[ref.batchHash]
 			if !ok {
-				return nil, fmt.Errorf("%w: %x", ErrMissingTxBatch, ref.batchHash[:4])
+				return nil, fmt.Errorf("%w: %x", library.ErrMissingTxBatch, ref.batchHash[:4])
 			}
 
 			var parsedTxs []appTx

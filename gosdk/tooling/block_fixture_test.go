@@ -28,6 +28,8 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/library"
+	"github.com/0xAtelerix/sdk/gosdk/scheme"
 )
 
 // --- minimal test fixture writer matching your read-side keying ---
@@ -48,7 +50,7 @@ func (w *testFixtureWriter) putEthBlock(t *testing.T, blk *gethtypes.Block) {
 	require.NoError(t, err)
 
 	require.NoError(t, w.db.Update(t.Context(), func(tx kv.RwTx) error {
-		return tx.Put(gosdk.EthBlocks, key, enc)
+		return tx.Put(scheme.EthBlocks, key, enc)
 	}))
 }
 
@@ -66,7 +68,7 @@ func (w *testFixtureWriter) putEthereumBlock(t *testing.T, blk *gosdk.EthereumBl
 	require.NoError(t, err)
 
 	require.NoError(t, w.db.Update(t.Context(), func(tx kv.RwTx) error {
-		return tx.Put(gosdk.EthBlocks, key, enc)
+		return tx.Put(scheme.EthBlocks, key, enc)
 	}))
 }
 
@@ -96,7 +98,7 @@ func (w *testFixtureWriter) putEthReceipts(
 
 			key := gosdk.EthReceiptKey(blockNum, blockHash, uint32(i))
 
-			if err = tx.Put(gosdk.EthReceipts, key, enc); err != nil {
+			if err = tx.Put(scheme.EthReceipts, key, enc); err != nil {
 				return err
 			}
 		}
@@ -118,7 +120,7 @@ func (w *testFixtureWriter) putSolBlock(t *testing.T, blk *client.Block) {
 	require.NoError(t, err)
 
 	require.NoError(t, w.db.Update(t.Context(), func(tx kv.RwTx) error {
-		return tx.Put(gosdk.SolanaBlocks, key, enc)
+		return tx.Put(scheme.SolanaBlocks, key, enc)
 	}))
 }
 
@@ -293,7 +295,7 @@ func TestSolana_Block_RoundTrip(t *testing.T) {
 
 	fw := &testFixtureWriter{db: writerDB}
 
-	const chainID = uint64(gosdk.SolanaDevnetChainID) // use one of your Solana ChainType values
+	const chainID = uint64(library.SolanaDevnetChainID) // use one of your Solana ChainType values
 
 	slot := int64(12345)
 
@@ -608,7 +610,7 @@ func TestSolBlockFileIterator_Pipeline(t *testing.T) {
 
 	// --- Assert: read back using MultichainStateAccess
 	chainDBs, err := gosdk.NewMultichainStateAccessDB(gosdk.MultichainConfig{
-		gosdk.SolanaDevnetChainID: svmDBPath,
+		library.SolanaDevnetChainID: svmDBPath,
 	})
 	require.NoError(t, err)
 
@@ -618,7 +620,7 @@ func TestSolBlockFileIterator_Pipeline(t *testing.T) {
 	for _, w := range want {
 		out, err := mc.SolanaBlock(
 			ctx,
-			apptypes.MakeExternalBlock(uint64(gosdk.SolanaDevnetChainID), uint64(w.slot), w.hash),
+			apptypes.MakeExternalBlock(uint64(library.SolanaDevnetChainID), uint64(w.slot), w.hash),
 		)
 		require.NoError(t, err)
 		require.NotNil(t, out.BlockHeight)

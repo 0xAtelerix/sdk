@@ -19,6 +19,8 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/library"
+	"github.com/0xAtelerix/sdk/gosdk/scheme"
 )
 
 type FixtureWriter[T any] struct {
@@ -70,7 +72,7 @@ func (fw *FixtureWriter[T]) writeOne(ctx context.Context, item T) error {
 	case client.Block:
 		return fw.putSolBlock(ctx, &v)
 	default:
-		return fmt.Errorf("%w: %T", gosdk.ErrUnsupportedFixture, item)
+		return fmt.Errorf("%w: %T", library.ErrUnsupportedFixture, item)
 	}
 }
 
@@ -89,7 +91,7 @@ func (fw *FixtureWriter[T]) putEthBlock(ctx context.Context, b *gethtypes.Block)
 	}
 
 	return fw.DB.Update(ctx, func(tx kv.RwTx) error {
-		return tx.Put(gosdk.EthBlocks, k, enc)
+		return tx.Put(scheme.EthBlocks, k, enc)
 	})
 }
 
@@ -104,7 +106,7 @@ func (fw *FixtureWriter[T]) putEthereumBlock(ctx context.Context, b *gosdk.Ether
 	}
 
 	return fw.DB.Update(ctx, func(tx kv.RwTx) error {
-		return tx.Put(gosdk.EthBlocks, k, enc)
+		return tx.Put(scheme.EthBlocks, k, enc)
 	})
 }
 
@@ -125,7 +127,7 @@ func (fw *FixtureWriter[T]) putEthReceipts(ctx context.Context, recs []gethtypes
 				return err
 			}
 
-			if err = tx.Put(gosdk.EthReceipts, k, enc); err != nil {
+			if err = tx.Put(scheme.EthReceipts, k, enc); err != nil {
 				return err
 			}
 		}
@@ -145,7 +147,7 @@ func (fw *FixtureWriter[T]) putSolBlock(ctx context.Context, b *client.Block) er
 	}
 
 	return fw.DB.Update(ctx, func(tx kv.RwTx) error {
-		return tx.Put(gosdk.SolanaBlocks, k, enc)
+		return tx.Put(scheme.SolanaBlocks, k, enc)
 	})
 }
 

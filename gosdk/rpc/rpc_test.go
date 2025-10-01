@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
-	"github.com/0xAtelerix/sdk/gosdk/receipt"
+	"github.com/0xAtelerix/sdk/gosdk/scheme"
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
 
@@ -100,7 +100,7 @@ func setupTestEnvironment(
 		Path(appchainDBPath).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return kv.TableCfg{
-				receipt.ReceiptBucket: {},
+				scheme.ReceiptBucket: {},
 			}
 		}).
 		Open()
@@ -316,7 +316,7 @@ func TestStandardRPCServer_getTransactionReceipt(t *testing.T) {
 
 	// Store receipt in database
 	err = appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
-		return tx.Put(receipt.ReceiptBucket, hash[:], receiptData)
+		return tx.Put(scheme.ReceiptBucket, hash[:], receiptData)
 	})
 	require.NoError(t, err)
 

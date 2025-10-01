@@ -28,6 +28,7 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
+	"github.com/0xAtelerix/sdk/gosdk/scheme"
 )
 
 func TestEmitterCall(t *testing.T) {
@@ -40,10 +41,10 @@ func TestEmitterCall(t *testing.T) {
 		Path(dbPath).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return kv.TableCfg{
-				CheckpointBucket: {},
-				ExternalTxBucket: {},
-				BlocksBucket:     {},
-				ValsetBucket:     {},
+				scheme.CheckpointBucket: {},
+				scheme.ExternalTxBucket: {},
+				scheme.BlocksBucket:     {},
+				scheme.ValsetBucket:     {},
 			}
 		}).
 		Open()
@@ -68,7 +69,7 @@ func TestEmitterCall(t *testing.T) {
 	valsetData, err := cbor.Marshal(valset)
 	require.NoError(t, err)
 
-	err = rwTx.Put(ValsetBucket, epochKey[:], valsetData)
+	err = rwTx.Put(scheme.ValsetBucket, epochKey[:], valsetData)
 	require.NoError(t, err)
 
 	err = rwTx.Commit()
@@ -277,10 +278,10 @@ func TestEmitterCall_PropertyBased(t *testing.T) {
 				Path(dbPath).
 				WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 					return kv.TableCfg{
-						CheckpointBucket: {},
-						ExternalTxBucket: {},
-						BlocksBucket:     {},
-						ValsetBucket:     {},
+						scheme.CheckpointBucket: {},
+						scheme.ExternalTxBucket: {},
+						scheme.BlocksBucket:     {},
+						scheme.ValsetBucket:     {},
 					}
 				}).
 				Open()
@@ -432,10 +433,10 @@ func TestGetExternalTransactions_PropertyBased(t *testing.T) {
 				Path(dbPath).
 				WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 					return kv.TableCfg{
-						CheckpointBucket: {},
-						ExternalTxBucket: {},
-						BlocksBucket:     {},
-						ValsetBucket:     {},
+						scheme.CheckpointBucket: {},
+						scheme.ExternalTxBucket: {},
+						scheme.BlocksBucket:     {},
+						scheme.ValsetBucket:     {},
 					}
 				}).
 				Open()

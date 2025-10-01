@@ -95,17 +95,6 @@ func RegisterDefaultEvmTransfers(reg *Registry[AppEvent]) {
 	)
 }
 
-// EnsureDefaultEvmTransfers registers defaults into the global EVMEventRegistry.
-// If a registry is passed, load that; otherwise, load the global.
-func EnsureDefaultEvmTransfersInto(regs ...*Registry[AppEvent]) {
-	target := EVMEventRegistry
-	if len(regs) > 0 && regs[0] != nil {
-		target = regs[0]
-	}
-
-	RegisterDefaultEvmTransfers(target)
-}
-
 // NewDefaultEvmTransferRegistry returns a fresh registry preloaded with defaults.
 func NewDefaultEvmTransferRegistry() *Registry[AppEvent] {
 	reg := NewRegistry[AppEvent]()

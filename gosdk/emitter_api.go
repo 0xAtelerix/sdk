@@ -17,6 +17,7 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
+	"github.com/0xAtelerix/sdk/gosdk/scheme"
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
@@ -70,7 +71,7 @@ func (s *AppchainEmitterServer[appTx, R]) GetCheckpoints(
 
 	defer txn.Rollback()
 
-	cursor, err := txn.Cursor(CheckpointBucket)
+	cursor, err := txn.Cursor(scheme.CheckpointBucket)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to create cursor")
 
@@ -147,7 +148,7 @@ func (s *AppchainEmitterServer[appTx, R]) GetExternalTransactions(
 
 	defer txn.Rollback()
 
-	cursor, err := txn.Cursor(ExternalTxBucket)
+	cursor, err := txn.Cursor(scheme.ExternalTxBucket)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to create cursor")
 

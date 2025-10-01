@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/scheme"
 )
 
 // TestReceipt is a mock implementation of apptypes.Receipt for testing
@@ -56,7 +57,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 	// Create tables
 	err := db.Update(t.Context(), func(tx kv.RwTx) error {
 		// Create the receipts bucket
-		return tx.CreateBucket(ReceiptBucket)
+		return tx.CreateBucket(scheme.ReceiptBucket)
 	})
 	require.NoError(t, err)
 
@@ -160,7 +161,7 @@ func TestReceiptBatchOperations(t *testing.T) {
 
 	// Create tables
 	err := db.Update(t.Context(), func(tx kv.RwTx) error {
-		return tx.CreateBucket(ReceiptBucket)
+		return tx.CreateBucket(scheme.ReceiptBucket)
 	})
 	require.NoError(t, err)
 
@@ -225,7 +226,7 @@ func BenchmarkStoreReceipt(b *testing.B) {
 
 	// Create tables
 	err := db.Update(b.Context(), func(tx kv.RwTx) error {
-		return tx.CreateBucket(ReceiptBucket)
+		return tx.CreateBucket(scheme.ReceiptBucket)
 	})
 	require.NoError(b, err)
 
@@ -248,7 +249,7 @@ func BenchmarkGetReceipt(b *testing.B) {
 
 	// Create tables
 	err := db.Update(b.Context(), func(tx kv.RwTx) error {
-		return tx.CreateBucket(ReceiptBucket)
+		return tx.CreateBucket(scheme.ReceiptBucket)
 	})
 	require.NoError(b, err)
 
@@ -283,7 +284,7 @@ func TestReceiptErrorHandling(t *testing.T) {
 
 	// Create tables
 	err := db.Update(t.Context(), func(tx kv.RwTx) error {
-		return tx.CreateBucket(ReceiptBucket)
+		return tx.CreateBucket(scheme.ReceiptBucket)
 	})
 	require.NoError(t, err)
 

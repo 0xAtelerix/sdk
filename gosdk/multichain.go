@@ -19,28 +19,23 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
-)
-
-const (
-	ChainIDBucket = "chainid"
-	EthBlocks     = "blocks"
-	EthReceipts   = "ethereum_receipts"
-	SolanaBlocks  = "solana_blocks"
+	"github.com/0xAtelerix/sdk/gosdk/library"
+	"github.com/0xAtelerix/sdk/gosdk/scheme"
 )
 
 func EvmTables() kv.TableCfg {
 	return kv.TableCfg{
-		ChainIDBucket: {},
-		EthBlocks:     {},
-		EthReceipts:   {},
+		scheme.ChainIDBucket: {},
+		scheme.EthBlocks:     {},
+		scheme.EthReceipts:   {},
 	}
 }
 
 func SolanaTables() kv.TableCfg {
 	return kv.TableCfg{
-		ChainIDBucket: {},
-		SolanaBlocks:  {},
-		EthReceipts:   {},
+		scheme.ChainIDBucket: {},
+		scheme.SolanaBlocks:  {},
+		scheme.EthReceipts:   {},
 	}
 }
 
@@ -56,9 +51,9 @@ func NewMultichainStateAccessDB(cfg MultichainConfig) (map[apptypes.ChainType]kv
 		var tableCfg kv.TableCfg
 
 		switch {
-		case IsEvmChain(chainID):
+		case library.IsEvmChain(chainID):
 			tableCfg = EvmTables()
-		case IsSolanaChain(chainID):
+		case library.IsSolanaChain(chainID):
 			tableCfg = SolanaTables()
 		default:
 			log.Warn().
@@ -115,7 +110,7 @@ func (sa *MultichainStateAccess) EthBlock(
 	defer sa.mu.RUnlock()
 
 	if _, ok := sa.stateAccessDB[apptypes.ChainType(block.ChainID)]; !ok {
-		return nil, fmt.Errorf("%w, no DB for chainID, %v", ErrUnknownChain, block.ChainID)
+		return nil, fmt.Errorf("%w, no DB for chainID, %v", library.ErrUnknownChain, block.ChainID)
 	}
 
 	key := EthBlockKey(block.BlockNumber, block.BlockHash)
@@ -123,7 +118,7 @@ func (sa *MultichainStateAccess) EthBlock(
 	ethBlock := EthereumBlock{}
 
 	err := sa.stateAccessDB[apptypes.ChainType(block.ChainID)].View(ctx, func(tx kv.Tx) error {
-		v, err := tx.GetOne(EthBlocks, key)
+		v, err := tx.GetOne(scheme.EthBlocks, key)
 		if err != nil {
 			return err
 		}
@@ -144,7 +139,7 @@ func (sa *MultichainStateAccess) EthBlock(
 	if ethBlockHash != block.BlockHash {
 		return nil, fmt.Errorf(
 			"%w, chainID %d; got block number %d, hash %s; expected block number %d, hash %s",
-			ErrWrongBlock,
+			library.ErrWrongBlock,
 			block.ChainID,
 			ethBlock.Header.Number.Uint64(),
 			hex.EncodeToString(ethBlockHash[:]),
@@ -164,7 +159,7 @@ func (sa *MultichainStateAccess) EthReceipts(
 	defer sa.mu.RUnlock()
 
 	if _, ok := sa.stateAccessDB[apptypes.ChainType(block.ChainID)]; !ok {
-		return nil, fmt.Errorf("%w, no DB for chainID, %v", ErrUnknownChain, block.ChainID)
+		return nil, fmt.Errorf("%w, no DB for chainID, %v", library.ErrUnknownChain, block.ChainID)
 	}
 
 	key := EthReceiptKey(block.BlockNumber, block.BlockHash)
@@ -172,7 +167,7 @@ func (sa *MultichainStateAccess) EthReceipts(
 	var blockReceipts []gethtypes.Receipt
 
 	err := sa.stateAccessDB[apptypes.ChainType(block.ChainID)].View(ctx, func(tx kv.Tx) error {
-		return tx.ForPrefix(EthReceipts, key, func(_, v []byte) error {
+		return tx.ForPrefix(scheme.EthReceipts, key, func(_, v []byte) error {
 			r := gethtypes.Receipt{}
 
 			dbErr := json.Unmarshal(v, &r)
@@ -203,7 +198,7 @@ func (sa *MultichainStateAccess) SolanaBlock(
 
 	db, ok := sa.stateAccessDB[apptypes.ChainType(block.ChainID)]
 	if !ok {
-		return nil, fmt.Errorf("%w, no DB for chainID, %v", ErrUnknownChain, block.ChainID)
+		return nil, fmt.Errorf("%w, no DB for chainID, %v", library.ErrUnknownChain, block.ChainID)
 	}
 
 	key := SolBlockKey(block.BlockNumber)
@@ -211,7 +206,7 @@ func (sa *MultichainStateAccess) SolanaBlock(
 	var solBlock client.Block
 
 	err := db.View(ctx, func(tx kv.Tx) error {
-		v, err := tx.GetOne(SolanaBlocks, key)
+		v, err := tx.GetOne(scheme.SolanaBlocks, key)
 		if err != nil {
 			return err
 		}
@@ -230,7 +225,7 @@ func (sa *MultichainStateAccess) SolanaBlock(
 	if !bytes.Equal(block.BlockHash[:], got) {
 		return nil, fmt.Errorf(
 			"%w: expected %s, got %s",
-			ErrWrongBlock,
+			library.ErrWrongBlock,
 			string(block.BlockHash[:]),
 			solBlock.Blockhash,
 		)
@@ -251,7 +246,7 @@ func (sa *MultichainStateAccess) ViewDB(
 
 	db, ok := sa.stateAccessDB[chainID]
 	if !ok {
-		return fmt.Errorf("%w, no DB for chainID, %d", ErrUnknownChain, chainID)
+		return fmt.Errorf("%w, no DB for chainID, %d", library.ErrUnknownChain, chainID)
 	}
 
 	return db.View(ctx, fn)

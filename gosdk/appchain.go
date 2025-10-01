@@ -22,8 +22,10 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/library/subscriber"
 	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
 	"github.com/0xAtelerix/sdk/gosdk/receipt"
+	"github.com/0xAtelerix/sdk/gosdk/scheme"
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
@@ -73,7 +75,7 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 	txpool apptypes.TxPoolInterface[AppTx, R],
 	config AppchainConfig,
 	appchainDB kv.RwDB,
-	subscriber *Subscriber,
+	sub *subscriber.Subscriber,
 	multichain *MultichainStateAccess,
 	txBatchDB kv.RoDB,
 	options ...func(a *Appchain[STI, AppTx, R, AppBlock]),
@@ -98,7 +100,7 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 		TxBatchDB:              txBatchDB,
 		config:                 config,
 		multichainDB:           multichain,
-		subscriber:             subscriber,
+		subscriber:             sub,
 	}
 
 	for _, option := range options {
@@ -118,7 +120,7 @@ type Appchain[STI StateTransitionInterface[appTx, R], appTx apptypes.AppTransact
 	TxBatchDB    kv.RoDB
 	config       AppchainConfig
 	multichainDB *MultichainStateAccess
-	subscriber   *Subscriber
+	subscriber   *subscriber.Subscriber
 }
 
 func (a *Appchain[STI, appTx, R, AppBlock]) Run(
@@ -548,7 +550,7 @@ func WriteBlock(rwtx kv.RwTx, blockNumber uint64, blockBytes []byte) error {
 	number := make([]byte, 8)
 	binary.BigEndian.PutUint64(number, blockNumber)
 
-	return rwtx.Put(BlocksBucket, number, blockBytes)
+	return rwtx.Put(scheme.BlocksBucket, number, blockBytes)
 }
 
 func WriteLastBlock(rwtx kv.RwTx, number uint64, hash [32]byte) error {
@@ -556,11 +558,11 @@ func WriteLastBlock(rwtx kv.RwTx, number uint64, hash [32]byte) error {
 	binary.BigEndian.PutUint64(value[:8], number)
 	copy(value[8:], hash[:])
 
-	return rwtx.Put(ConfigBucket, []byte(LastBlockKey), value)
+	return rwtx.Put(scheme.ConfigBucket, []byte(scheme.LastBlockKey), value)
 }
 
 func GetLastBlock(tx kv.Tx) (uint64, [32]byte, error) {
-	value, err := tx.GetOne(ConfigBucket, []byte(LastBlockKey))
+	value, err := tx.GetOne(scheme.ConfigBucket, []byte(scheme.LastBlockKey))
 	if err != nil {
 		return 0, [32]byte{}, err
 	}
@@ -595,7 +597,7 @@ func WriteExternalTransactions(
 	key := make([]byte, 8)
 	binary.BigEndian.PutUint64(key, blockNumber)
 
-	if err = dbTx.Put(ExternalTxBucket, key, value); err != nil {
+	if err = dbTx.Put(scheme.ExternalTxBucket, key, value); err != nil {
 		return [32]byte{}, fmt.Errorf("can't write external transactions to the DB: error %w", err)
 	}
 
@@ -673,7 +675,7 @@ func WriteCheckpoint(ctx context.Context, dbTx kv.RwTx, checkpoint apptypes.Chec
 	}
 
 	// Записываем в базу
-	return dbTx.Put(CheckpointBucket, key, value)
+	return dbTx.Put(scheme.CheckpointBucket, key, value)
 }
 
 func WriteSnapshotPosition(rwtx kv.RwTx, epoch uint32, pos int64) error {
@@ -683,14 +685,14 @@ func WriteSnapshotPosition(rwtx kv.RwTx, epoch uint32, pos int64) error {
 	val := make([]byte, 8)
 	binary.BigEndian.PutUint64(val, uint64(pos))
 
-	return rwtx.Put(Snapshot, key, val)
+	return rwtx.Put(scheme.Snapshot, key, val)
 }
 
 func ReadSnapshotPosition(tx kv.Tx, epoch uint32) (int64, error) {
 	key := make([]byte, 4)
 	binary.BigEndian.PutUint32(key, epoch)
 
-	val, err := tx.GetOne(Snapshot, key)
+	val, err := tx.GetOne(scheme.Snapshot, key)
 	if err != nil {
 		return 0, err
 	}
@@ -706,7 +708,7 @@ func ReadTxSnapshotPosition(tx kv.Tx, epoch uint32) int64 {
 	key := make([]byte, 4)
 	binary.BigEndian.PutUint32(key, epoch)
 
-	val, err := tx.GetOne(TxSnapshot, key)
+	val, err := tx.GetOne(scheme.TxSnapshot, key)
 	if err != nil {
 		log.Log().Err(err).Msgf("ReadTxSnapshotPosition: can't read tx. Epoch: %d", epoch)
 
