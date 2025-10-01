@@ -230,6 +230,15 @@ else
     exit 1
 fi
 
+if [ "$VERIFY" = true ]; then
+    echo ""
+    echo "🔍 Contract verification: Enabled"
+    echo "   💡 Note: For verification, ETHERSCAN_API_KEY must be set in .env"
+else
+    echo ""
+    echo "🔍 Contract verification: Disabled (use without --no-verify to enable)"
+fi
+
 echo ""
 echo "🎉 Deployment Complete!"
 echo "============================================="
@@ -241,18 +250,4 @@ echo "Deployment Summary:"
 echo "  1. ✅ Pelagos registry contract deployed"
 echo "  2. ✅ AppChain contract deployed"
 echo "  3. ✅ AppChain registered on Pelagos (chain ID: $SOURCE_CHAIN_ID)"
-
-if [ "$VERIFY" = true ]; then
-    echo ""
-    echo "🔍 Contract verification: Enabled"
-    echo "   💡 Note: For verification, ETHERSCAN_API_KEY must be set in .env"
-else
-    echo ""
-    echo "🔍 Contract verification: Disabled (use without --no-verify to enable)"
-fi
-
-echo ""
-echo "📝 Next steps:"
-echo "   • Update AppchainContractAddress in your application config"
-echo "   • Example: const AppchainContractAddress = \"$APPCHAIN_ADDRESS\""
 
