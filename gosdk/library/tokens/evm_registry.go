@@ -3,7 +3,6 @@
 package tokens
 
 import (
-	"math/big"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -39,8 +38,6 @@ var (
 	ERC20TransferABI  abi.ABI // Transfer(from indexed, to indexed, value non-indexed)
 	ERC721TransferABI abi.ABI // Transfer(from indexed, to indexed, tokenId indexed)
 	ERC1155ABI        abi.ABI // TransferSingle, TransferBatch
-
-	DefaultEvmTransfers = BuildDefaultEvmTransferRegistry()
 )
 
 func mustABI(json string) abi.ABI {
@@ -93,92 +90,4 @@ func init() {
 	    ]
 	  }
 	]`)
-}
-
-func BuildDefaultEvmTransferRegistry() *Registry[EvmTransfer] {
-	reg := NewRegistry[EvmTransfer]()
-
-	// ERC-20 Transfer: 3 topics (sig, from, to), value in data
-	Register[erc20Transfer](reg, SigTransfer, ERC20TransferABI, "Transfer",
-		func(ev erc20Transfer, m Meta) ([]EvmTransfer, error) {
-			return []EvmTransfer{{
-				Mint:      m.Contract.Hex(),
-				FromOwner: ev.From.Hex(),
-				ToOwner:   ev.To.Hex(),
-				Amount:    new(big.Int).Set(ev.Value),
-				Decimals:  0, // enrich later via decimals()
-				Balances: EthereumBalances{
-					Standard: ERC20,
-					TxHash:   m.TxHash,
-					LogIndex: m.LogIndex,
-				},
-			}}, nil
-		},
-	)
-
-	// ERC-721 Transfer: 4 topics (sig, from, to, tokenId), no data
-	Register[erc721Transfer](reg, SigTransfer, ERC721TransferABI, "Transfer",
-		func(ev erc721Transfer, m Meta) ([]EvmTransfer, error) {
-			return []EvmTransfer{{
-				Mint:      m.Contract.Hex(),
-				FromOwner: ev.From.Hex(),
-				ToOwner:   ev.To.Hex(),
-				Amount:    big.NewInt(1), // NFT convention
-				Decimals:  0,
-				Balances: EthereumBalances{
-					Standard: ERC721,
-					TokenID:  new(big.Int).Set(ev.TokenID),
-					TxHash:   m.TxHash,
-					LogIndex: m.LogIndex,
-				},
-			}}, nil
-		},
-	)
-
-	// ERC-1155 TransferSingle
-	Register[erc1155Single](reg, SigTransferSingle, ERC1155ABI, "TransferSingle",
-		func(ev erc1155Single, m Meta) ([]EvmTransfer, error) {
-			return []EvmTransfer{{
-				Mint:      m.Contract.Hex(),
-				FromOwner: ev.From.Hex(),
-				ToOwner:   ev.To.Hex(),
-				Amount:    new(big.Int).Set(ev.Value),
-				Decimals:  0,
-				Balances: EthereumBalances{
-					Standard: ERC1155,
-					TokenID:  new(big.Int).Set(ev.ID),
-					TxHash:   m.TxHash,
-					LogIndex: m.LogIndex,
-				},
-			}}, nil
-		},
-	)
-
-	// ERC-1155 TransferBatch → one row per (id,value)
-	Register[erc1155Batch](reg, SigTransferBatch, ERC1155ABI, "TransferBatch",
-		func(ev erc1155Batch, m Meta) ([]EvmTransfer, error) {
-			out := make([]EvmTransfer, 0, len(ev.IDs))
-			for i := range ev.IDs {
-				out = append(out, EvmTransfer{
-					Mint:      m.Contract.Hex(),
-					FromOwner: ev.From.Hex(),
-					ToOwner:   ev.To.Hex(),
-					Amount:    new(big.Int).Set(ev.Values[i]),
-					Decimals:  0,
-					Balances: EthereumBalances{
-						Standard: ERC1155,
-						TokenID:  new(big.Int).Set(ev.IDs[i]),
-						IDs:      ev.IDs,    // keep full arrays if you like
-						Values:   ev.Values, // keep full arrays if you like
-						TxHash:   m.TxHash,
-						LogIndex: m.LogIndex,
-					},
-				})
-			}
-
-			return out, nil
-		},
-	)
-
-	return reg
 }

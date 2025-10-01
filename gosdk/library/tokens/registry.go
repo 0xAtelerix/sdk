@@ -8,10 +8,10 @@ import (
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 )
 
-//nolint:gochecknoglobals // there's no way to do the same with functions
+//nolint:gochecknoglobals // global singletons by design
 var (
-	EVMEventRegistry    = NewRegistry[EvmTransfer]()
-	SolanaEventRegistry = NewRegistry[SolTransfer]()
+	EVMEventRegistry    = NewRegistry[AppEvent]()
+	SolanaEventRegistry = NewRegistry[AppEvent]()
 )
 
 // Meta carries useful provenance for the decoded event.
@@ -79,12 +79,7 @@ func (r *Registry[R]) HandleLog(lg *gethtypes.Log, txHash common.Hash) ([]R, boo
 	r.mu.RLock()
 	entries, ok := r.m[lg.Topics[0]]
 	r.mu.RUnlock()
-
-	if !ok {
-		return nil, false, nil
-	}
-
-	if len(entries) == 0 {
+	if !ok || len(entries) == 0 {
 		return nil, false, nil
 	}
 

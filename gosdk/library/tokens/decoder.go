@@ -29,6 +29,17 @@ func DecodeEventInto[T any](
 		return out, false, nil
 	}
 
+	// Validate indexed topics count FIRST (important for overloaded events)
+	idxArgs := indexed(ev.Inputs)
+	if len(lg.Topics)-1 != len(idxArgs) {
+		// treat as matched signature, but wrong variant
+		// return out, true, fmt.Errorf("%w: parse topics for %s: want %d indexed topics, got %d",
+		// 	ErrABIIncorrectNumberOfTopics, eventName, len(idxArgs), len(lg.Topics)-1)
+		// Better: signal "not matched" so the registry can try next candidate:
+		return out, false, nil
+	}
+
+	// Unpack non-indexed data only after we know the candidate fits
 	// TODO: memoization!
 	nonIdx := ev.Inputs.NonIndexed()
 
@@ -38,12 +49,7 @@ func DecodeEventInto[T any](
 		return out, true, fmt.Errorf("unpack data for %s: %w", eventName, err)
 	}
 
-	idxArgs := indexed(ev.Inputs)
-	if len(lg.Topics)-1 != len(idxArgs) {
-		return out, true, fmt.Errorf("%w: parse topics for %s: want %d indexed topics, got %d",
-			ErrABIIncorrectNumberOfTopics, eventName, len(idxArgs), len(lg.Topics)-1)
-	}
-
+	// Decode indexed values
 	// TODO: memoization!
 	idxVals := make([]any, len(idxArgs))
 	for i, arg := range idxArgs {
@@ -72,6 +78,7 @@ func DecodeEventInto[T any](
 		}
 	}
 
+	// Merge and assign
 	// Build name -> value map (lowercased)
 	// TODO: memoization!
 	values := make(map[string]any, len(ev.Inputs))

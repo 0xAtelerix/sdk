@@ -7,11 +7,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-type (
-	SolTransfer = Transfer[SolanaBalances]
-	EvmTransfer = Transfer[EthereumBalances]
-)
-
 // Transfer is a logical token movement between owners.
 type Transfer[B Balances] struct {
 	Mint      string   // mint address
@@ -42,4 +37,20 @@ type EthereumBalances struct {
 type SolanaBalances struct {
 	PreTokenBalances  []rpc.TransactionMetaTokenBalance
 	PostTokenBalances []rpc.TransactionMetaTokenBalance
+}
+
+type EvmTransfer Transfer[EthereumBalances]
+
+// Ensure EvmTransfer satisfies AppEvent.
+func (e EvmTransfer) Kind() string {
+	// You can choose any convention you like for the kind string.
+	// This includes the ERC standard for convenience.
+	return "evm.transfer." + string(e.Balances.Standard)
+}
+
+type SolTransfer Transfer[SolanaBalances]
+
+// Ensure SolTransfer satisfies AppEvent.
+func (s SolTransfer) Kind() string {
+	return "svm.transfer." + string(s.Mint)
 }

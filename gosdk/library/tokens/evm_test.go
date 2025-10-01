@@ -154,10 +154,6 @@ func TestExtractErc1155Batch(t *testing.T) {
 		require.Equal(t, to.Hex(), x.ToOwner)
 		require.Equal(t, 0, x.Balances.TokenID.Cmp(ids[i]))
 		require.Equal(t, 0, x.Amount.Cmp(vals[i]))
-
-		// the extractor also keeps full arrays in metadata if you left that in:
-		// require.Len(t, x.Balances.IDs, len(ids))
-		// require.Len(t, x.Balances.Values, len(vals))
 	}
 }
 
@@ -213,6 +209,261 @@ func TestIgnoresNonTransferLogs(t *testing.T) {
 
 	out := ExtractErcTransfers(&rc)
 	require.Empty(t, out)
+}
+
+func TestDefaultRegistry_ERC20(t *testing.T) {
+	reg := NewRegistry[AppEvent]()
+	EnsureDefaultEvmTransfersInto(reg)
+
+	token := addr(0xAA)
+	from := addr(0x01)
+	to := addr(0x02)
+	amt := big.NewInt(123456789)
+
+	lg := &gethtypes.Log{
+		Address: token,
+		Topics:  []common.Hash{SigTransfer, addrTopic(from), addrTopic(to)},
+		Data:    mustPack(t, erc20Data, amt),
+		Index:   0,
+	}
+	tx := common.HexToHash("0x1")
+
+	res, matched, err := reg.HandleLog(lg, tx)
+	require.NoError(t, err)
+	require.True(t, matched)
+	require.Len(t, res, 1)
+
+	evm, ok := res[0].(EvmTransfer)
+	require.True(t, ok)
+	require.Equal(t, ERC20, evm.Balances.Standard)
+	require.Equal(t, token.Hex(), evm.Mint)
+	require.Equal(t, from.Hex(), evm.FromOwner)
+	require.Equal(t, to.Hex(), evm.ToOwner)
+	require.Equal(t, 0, evm.Amount.Cmp(amt))
+	require.Equal(t, tx, evm.Balances.TxHash)
+	require.Equal(t, lg.Index, evm.Balances.LogIndex)
+}
+
+func TestDefaultRegistry_ERC721(t *testing.T) {
+	reg := NewRegistry[AppEvent]()
+	EnsureDefaultEvmTransfersInto(reg)
+
+	token := addr(0xBB)
+	from := addr(0x03)
+	to := addr(0x04)
+	tokenID := big.NewInt(42)
+
+	lg := &gethtypes.Log{
+		Address: token,
+		Topics: []common.Hash{
+			SigTransfer,
+			addrTopic(from),
+			addrTopic(to),
+			common.BigToHash(tokenID),
+		},
+		Data:  nil, // ERC-721 tokenId is indexed, no data
+		Index: 1,
+	}
+
+	tx := common.HexToHash("0x2")
+
+	res, matched, err := reg.HandleLog(lg, tx)
+	require.NoError(t, err)
+	require.True(t, matched)
+	require.Len(t, res, 1)
+
+	evm, ok := res[0].(EvmTransfer)
+	require.True(t, ok)
+	require.Equal(t, ERC721, evm.Balances.Standard)
+	require.Equal(t, token.Hex(), evm.Mint)
+	require.Equal(t, from.Hex(), evm.FromOwner)
+	require.Equal(t, to.Hex(), evm.ToOwner)
+	require.NotNil(t, evm.Balances.TokenID)
+	require.Equal(t, 0, evm.Balances.TokenID.Cmp(tokenID))
+	require.Equal(t, big.NewInt(1), evm.Amount)
+}
+
+func TestDefaultRegistry_ERC1155_Single(t *testing.T) {
+	reg := NewRegistry[AppEvent]()
+	EnsureDefaultEvmTransfersInto(reg)
+
+	token := addr(0xCC)
+	from := addr(0x05)
+	to := addr(0x06)
+	id := big.NewInt(7)
+	val := big.NewInt(99)
+
+	lg := &gethtypes.Log{
+		Address: token,
+		Topics:  []common.Hash{SigTransferSingle, {}, addrTopic(from), addrTopic(to)},
+		Data:    mustPack(t, erc1155DataS, id, val),
+		Index:   2,
+	}
+	tx := common.HexToHash("0x3")
+
+	res, matched, err := reg.HandleLog(lg, tx)
+	require.NoError(t, err)
+	require.True(t, matched)
+	require.Len(t, res, 1)
+
+	evm, ok := res[0].(EvmTransfer)
+	require.True(t, ok)
+	require.Equal(t, ERC1155, evm.Balances.Standard)
+	require.Equal(t, token.Hex(), evm.Mint)
+	require.Equal(t, from.Hex(), evm.FromOwner)
+	require.Equal(t, to.Hex(), evm.ToOwner)
+	require.Equal(t, 0, evm.Balances.TokenID.Cmp(id))
+	require.Equal(t, 0, evm.Amount.Cmp(val))
+}
+
+func TestDefaultRegistry_ERC1155_Batch(t *testing.T) {
+	reg := NewRegistry[AppEvent]()
+	EnsureDefaultEvmTransfersInto(reg)
+
+	token := addr(0xDD)
+	from := addr(0x07)
+	to := addr(0x08)
+	ids := []*big.Int{big.NewInt(1), big.NewInt(2), big.NewInt(3)}
+	vals := []*big.Int{big.NewInt(10), big.NewInt(20), big.NewInt(30)}
+
+	lg := &gethtypes.Log{
+		Address: token,
+		Topics:  []common.Hash{SigTransferBatch, {}, addrTopic(from), addrTopic(to)},
+		Data:    mustPack(t, erc1155DataB, ids, vals),
+		Index:   3,
+	}
+	tx := common.HexToHash("0x4")
+
+	res, matched, err := reg.HandleLog(lg, tx)
+	require.NoError(t, err)
+	require.True(t, matched)
+	require.Len(t, res, len(ids))
+
+	// sort by tokenId for stable checks
+	sort.Slice(res, func(i, j int) bool {
+		ai := res[i].(EvmTransfer).Balances.TokenID
+		aj := res[j].(EvmTransfer).Balances.TokenID
+		return ai.Cmp(aj) < 0
+	})
+
+	for i := range ids {
+		evm := res[i].(EvmTransfer)
+		require.Equal(t, ERC1155, evm.Balances.Standard)
+		require.Equal(t, token.Hex(), evm.Mint)
+		require.Equal(t, from.Hex(), evm.FromOwner)
+		require.Equal(t, to.Hex(), evm.ToOwner)
+		require.Equal(t, 0, evm.Balances.TokenID.Cmp(ids[i]))
+		require.Equal(t, 0, evm.Amount.Cmp(vals[i]))
+	}
+}
+
+func TestRegisterEvent_WETH_Deposit_Generic(t *testing.T) {
+	type wethDeposit struct {
+		Dst common.Address `abi:"dst"`
+		Wad *big.Int       `abi:"wad"`
+	}
+
+	abiJSON := `[
+	  {"type":"event","name":"Deposit","inputs":[
+	    {"indexed":true,"name":"dst","type":"address"},
+	    {"indexed":false,"name":"wad","type":"uint256"}
+	  ]}
+	]`
+	a, err := abi.JSON(strings.NewReader(abiJSON))
+	require.NoError(t, err)
+
+	// single registry whose result type is Event[wethDeposit]
+	reg := NewRegistry[AppEvent]()
+	_, eventFilter, err := RegisterEvent[wethDeposit](reg, a, "Deposit", "weth.deposit")
+	require.NoError(t, err)
+
+	// build a matching log
+	weth := addr(0xEE)
+	dst := addr(0x33)
+	wad := big.NewInt(777)
+	sig := crypto.Keccak256Hash([]byte("Deposit(address,uint256)"))
+
+	lg := &gethtypes.Log{
+		Address: weth,
+		Topics:  []common.Hash{sig, addrTopic(dst)},
+		Data:    mustPack(t, abi.Arguments{{Type: mustType(t, "uint256")}}, wad),
+		Index:   9,
+	}
+	tx := common.HexToHash("0xabc")
+
+	out, matched, derr := reg.HandleLog(lg, tx)
+	require.NoError(t, derr)
+	require.True(t, matched)
+	require.Len(t, out, 1)
+
+	events := eventFilter(out)
+	require.Len(t, events, 1)
+
+	ev := events[0]
+
+	require.Equal(t, "weth.deposit", ev.EventKind)
+	require.Equal(t, weth.Hex(), ev.Contract)
+	require.Equal(t, tx.Hex(), ev.TxHash)
+	require.Equal(t, uint(9), ev.LogIndex)
+
+	// payload (decoded event T)
+	require.Equal(t, dst, ev.SubscribedEvent.Dst)
+	require.Zero(t, ev.SubscribedEvent.Wad.Cmp(wad))
+}
+
+func TestRegisterEvent_UniV2_Sync_Generic(t *testing.T) {
+	// UniswapV2 Pair Sync(uint112 reserve0, uint112 reserve1)
+	type UniV2Sync struct {
+		Reserve0 *big.Int `abi:"reserve0"`
+		Reserve1 *big.Int `abi:"reserve1"`
+	}
+
+	abiJSON := `[
+	  {"type":"event","name":"Sync","inputs":[
+	    {"indexed":false,"name":"reserve0","type":"uint112"},
+	    {"indexed":false,"name":"reserve1","type":"uint112"}
+	  ]}
+	]`
+	a, err := abi.JSON(strings.NewReader(abiJSON))
+	require.NoError(t, err)
+
+	reg := NewRegistry[AppEvent]()
+	_, eventFilter, err := RegisterEvent[UniV2Sync](reg, a, "Sync", "univ2.sync")
+	require.NoError(t, err)
+
+	// Build a log
+	pair := addr(0xAA)
+	sig := crypto.Keccak256Hash([]byte("Sync(uint112,uint112)"))
+	r0 := new(big.Int).SetUint64(12345)
+	r1 := new(big.Int).SetUint64(67890)
+
+	lg := &gethtypes.Log{
+		Address: pair,
+		Topics:  []common.Hash{sig},
+		Data: mustPack(t, abi.Arguments{
+			{Type: mustType(t, "uint112")},
+			{Type: mustType(t, "uint112")},
+		}, r0, r1),
+		Index: 2,
+	}
+	tx := common.HexToHash("0x555")
+
+	out, matched, derr := reg.HandleLog(lg, tx)
+	require.NoError(t, derr)
+	require.True(t, matched)
+	require.Len(t, out, 1)
+
+	events := eventFilter(out)
+	require.Len(t, events, 1)
+
+	ev := events[0]
+
+	require.Equal(t, "univ2.sync", ev.EventKind)
+	require.Equal(t, pair.Hex(), ev.Contract)
+	require.Equal(t, tx.Hex(), ev.TxHash)
+	require.Equal(t, uint(2), ev.LogIndex)
+	require.Zero(t, ev.SubscribedEvent.Reserve0.Cmp(r0))
+	require.Zero(t, ev.SubscribedEvent.Reserve1.Cmp(r1))
 }
 
 //nolint:gochecknoglobals // there's no way to do the same with functions
@@ -272,41 +523,19 @@ func TestCustomEvent_UniswapV2_Swap_DecodeDirect(t *testing.T) {
 
 	// todo: Memoization
 	a, err := abi.JSON(strings.NewReader(abiJSON))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	ev, matched, err := DecodeEventInto[uniV2Swap](a, "Swap", lg)
-	if err != nil || !matched {
-		t.Fatalf("decode swap: matched=%v err=%v", matched, err)
-	}
-
-	if ev.Sender != sender {
-		t.Fatal("sender mismatch")
-	}
-
-	if ev.To != dst {
-		t.Fatal("to mismatch")
-	}
-
-	if ev.Amount0In.Cmp(big.NewInt(0)) != 0 {
-		t.Fatal("amount0In mismatch")
-	}
-
-	if ev.Amount1In.Cmp(big.NewInt(1000)) != 0 {
-		t.Fatal("amount1In mismatch")
-	}
-
-	if ev.Amount0Out.Cmp(big.NewInt(500)) != 0 {
-		t.Fatal("amount0Out mismatch")
-	}
-
-	if ev.Amount1Out.Cmp(big.NewInt(0)) != 0 {
-		t.Fatal("amount1Out mismatch")
-	}
+	require.NoError(t, err)
+	require.True(t, matched)
+	require.Equal(t, sender, ev.Sender)
+	require.Equal(t, dst, ev.To)
+	require.Zero(t, ev.Amount0In.Cmp(big.NewInt(0)))
+	require.Zero(t, ev.Amount1In.Cmp(big.NewInt(1000)))
+	require.Zero(t, ev.Amount0Out.Cmp(big.NewInt(500)))
+	require.Zero(t, ev.Amount1Out.Cmp(big.NewInt(0)))
 }
 
-// App-level result the user wants:
 type SwapResult struct {
 	Pair       string
 	Sender     string
@@ -330,9 +559,7 @@ func TestCustomEvent_UniswapV2_Swap_Registry(t *testing.T) {
 	]`
 
 	a, err := abi.JSON(strings.NewReader(abiJSON))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Build registry producing SwapResult
 	reg := NewRegistry[SwapResult]()
@@ -374,34 +601,16 @@ func TestCustomEvent_UniswapV2_Swap_Registry(t *testing.T) {
 	rc := &gethtypes.Receipt{TxHash: common.HexToHash("0x123")}
 
 	out, matched, err := reg.HandleLog(lg, rc.TxHash)
-	if err != nil || !matched {
-		t.Fatalf("handle swap: matched=%v err=%v", matched, err)
-	}
-
-	if len(out) != 1 {
-		t.Fatalf("want 1 result, got %d", len(out))
-	}
+	require.NoError(t, err)
+	require.True(t, matched)
+	require.Len(t, out, 1)
 
 	got := out[0]
-	if got.Pair != pair.Hex() {
-		t.Fatal("pair mismatch")
-	}
-
-	if got.Sender != sender.Hex() {
-		t.Fatal("sender mismatch")
-	}
-
-	if got.To != dst.Hex() {
-		t.Fatal("to mismatch")
-	}
-
-	if got.Amount0In.Cmp(big.NewInt(10)) != 0 {
-		t.Fatal("amount0In mismatch")
-	}
-
-	if got.Amount1Out.Cmp(big.NewInt(9)) != 0 {
-		t.Fatal("amount1Out mismatch")
-	}
+	require.Equal(t, pair.Hex(), got.Pair)
+	require.Equal(t, sender.Hex(), got.Sender)
+	require.Equal(t, dst.Hex(), got.To)
+	require.Zero(t, got.Amount0In.Cmp(big.NewInt(10)))
+	require.Zero(t, got.Amount1Out.Cmp(big.NewInt(9)))
 }
 
 // ERC-20 Approval(owner, spender, value)
