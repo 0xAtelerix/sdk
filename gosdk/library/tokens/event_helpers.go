@@ -2,6 +2,7 @@ package tokens
 
 func As[T any](ev AppEvent) (Event[T], bool) {
 	v, ok := ev.(Event[T])
+
 	return v, ok
 }
 
@@ -12,5 +13,6 @@ func Filter[T any](evs []AppEvent) []Event[T] {
 			out = append(out, v)
 		}
 	}
+
 	return out
 }

@@ -52,6 +52,7 @@ func RegisterEvent[T any](
 				LogIndex:        m.LogIndex,
 				SubscribedEvent: t,
 			}
+
 			return []AppEvent{w}, nil
 		},
 	)

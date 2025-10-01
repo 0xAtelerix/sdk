@@ -52,5 +52,5 @@ type SolTransfer Transfer[SolanaBalances]
 
 // Ensure SolTransfer satisfies AppEvent.
 func (s SolTransfer) Kind() string {
-	return "svm.transfer." + string(s.Mint)
+	return "svm.transfer." + s.Mint
 }

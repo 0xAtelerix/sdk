@@ -20,6 +20,7 @@ func RegisterDefaultEvmTransfers(reg *Registry[AppEvent]) {
 					LogIndex: m.LogIndex,
 				},
 			}
+
 			return []AppEvent{evm}, nil
 		},
 	)
@@ -40,6 +41,7 @@ func RegisterDefaultEvmTransfers(reg *Registry[AppEvent]) {
 					LogIndex: m.LogIndex,
 				},
 			}
+
 			return []AppEvent{evm}, nil
 		},
 	)
@@ -60,6 +62,7 @@ func RegisterDefaultEvmTransfers(reg *Registry[AppEvent]) {
 					LogIndex: m.LogIndex,
 				},
 			}
+
 			return []AppEvent{evm}, nil
 		},
 	)
@@ -99,6 +102,7 @@ func EnsureDefaultEvmTransfersInto(regs ...*Registry[AppEvent]) {
 	if len(regs) > 0 && regs[0] != nil {
 		target = regs[0]
 	}
+
 	RegisterDefaultEvmTransfers(target)
 }
 
@@ -106,5 +110,6 @@ func EnsureDefaultEvmTransfersInto(regs ...*Registry[AppEvent]) {
 func NewDefaultEvmTransferRegistry() *Registry[AppEvent] {
 	reg := NewRegistry[AppEvent]()
 	RegisterDefaultEvmTransfers(reg)
+
 	return reg
 }

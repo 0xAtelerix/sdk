@@ -79,6 +79,7 @@ func (r *Registry[R]) HandleLog(lg *gethtypes.Log, txHash common.Hash) ([]R, boo
 	r.mu.RLock()
 	entries, ok := r.m[lg.Topics[0]]
 	r.mu.RUnlock()
+
 	if !ok || len(entries) == 0 {
 		return nil, false, nil
 	}

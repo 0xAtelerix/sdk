@@ -343,11 +343,13 @@ func TestDefaultRegistry_ERC1155_Batch(t *testing.T) {
 	sort.Slice(res, func(i, j int) bool {
 		ai := res[i].(EvmTransfer).Balances.TokenID
 		aj := res[j].(EvmTransfer).Balances.TokenID
+
 		return ai.Cmp(aj) < 0
 	})
 
 	for i := range ids {
-		evm := res[i].(EvmTransfer)
+		evm, ok := res[i].(EvmTransfer)
+		require.True(t, ok)
 		require.Equal(t, ERC1155, evm.Balances.Standard)
 		require.Equal(t, token.Hex(), evm.Mint)
 		require.Equal(t, from.Hex(), evm.FromOwner)
@@ -743,7 +745,6 @@ func TestCustomEvents_Approval_And_WETH_Deposit(t *testing.T) {
 	}
 }
 
-//nolint:unparam // test helper
 func mustType(t *testing.T, s string) abi.Type {
 	t.Helper()
 
