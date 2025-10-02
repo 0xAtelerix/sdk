@@ -42,7 +42,7 @@ type SolanaBalances struct {
 type EvmTransfer Transfer[EthereumBalances]
 
 // Ensure EvmTransfer satisfies AppEvent.
-func (e EvmTransfer) Kind() string {
+func (e EvmTransfer) Name() string {
 	// You can choose any convention you like for the kind string.
 	// This includes the ERC standard for convenience.
 	return "evm.transfer." + string(e.Balances.Standard)
@@ -51,6 +51,6 @@ func (e EvmTransfer) Kind() string {
 type SolTransfer Transfer[SolanaBalances]
 
 // Ensure SolTransfer satisfies AppEvent.
-func (s SolTransfer) Kind() string {
+func (s SolTransfer) Name() string {
 	return "svm.transfer." + s.Mint
 }

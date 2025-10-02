@@ -396,7 +396,7 @@ func TestRegisterEvent_WETH_Deposit_Generic(t *testing.T) {
 
 	// single registry whose result type is Event[wethDeposit]
 	reg := NewRegistry[AppEvent]()
-	_, err = RegisterEvent[wethDeposit](reg, a, "Deposit", "weth.deposit")
+	_, err = RegisterEvent[wethDeposit](reg, a, "Deposit")
 	require.NoError(t, err)
 
 	eventFilter := Filter[wethDeposit]
@@ -425,7 +425,7 @@ func TestRegisterEvent_WETH_Deposit_Generic(t *testing.T) {
 
 	ev := events[0]
 
-	require.Equal(t, "weth.deposit", ev.EventKind)
+	require.Equal(t, "Deposit", ev.EventName)
 	require.Equal(t, weth.Hex(), ev.Contract)
 	require.Equal(t, tx.Hex(), ev.TxHash)
 	require.Equal(t, uint(9), ev.LogIndex)
@@ -454,7 +454,7 @@ func TestRegisterEvent_UniV2_Sync_Generic(t *testing.T) {
 	require.NoError(t, err)
 
 	reg := NewRegistry[AppEvent]()
-	_, err = RegisterEvent[UniV2Sync](reg, a, "Sync", "univ2.sync")
+	_, err = RegisterEvent[UniV2Sync](reg, a, "Sync")
 	require.NoError(t, err)
 
 	eventFilter := Filter[UniV2Sync]
@@ -486,7 +486,7 @@ func TestRegisterEvent_UniV2_Sync_Generic(t *testing.T) {
 
 	ev := events[0]
 
-	require.Equal(t, "univ2.sync", ev.EventKind)
+	require.Equal(t, "Sync", ev.EventName)
 	require.Equal(t, pair.Hex(), ev.Contract)
 	require.Equal(t, tx.Hex(), ev.TxHash)
 	require.Equal(t, uint(2), ev.LogIndex)

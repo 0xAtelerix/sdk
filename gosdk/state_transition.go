@@ -95,12 +95,12 @@ blockLoop:
 					ok = true
 
 					// dispatch by kind to handlers you stored on Subscriber
-					byKind := map[string][]tokens.AppEvent{}
+					byName := map[string][]tokens.AppEvent{}
 					for _, e := range events {
-						byKind[e.Kind()] = append(byKind[e.Kind()], e)
+						byName[e.Name()] = append(byName[e.Name()], e)
 					}
 
-					for k, evs := range byKind {
+					for k, evs := range byName {
 						if h, exists := b.Subscriber.EVMHandlers[k]; exists {
 							h.Handle(evs, dbtx)
 						}

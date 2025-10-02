@@ -20,7 +20,7 @@ type Subscriber struct {
 	SolAddresses map[apptypes.ChainType]map[library.SolanaAddress]struct{}   // chainID -> SolanaAddress
 
 	EVMEventRegistry *tokens.Registry[tokens.AppEvent]
-	EVMHandlers      map[string]AppEventHandler // value is tokens.EventFilter[T] for various Ts. Not persistent - MUST be initialized be a user
+	EVMHandlers      map[string]AppEventHandler // eventName -> Handler
 
 	SolanaEventRegistry *tokens.Registry[tokens.AppEvent]
 
@@ -80,7 +80,7 @@ func (s *Subscriber) SubscribeEthContract(
 			return
 		}
 
-		s.EVMHandlers[h[0].Kind()] = h[0]
+		s.EVMHandlers[h[0].Name()] = h[0]
 	}
 }
 
@@ -109,7 +109,7 @@ func (s *Subscriber) UnsubscribeEthContract(
 			return
 		}
 
-		delete(s.EVMHandlers, h[0].Kind())
+		delete(s.EVMHandlers, h[0].Name())
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/library/tests"
 	"github.com/0xAtelerix/sdk/gosdk/scheme"
 )
 
@@ -48,32 +49,13 @@ func createTestReceipt(data string, errorMsg string) *TestReceipt {
 	}
 }
 
-func testDB(t *testing.T) (kv.RwDB, func()) {
-	t.Helper()
-
-	db := memdb.NewTestDB(t)
-
-	// Create tables
-	err := db.Update(t.Context(), func(tx kv.RwTx) error {
-		// Create the receipts bucket
-		return tx.CreateBucket(scheme.ReceiptBucket)
-	})
-	if err != nil {
-		db.Close()
-	}
-
-	require.NoError(t, err)
-
-	return db, db.Close
-}
-
 func TestStoreAndGetReceipt(t *testing.T) {
 	t.Parallel()
 
 	t.Run("successful store and retrieve", func(tr *testing.T) {
 		tr.Parallel()
 
-		db, cleanup := testDB(tr)
+		db, cleanup := tests.TestDB(tr, scheme.ReceiptBucket)
 		defer cleanup()
 
 		receipt := createTestReceipt("test-receipt-1", "")
@@ -107,7 +89,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 	t.Run("store multiple receipts", func(tr *testing.T) {
 		tr.Parallel()
 
-		db, cleanup := testDB(tr)
+		db, cleanup := tests.TestDB(tr, scheme.ReceiptBucket)
 		defer cleanup()
 
 		receipts := []*TestReceipt{
@@ -157,7 +139,7 @@ func TestStoreAndGetReceipt(t *testing.T) {
 	t.Run("get non-existent receipt", func(tr *testing.T) {
 		tr.Parallel()
 
-		db, cleanup := testDB(tr)
+		db, cleanup := tests.TestDB(tr, scheme.ReceiptBucket)
 		defer cleanup()
 
 		nonExistentHash := sha256.Sum256([]byte("non-existent"))
@@ -182,7 +164,7 @@ func TestReceiptBatchOperations(t *testing.T) {
 	t.Run("batch store receipts", func(tr *testing.T) {
 		tr.Parallel()
 
-		db, cleanup := testDB(tr)
+		db, cleanup := tests.TestDB(tr, scheme.ReceiptBucket)
 		defer cleanup()
 
 		receipts := make([]*TestReceipt, 100)
@@ -300,7 +282,7 @@ func TestReceiptErrorHandling(t *testing.T) {
 	t.Run("error message serialization", func(tr *testing.T) {
 		tr.Parallel()
 
-		db, cleanup := testDB(tr)
+		db, cleanup := tests.TestDB(tr, scheme.ReceiptBucket)
 		defer cleanup()
 
 		// Test that error messages with special characters serialize correctly
@@ -331,7 +313,7 @@ func TestReceiptErrorHandling(t *testing.T) {
 	t.Run("long error message", func(tr *testing.T) {
 		tr.Parallel()
 
-		db, cleanup := testDB(tr)
+		db, cleanup := tests.TestDB(tr, scheme.ReceiptBucket)
 		defer cleanup()
 
 		// Test with a very long error message

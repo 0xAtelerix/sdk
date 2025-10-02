@@ -17,10 +17,11 @@ const (
 	ProcessedBuckets       = "processed_buckets"
 	EventStreamPositionKey = "event_stream_pos"
 
-	SubscriptionBucket        = "subscription_bucket"          // chainID -> []{address|contract}
-	ValsetBucket              = "validator_set_bucket"         // Epoch -> map[validatorID][stake] // map[uint32][uint64]
-	ExternalBlockVotingBucket = "external_block_voting_bucket" // Chain|Block|Hash -> {votedStake, []{Epoch, Signer}}
-	CheckpointVotingBucket    = "checkpoint_voting_bucket"     // Chain|Block|Hash -> {votedStake, []{Epoch, Signer}}
+	SubscriptionBucket             = "subscription_bucket"          // chainID -> []{address|contract}
+	SubscriptionEventLibraryBucket = "subscription_kinds_bucket"    // chainID|sha(contract|eventName) -> event
+	ValsetBucket                   = "validator_set_bucket"         // Epoch -> map[validatorID][stake] // map[uint32][uint64]
+	ExternalBlockVotingBucket      = "external_block_voting_bucket" // Chain|Block|Hash -> {votedStake, []{Epoch, Signer}}
+	CheckpointVotingBucket         = "checkpoint_voting_bucket"     // Chain|Block|Hash -> {votedStake, []{Epoch, Signer}}
 
 	TxBuckets     = "txbatch"
 	ReceiptBucket = "receipts" // tx-hash -> receipt
@@ -40,18 +41,19 @@ func TxBucketsTables() kv.TableCfg {
 
 func DefaultTables() kv.TableCfg {
 	return kv.TableCfg{
-		CheckpointBucket:          {},
-		ExternalTxBucket:          {},
-		BlocksBucket:              {},
-		ConfigBucket:              {},
-		StateBucket:               {},
-		Snapshot:                  {},
-		ReceiptBucket:             {},
-		EthReceipts:               {},
-		SubscriptionBucket:        {},
-		ValsetBucket:              {},
-		ExternalBlockVotingBucket: {},
-		CheckpointVotingBucket:    {},
+		CheckpointBucket:               {},
+		ExternalTxBucket:               {},
+		BlocksBucket:                   {},
+		ConfigBucket:                   {},
+		StateBucket:                    {},
+		Snapshot:                       {},
+		ReceiptBucket:                  {},
+		EthReceipts:                    {},
+		SubscriptionBucket:             {},
+		SubscriptionEventLibraryBucket: {},
+		ValsetBucket:                   {},
+		ExternalBlockVotingBucket:      {},
+		CheckpointVotingBucket:         {},
 	}
 }
 

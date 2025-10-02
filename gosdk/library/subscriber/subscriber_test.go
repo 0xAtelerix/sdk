@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"math/big"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -13,8 +14,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
-	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
-	mdbxlog "github.com/ledgerwatch/log/v3"
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
@@ -288,23 +287,6 @@ func Test_UnsubscribeSolanaAddress_RemovesFromActive_And_MarksDeleted(t *testing
 	require.True(t, ok)
 }
 
-func openTestDB(t *testing.T) kv.RwDB {
-	t.Helper()
-
-	db, err := mdbx.NewMDBX(mdbxlog.New()).
-		Path(t.TempDir()).
-		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
-			return kv.TableCfg{
-				scheme.SubscriptionBucket: {},
-			}
-		}).
-		Open()
-
-	require.NoError(t, err)
-
-	return db
-}
-
 func readAllSubscriptions(
 	t *testing.T,
 	tx kv.Tx,
@@ -354,8 +336,8 @@ func readAllSubscriptions(
 func Test_Store_Persistency_WriteAndReadBack(t *testing.T) {
 	t.Parallel()
 
-	db := openTestDB(t)
-	defer db.Close()
+	db, closeFn := tests.TestDB(t, scheme.SubscriptionEventLibraryBucket, scheme.SubscriptionBucket)
+	defer closeFn()
 
 	s := newSubscriber()
 	// chain 1: two ETH
@@ -418,8 +400,8 @@ func Test_Store_Persistency_WriteAndReadBack(t *testing.T) {
 func Test_Store_Persistency_DeleteThenUpsert(t *testing.T) {
 	t.Parallel()
 
-	db := openTestDB(t)
-	defer db.Close()
+	db, closeFn := tests.TestDB(t, scheme.SubscriptionEventLibraryBucket, scheme.SubscriptionBucket)
+	defer closeFn()
 
 	s := newSubscriber()
 
@@ -460,8 +442,8 @@ func Test_Store_Persistency_DeleteThenUpsert(t *testing.T) {
 func Test_Store_Persistency_DeleteWholeChainThenReAdd(t *testing.T) {
 	t.Parallel()
 
-	db := openTestDB(t)
-	defer db.Close()
+	db, closeFn := tests.TestDB(t, scheme.SubscriptionEventLibraryBucket, scheme.SubscriptionBucket)
+	defer closeFn()
 
 	s := newSubscriber()
 
@@ -516,7 +498,7 @@ func Test_Store_Persistency_DeleteWholeChainThenReAdd(t *testing.T) {
 	require.Equal(t, map[library.EthereumAddress]struct{}{ethY: {}}, gotEth[library.BNBChainID])
 }
 
-const wethDepositkind = "weth.deposit"
+const wethDepositEventName = "Deposit"
 
 type wethDeposit struct {
 	Dst common.Address `abi:"dst"`
@@ -546,16 +528,18 @@ func Test_AddEVMEvent_RegistersAndInvokesHandler_ForSubscribedEmitter(t *testing
 		called int
 	)
 
+	db, closeFn := tests.TestDB(t, scheme.SubscriptionEventLibraryBucket, scheme.SubscriptionBucket)
+	defer closeFn()
+
 	// Register + attach handler via AddEVMEvent
-	_, err = AddEVMEvent[wethDeposit](
+	_, err = AddEVMEvent(t.Context(),
 		s,
-		chainID,
-		contract,
-		a, "Deposit", wethDepositkind,
+		library.NewEVMEvent(chainID, contract, wethDepositEventName, a),
 		func(ev tokens.Event[wethDeposit], _ kv.RwTx) {
 			called++
 			got = ev
 		},
+		db,
 	)
 	require.NoError(t, err)
 
@@ -583,22 +567,19 @@ func Test_AddEVMEvent_RegistersAndInvokesHandler_ForSubscribedEmitter(t *testing
 	ok := s.IsEthSubscription(chainID, library.EthereumAddress(wethAddr))
 	require.True(t, ok, "emitter should be subscribed")
 
-	db := openTestDB(t)
-	defer db.Close()
-
 	tx, err := db.BeginRw(t.Context())
 	require.NoError(t, err)
 
 	defer tx.Rollback()
 
 	// Dispatch to the kind's handler
-	h, exists := s.EVMHandlers[wethDepositkind]
+	h, exists := s.EVMHandlers[wethDepositEventName]
 	require.True(t, exists)
 	h.Handle(evs, tx)
 
 	// Assert handler received typed event
 	require.Equal(t, 1, called)
-	require.Equal(t, wethDepositkind, got.EventKind)
+	require.Equal(t, wethDepositEventName, got.EventName)
 	require.Equal(t, wethAddr.Hex(), got.Contract)
 	require.Equal(t, dst, got.SubscribedEvent.Dst)
 	require.Zero(t, got.SubscribedEvent.Wad.Cmp(big.NewInt(777)))
@@ -623,13 +604,18 @@ func Test_AddEVMEvent_NotInvoked_WhenEmitterNotSubscribed(t *testing.T) {
 	]`))
 	require.NoError(t, err)
 
+	db, closeFn := tests.TestDB(t, scheme.SubscriptionEventLibraryBucket, scheme.SubscriptionBucket)
+	defer closeFn()
+
 	var called int
 
-	_, err = AddEVMEvent[wethDeposit](
-		s, chainID, contract, a, "Deposit", wethDepositkind,
+	_, err = AddEVMEvent[wethDeposit](t.Context(),
+		s,
+		library.NewEVMEvent(chainID, contract, "Deposit", a),
 		func(tokens.Event[wethDeposit], kv.RwTx) {
 			called++
 		},
+		db,
 	)
 	require.NoError(t, err)
 
@@ -655,9 +641,6 @@ func Test_AddEVMEvent_NotInvoked_WhenEmitterNotSubscribed(t *testing.T) {
 	ok := s.IsEthSubscription(chainID, library.EthereumAddress(other))
 	require.False(t, ok)
 
-	db := openTestDB(t)
-	defer db.Close()
-
 	tx, err := db.BeginRw(t.Context())
 	require.NoError(t, err)
 
@@ -665,7 +648,7 @@ func Test_AddEVMEvent_NotInvoked_WhenEmitterNotSubscribed(t *testing.T) {
 
 	// (Simulate batch loop: since not subscribed, don't dispatch)
 	if ok {
-		s.EVMHandlers[wethDepositkind].Handle(evs, tx)
+		s.EVMHandlers[wethDepositEventName].Handle(evs, tx)
 	}
 
 	require.Equal(t, 0, called)
@@ -704,25 +687,32 @@ func Test_AddEVMEvent_MultipleKinds_DispatchSeparately(t *testing.T) {
 	]`))
 	require.NoError(t, err)
 
+	db, closeFn := tests.TestDB(t, scheme.SubscriptionEventLibraryBucket, scheme.SubscriptionBucket)
+	defer closeFn()
+
 	// Register + attach both
 	var depCalls, apprCalls int
 
-	_, err = AddEVMEvent[wethDeposit](s, chainID, contractA, abiA, "Deposit", wethDepositkind,
+	_, err = AddEVMEvent[wethDeposit](
+		t.Context(),
+		s,
+		library.NewEVMEvent(chainID, contractA, wethDepositEventName, abiA),
 		func(tokens.Event[wethDeposit], kv.RwTx) {
 			depCalls++
-		})
+		},
+		db,
+	)
 	require.NoError(t, err)
 
 	_, err = tokens.RegisterEvent[erc20Approval](
 		s.EVMEventRegistry,
 		abiB,
 		"Approval",
-		"erc20.approval",
 	)
 	require.NoError(t, err)
 
 	// Attach handler manually (simulating AddEVMEvent-like attach)
-	s.SubscribeEthContract(chainID, contractB, NewEVMHandler("erc20.approval",
+	s.SubscribeEthContract(chainID, contractB, NewEVMHandler("Approval",
 		func(tokens.Event[erc20Approval], kv.RwTx) {
 			apprCalls++
 		},
@@ -763,9 +753,6 @@ func Test_AddEVMEvent_MultipleKinds_DispatchSeparately(t *testing.T) {
 		Index: 2,
 	}
 
-	db := openTestDB(t)
-	defer db.Close()
-
 	tx, err := db.BeginRw(t.Context())
 	require.NoError(t, err)
 
@@ -782,7 +769,7 @@ func Test_AddEVMEvent_MultipleKinds_DispatchSeparately(t *testing.T) {
 			// group-by-kind (as your batch loop would)
 			byKind := map[string][]tokens.AppEvent{}
 			for _, e := range evs {
-				byKind[e.Kind()] = append(byKind[e.Kind()], e)
+				byKind[e.Name()] = append(byKind[e.Name()], e)
 			}
 
 			for k, list := range byKind {
@@ -795,4 +782,118 @@ func Test_AddEVMEvent_MultipleKinds_DispatchSeparately(t *testing.T) {
 
 	require.Equal(t, 1, depCalls, "deposit handler should run once")
 	require.Equal(t, 1, apprCalls, "approval handler should run once")
+}
+
+func Test_EVMEvent_PersistAndRestore(t *testing.T) {
+	t.Parallel()
+
+	db, closeFn := tests.TestDB(t, scheme.SubscriptionEventLibraryBucket, scheme.SubscriptionBucket)
+	defer closeFn()
+
+	ctx := t.Context()
+
+	// Fresh subscriber (empty registry/handlers)
+	s, err := NewSubscriber(ctx, db)
+	require.NoError(t, err)
+
+	// Build a simple WETH Deposit event ABI
+	wethABI, err := abi.JSON(strings.NewReader(`[
+	  {"type":"event","name":"Deposit","inputs":[
+	    {"indexed":true,"name":"dst","type":"address"},
+	    {"indexed":false,"name":"wad","type":"uint256"}
+	  ]}
+	]`))
+	require.NoError(t, err)
+
+	// Spec to persist
+	chainID := apptypes.ChainType(1)
+	contract := mkEth(0xEE)
+	evName := "Deposit"
+
+	spec := &library.EVMEvent{
+		ChainID:   chainID,
+		EventName: evName,
+		Contract:  contract,
+		ABI:       wethABI,
+	}
+
+	// handler to attach
+	var handlerCalls int64
+
+	handler := func(ev tokens.Event[struct {
+		Dst common.Address `abi:"dst"`
+		Wad *big.Int       `abi:"wad"`
+	}], _ kv.RwTx,
+	) {
+		atomic.AddInt64(&handlerCalls, ev.SubscribedEvent.Wad.Int64())
+	}
+
+	// 1) AddEVMEvent should register in-memory + persist to DB
+	_, err = AddEVMEvent(ctx, s, spec, handler, db)
+	require.NoError(t, err)
+
+	// Verify it’s persisted
+	ro, err := db.BeginRo(ctx)
+	require.NoError(t, err)
+
+	defer ro.Rollback()
+
+	key := EVMEventKey(chainID, contract, evName)
+
+	raw, err := ro.GetOne(scheme.SubscriptionEventLibraryBucket, key)
+	require.NoError(t, err)
+	require.NotEmpty(t, raw)
+
+	var got library.EVMEvent
+	require.NoError(t, cbor.Unmarshal(raw, &got))
+
+	require.Equal(t, spec.ChainID, got.ChainID)
+	require.Equal(t, spec.EventName, got.EventName)
+	require.Equal(t, spec.Contract, got.Contract)
+
+	// ABI round-trip: we can spot-check the event exists and the signature matches
+	ev, ok := got.ABI.Events[evName]
+	require.True(t, ok, "event must be present in restored ABI")
+	require.Equal(t, wethABI.Events[evName].ID, ev.ID, "topic0 must match")
+
+	// 2) Simulate restart: new subscriber (empty in-memory state)
+	s2, err := NewSubscriber(ctx, db)
+	require.NoError(t, err)
+	require.Empty(t, s2.EVMHandlers)
+
+	// 3) Restore the event + attach (compile-time typed) handler
+	require.NoError(t, LoadEVMEvent(ctx, s2, chainID, contract, evName, db, handler))
+
+	// Ensure handler registered under the event name key (per addEVMEvent)
+	h, ok := s2.EVMHandlers[evName]
+	require.True(t, ok, "handler should be restored into EVMHandlers")
+	require.Equal(t, evName, h.Name())
+
+	// 4) Sanity: the registry should now know how to decode a matching log
+	// Build synthetic Deposit log
+	dst := common.Address{0: 0xAA}
+	wad := big.NewInt(777)
+	sig := crypto.Keccak256Hash([]byte("Deposit(address,uint256)"))
+
+	data := tests.MustPack(t, abi.Arguments{{Type: tests.MustType(t, "uint256")}}, wad)
+	lg := &gethtypes.Log{
+		Address: common.Address(contract),
+		Topics:  []common.Hash{sig, tests.AddrTopic(dst)},
+		Data:    data,
+		Index:   0,
+	}
+	txHash := common.HexToHash("0xabc")
+
+	events, matched, derr := s2.EVMEventRegistry.HandleLog(lg, txHash)
+	require.NoError(t, derr)
+	require.True(t, matched)
+	require.NotEmpty(t, events)
+
+	rwTx, err := db.BeginRw(t.Context())
+	require.NoError(t, err)
+
+	defer rwTx.Rollback()
+
+	h.Handle(events, rwTx)
+	require.Equal(t, int64(777), handlerCalls)
 }

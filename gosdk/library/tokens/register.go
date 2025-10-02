@@ -15,14 +15,14 @@ type Event[T any] struct {
 	SubscribedEvent T // From ABI
 
 	// From meta (auto-injected):
-	EventKind string
+	EventName string
 	Contract  string // lg.Address (contract)
 	TxHash    string
 	LogIndex  uint
 }
 
 // Implement AppEvent.
-func (e Event[T]) Kind() string { return e.EventKind }
+func (e Event[T]) Name() string { return e.EventName }
 
 // A typed filter for pulling Event[T] out of a []AppEvent.
 type EventFilter[T any] func([]AppEvent) []Event[T]
@@ -33,7 +33,6 @@ func RegisterEvent[T any](
 	r *Registry[AppEvent],
 	a abi.ABI,
 	eventName string,
-	kind string,
 ) (common.Hash, error) {
 	ev, ok := a.Events[eventName]
 	if !ok {
@@ -46,7 +45,7 @@ func RegisterEvent[T any](
 	Register[T, AppEvent](r, sig, a, eventName,
 		func(t T, m Meta) ([]AppEvent, error) {
 			w := Event[T]{
-				EventKind:       kind,
+				EventName:       eventName,
 				Contract:        m.Contract.Hex(),
 				TxHash:          m.TxHash.Hex(),
 				LogIndex:        m.LogIndex,
