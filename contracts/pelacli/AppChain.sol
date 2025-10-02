@@ -13,51 +13,46 @@ contract AppChain {
     event TokenMinted(
         address indexed recipient,
         uint256 amount,
-        string token,
-        uint256 indexed sourceChainId,
-        bytes32 indexed txHash
+        string token
     );
 
     // State variables
     mapping(address => mapping(string => uint256)) public tokenBalances; // user => token => balance
     address public pelagosContract;
-    uint256 public totalMints;
+    address public owner;
 
     modifier onlyPelagos() {
         require(msg.sender == pelagosContract, "AppChain: caller is not Pelagos contract");
         _;
     }
 
+    modifier onlyOwner() {
+        require(msg.sender == owner, "AppChain: caller is not the owner");
+        _;
+    }
+
     constructor(address _pelagosContract) {
         pelagosContract = _pelagosContract;
+        owner = msg.sender;
     }
 
     /**
-     * @dev Process external transaction from Pelagos contract
-     * @param sourceChainId The chain ID where the transaction originated
-     * @param txHash The transaction hash for tracking
+     * @dev Execute transaction from Pelagos contract
      * @param payload The encoded transaction data
      */
-    function processExternalTransaction(
-        uint256 sourceChainId,
-        bytes32 txHash,
+    function executeTransaction(
         bytes calldata payload
     ) external onlyPelagos {
         require(payload.length > 0, "AppChain: empty payload");
         
-        // Simplified: Only handle token minting
-        _processTokenMint(sourceChainId, txHash, payload);
+        _processTokenMint(payload);
     }
 
     /**
      * @dev Process token mint operation
      * Payload format: [recipient:20bytes][amount:32bytes][tokenName:variable]
      */
-    function _processTokenMint(
-        uint256 sourceChainId,
-        bytes32 txHash,
-        bytes calldata payload
-    ) internal {
+    function _processTokenMint(bytes calldata payload) internal {
         require(payload.length >= 52, "AppChain: invalid token mint payload");
         
         // Extract recipient (bytes 0-19)
@@ -78,25 +73,22 @@ contract AppChain {
         
         // Mint tokens (update balance for specific token)
         tokenBalances[recipient][tokenName] += amount;
-        totalMints++;
         
-        emit TokenMinted(recipient, amount, tokenName, sourceChainId, txHash);
-    }
-
-    /**
-     * @dev Get user's token balance for a specific token
-     * @param user The user address
-     * @param token The token name
-     */
-    function getTokenBalance(address user, string calldata token) external view returns (uint256) {
-        return tokenBalances[user][token];
+        emit TokenMinted(recipient, amount, tokenName);
     }
 
     /**
      * @dev Update Pelagos contract address (for upgrades)
      */
-    function updatePelagosContract(address _pelagosContract) external {
-        require(msg.sender == pelagosContract, "AppChain: only current Pelagos can update");
+    function updatePelagosContract(address _pelagosContract) external onlyOwner {
         pelagosContract = _pelagosContract;
+    }
+
+    /**
+     * @dev Transfer ownership to a new address
+     */
+    function transferOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "AppChain: new owner is the zero address");
+        owner = newOwner;
     }
 }

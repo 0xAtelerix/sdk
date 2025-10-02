@@ -6,7 +6,7 @@
 #   --private-key KEY   Private key for deployment
 #   --rpc-url URL      RPC URL
 #   --no-verify        Skip contract verification
-#   --env-file FILE    Path to .env file (default: .env)
+#   --config-file FILE Path to config.json file (default: config.json)
 
 set -e
 
@@ -14,26 +14,22 @@ set -e
 PRIVATE_KEY=""
 RPC_URL=""
 VERIFY=true
-ENV_FILE=".env"
+CONFIG_FILE="config/config.json"
 
-# Load .env file if it exists
-load_env_file() {
-    local env_file="$1"
-    if [ -f "$env_file" ]; then
-        echo "📄 Loading environment from $env_file"
-        while IFS='=' read -r key value; do
-            # Skip empty lines and comments
-            [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
-            # Remove quotes from value if present
-            value=$(echo "$value" | sed 's/^"\(.*\)"$/\1/' | sed "s/^'\(.*\)'$/\1/")
-            # Set our script variables if they match
-            case $key in
-                RPC_URL) RPC_URL="$value" ;;
-                PRIVATE_KEY) PRIVATE_KEY="$value" ;;
-                ETHERSCAN_API_KEY) export ETHERSCAN_API_KEY="$value" ;;
-            esac
-        done < "$env_file"
-        echo "✅ Environment loaded"
+# Load config.json file if it exists
+load_config_json() {
+    local config_file="$1"
+    if [ -f "$config_file" ]; then
+        echo "📄 Loading configuration from $config_file"
+        if command -v jq >/dev/null 2>&1; then
+            RPC_URL=$(jq -r '.rpcUrl // empty' "$config_file")
+            PRIVATE_KEY=$(jq -r '.privateKey // empty' "$config_file")
+            export ETHERSCAN_API_KEY=$(jq -r '.etherscanApiKey // empty' "$config_file")
+        else
+            echo "❌ jq is required to parse config.json. Please install jq."
+            exit 1
+        fi
+        echo "✅ Configuration loaded"
         echo ""
     fi
 }
@@ -49,8 +45,8 @@ while [[ $# -gt 0 ]]; do
             RPC_URL="$2"
             shift 2
             ;;
-        --env-file)
-            ENV_FILE="$2"
+        --config-file)
+            CONFIG_FILE="$2"
             shift 2
             ;;
         --no-verify)
@@ -63,13 +59,15 @@ while [[ $# -gt 0 ]]; do
             echo "  --private-key KEY   Private key for deployment"
             echo "  --rpc-url URL      RPC URL"
             echo "  --no-verify        Skip contract verification"
-            echo "  --env-file FILE    Path to .env file (default: .env)"
+            echo "  --config-file FILE Path to config.json file (default: config/config.json)"
             echo "  --help             Show this help message"
             echo ""
-            echo "Environment Variables (.env file):"
-            echo "  PRIVATE_KEY=0xyour_private_key"
-            echo "  RPC_URL=https://eth-sepolia.g.alchemy.com/v2/..."
-            echo "  ETHERSCAN_API_KEY=your_etherscan_api_key"
+            echo "Configuration (JSON config file):"
+            echo "  {"
+            echo "    \"rpcUrl\": \"https://eth-sepolia.g.alchemy.com/v2/...\","
+            echo "    \"privateKey\": \"0xyour_private_key\","
+            echo "    \"etherscanApiKey\": \"your_etherscan_api_key\""
+            echo "  }"
             exit 0
             ;;
         *)
@@ -85,13 +83,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONTRACTS_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$CONTRACTS_ROOT"
 
-# Load environment file
-load_env_file "$ENV_FILE"
+# Load configuration file
+load_config_json "$CONFIG_FILE"
 
 # Check if private key is provided
 if [ -z "$PRIVATE_KEY" ]; then
     echo "❌ Error: Private key is required"
-    echo "Provide it via --private-key, or set PRIVATE_KEY in .env file"
+    echo "Provide it via --private-key, or set privateKey in config file"
     echo "Use --help for more information"
     exit 1
 fi
@@ -99,7 +97,7 @@ fi
 # Check if RPC URL is provided
 if [ -z "$RPC_URL" ]; then
     echo "❌ Error: RPC URL is required"
-    echo "Provide it via --rpc-url, or set RPC_URL in .env file"
+    echo "Provide it via --rpc-url, or set rpcUrl in config file"
     echo "Use --help for more information"
     exit 1
 fi

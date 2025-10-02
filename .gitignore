@@ -17,6 +17,5 @@ contracts/foundry.lock
 .gitmodules
 
 # Environment files
-contracts/.env
-contracts/.env.*
-!contracts/.env.example
+contracts/config/config.json
+contracts/config/config-*.json

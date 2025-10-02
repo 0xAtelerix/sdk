@@ -30,6 +30,8 @@ This directory contains example smart contracts for the Atelerix SDK, organized 
 
 ```
 contracts/
+├── config/                 # Configuration files
+│   ├── config.example.json # Configuration template - You can create multiple configs for different networks
 ├── pelacli/             
 │   ├── Pelagos.sol         # Main pelagos contract example
 │   └── AppChain.sol        # Example appchain contract for external txns
@@ -38,9 +40,7 @@ contracts/
 ├── scripts/                # Deployment scripts
 │   ├── deploy_pelagos.sh   # Deploy Pelagos + AppChain
 │   └── deploy_example.sh   # Deploy Example
-├── foundry.toml            # Foundry configuration
-├── .env.example            # Environment variables template
-└── .gitignore              # Ignore build artifacts
+└── foundry.toml            # Foundry configuration
 ```
 
 ## 🚀 Deployment
@@ -53,18 +53,48 @@ contracts/
    foundryup
    ```
 
-2. Copy `.env.example` to `.env` and configure:
+3. Configure deployment settings:
    ```bash
-   cp .env.example .env
+   cp config/config.example.json config/config.json
    ```
 
-3. Edit `.env` with your configuration:
-   ```bash
-   RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY # Any EVM-compatible chain RPC
-   PRIVATE_KEY=your_private_key_without_0x_prefix
-   EXPLORER_API_KEY=YOUR_EXPLORER_API_KEY  # Optional, for verification
-   SOURCE_CHAIN_ID=42  # Chain ID for AppChain registration (optional, defaults to 42)
+4. Edit `config/config.json` with your configuration:
+   ```json
+   {
+     "rpcUrl": "https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY",
+     "privateKey": "your_private_key_without_0x_prefix",
+     "etherscanApiKey": "YOUR_ETHERSCAN_API_KEY",
+     "appChainId": "42"
+   }
    ```
+
+   **Note:** `appChainId` defaults to 42 for testing. This is the unique identifier for your appchain that will be registered with Pelagos. Change this to your appchain's actual chain ID when deploying contracts.
+
+#### Multiple Network Configurations
+
+For multichain deployments, create separate config files for each network:
+
+```bash
+# Create configs for different networks
+cp config/config.example.json config/config-sepolia.json
+cp config/config.example.json config/config-amoy.json
+cp config/config.example.json config/config-mainnet.json
+```
+
+Then deploy to specific networks using the `--config-file` flag:
+
+```bash
+# Deploy to Sepolia testnet
+./scripts/deploy_pelagos.sh --config-file config/config-sepolia.json
+
+# Deploy to Polygon Amoy testnet
+./scripts/deploy_pelagos.sh --config-file config/config-amoy.json
+
+# Deploy to Ethereum mainnet
+./scripts/deploy_pelagos.sh --config-file config/config-mainnet.json
+```
+
+**Security Note:** Config files contain sensitive information (private keys). Never commit them to version control. The `.gitignore` file is configured to ignore `config/config.json` and `config/config-*.json` files.
 
 ### Deploy Pelagos & AppChain
 
@@ -85,6 +115,8 @@ Run from the contracts directory:
 ```bash
 cd scripts
 ./deploy_pelagos.sh
+# Or specify a custom config file:
+./deploy_pelagos.sh --config-file config-sepolia.json
 ```
 
 **Output:**
@@ -101,13 +133,15 @@ Deployer Address: 0x...
 📦 Step 2: Deploying AppChain contract...
 ✅ AppChain deployed at: 0x...
 
-📦 Step 3: Registering AppChain in Pelagos (source chain ID: 42)...
+📦 Step 3: Registering AppChain in Pelagos (appchain ID: 42)...
 ✅ AppChain registered successfully
 
 📦 Step 4: Verifying registration...
 ✅ Registration verified!
 
 🎉 Deployment Complete!
+
+**Note:** The appchain ID (42) shown above is the default value. In production deployments, this should be set to your appchain's actual chain ID in the config file.
 ```
 
 ### Deploy Example
@@ -118,6 +152,8 @@ Run from the contracts directory:
 ```bash
 cd scripts
 ./deploy_example.sh
+# Or specify a custom config file:
+./deploy_example.sh --config-file config-amoy.json
 ```
 
 ## 🔧 Development
