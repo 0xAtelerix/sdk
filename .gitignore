@@ -8,3 +8,14 @@ target/
 Cargo.lock
 *.rs.bk
 *.pdb
+
+# Foundry/Forge (Solidity contracts)
+contracts/cache/
+contracts/out/
+contracts/lib/
+contracts/foundry.lock
+.gitmodules
+
+# Environment files
+contracts/config/config.json
+contracts/config/config-*.json
