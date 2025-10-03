@@ -8,6 +8,8 @@ import (
 )
 
 func TestFlattenUnflattenIdentity(t *testing.T) {
+	t.Parallel()
+
 	rapid.Check(t, func(tr *rapid.T) {
 		t.Run(tr.Name(), func(_ *testing.T) {
 			// Генерируем случайный [][]byte

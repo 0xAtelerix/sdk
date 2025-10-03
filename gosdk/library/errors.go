@@ -1,4 +1,4 @@
-package gosdk
+package library
 
 type SDKError string
 

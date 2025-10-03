@@ -12,6 +12,8 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/library"
+	"github.com/0xAtelerix/sdk/gosdk/scheme"
 )
 
 // Voting is not thread-safe
@@ -82,11 +84,11 @@ func NewVotingFromStorage[T apptypes.ExternalEntity](
 
 	switch any(zero).(type) {
 	case apptypes.ExternalBlock:
-		bucket = ExternalBlockVotingBucket
+		bucket = scheme.ExternalBlockVotingBucket
 	case apptypes.Checkpoint:
-		bucket = CheckpointVotingBucket
+		bucket = scheme.CheckpointVotingBucket
 	default:
-		return nil, fmt.Errorf("%w %T", ErrUnsupportedEntityType, zero)
+		return nil, fmt.Errorf("%w %T", library.ErrUnsupportedEntityType, zero)
 	}
 
 	total := getTotalVoting(validators)
@@ -94,7 +96,7 @@ func NewVotingFromStorage[T apptypes.ExternalEntity](
 
 	err := tx.ForEach(bucket, nil, func(k, val []byte) error {
 		if len(k) != 8+8+32 {
-			return fmt.Errorf("%w %q %v", ErrMalformedKey, bucket, k)
+			return fmt.Errorf("%w %q %v", library.ErrMalformedKey, bucket, k)
 		}
 
 		chainID := binary.BigEndian.Uint64(k[0:8])
@@ -308,11 +310,11 @@ func (v *Voting[T]) StoreProgress(tx kv.RwTx) error {
 
 	switch any(zero).(type) {
 	case apptypes.ExternalBlock:
-		bucket = ExternalBlockVotingBucket
+		bucket = scheme.ExternalBlockVotingBucket
 	case apptypes.Checkpoint:
-		bucket = CheckpointVotingBucket
+		bucket = scheme.CheckpointVotingBucket
 	default:
-		return fmt.Errorf("%w %T", ErrUnsupportedEntityType, zero)
+		return fmt.Errorf("%w %T", library.ErrUnsupportedEntityType, zero)
 	}
 
 	err := tx.ClearBucket(bucket)

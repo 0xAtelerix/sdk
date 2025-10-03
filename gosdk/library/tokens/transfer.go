@@ -4,11 +4,7 @@ import (
 	"math/big"
 
 	"github.com/blocto/solana-go-sdk/rpc"
-)
-
-type (
-	SolTransfer = Transfer[SolanaBalances]
-	EvmTransfer = Transfer[EthereumBalances]
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // Transfer is a logical token movement between owners.
@@ -25,9 +21,36 @@ type Balances interface {
 	SolanaBalances | EthereumBalances
 }
 
-type EthereumBalances struct{}
+type EthereumBalances struct {
+	Standard Standard
+
+	// Optional per-standard metadata:
+	TokenID *big.Int   `json:"tokenId,omitempty"` // ERC-721 / ERC-1155 single
+	IDs     []*big.Int `json:"ids,omitempty"`     // ERC-1155 batch
+	Values  []*big.Int `json:"values,omitempty"`  // ERC-1155 batch
+
+	// Provenance:
+	TxHash   common.Hash `json:"txHash"`
+	LogIndex uint        `json:"logIndex"`
+}
 
 type SolanaBalances struct {
 	PreTokenBalances  []rpc.TransactionMetaTokenBalance
 	PostTokenBalances []rpc.TransactionMetaTokenBalance
+}
+
+type EvmTransfer Transfer[EthereumBalances]
+
+// Ensure EvmTransfer satisfies AppEvent.
+func (e EvmTransfer) Name() string {
+	// You can choose any convention you like for the kind string.
+	// This includes the ERC standard for convenience.
+	return "evm.transfer." + string(e.Balances.Standard)
+}
+
+type SolTransfer Transfer[SolanaBalances]
+
+// Ensure SolTransfer satisfies AppEvent.
+func (s SolTransfer) Name() string {
+	return "svm.transfer." + s.Mint
 }

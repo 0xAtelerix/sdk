@@ -28,6 +28,8 @@ func bi(s string) *big.Int {
 }
 
 func TestSingleTransfer_SameMint(t *testing.T) {
+	t.Parallel()
+
 	// A sends 100 to B (USDC mint, 6 decimals)
 	const (
 		mint = "So11111111111111111111111111111111111111112"
@@ -60,6 +62,8 @@ func TestSingleTransfer_SameMint(t *testing.T) {
 }
 
 func TestTwoTransfers_SameMint_DifferentOwners(t *testing.T) {
+	t.Parallel()
+
 	const (
 		mint = "Tokenkeg1111111111111111111111111111111"
 		A    = "A_owner"
@@ -101,6 +105,8 @@ func TestTwoTransfers_SameMint_DifferentOwners(t *testing.T) {
 }
 
 func TestDifferentMints_ParallelTransfers(t *testing.T) {
+	t.Parallel()
+
 	const (
 		usdc = "USDC11111111111111111111111111111111111111"
 		solx = "So2122222222222222222222222222222222222222"
@@ -156,6 +162,8 @@ func TestDifferentMints_ParallelTransfers(t *testing.T) {
 }
 
 func TestMintOrBurn_UnmatchedDeltasIgnored(t *testing.T) {
+	t.Parallel()
+
 	// A gets +50 new tokens (mint), nobody decreased.
 	const (
 		mint = "MintMintMintMintMintMintMintMintMintMint"
@@ -175,6 +183,8 @@ func TestMintOrBurn_UnmatchedDeltasIgnored(t *testing.T) {
 }
 
 func TestSelfTransferSameOwner_NetsToZero(t *testing.T) {
+	t.Parallel()
+
 	// If you diff by (owner, mint), moving between token accounts owned by same owner nets to 0,
 	// which is intended for "logical" owner transfers; switch to account-level diff if needed.
 	const (

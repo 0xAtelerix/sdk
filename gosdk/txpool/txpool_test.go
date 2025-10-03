@@ -22,6 +22,8 @@ func TestTxPool_PropertyBased(t *testing.T) {
 
 	rapid.Check(t, func(tr *rapid.T) {
 		t.Run(tr.Name(), func(t *testing.T) {
+			t.Parallel()
+
 			dbPath := t.TempDir()
 
 			// Инициализация MDBX с логированием
@@ -137,6 +139,8 @@ func TestTxPool_PropertyBased(t *testing.T) {
 }
 
 func TestTxPool_ConcurrentAddAndBatch(t *testing.T) {
+	t.Parallel()
+
 	dbPath := t.TempDir()
 
 	db, err := mdbx.NewMDBX(mdbxlog.New()).
