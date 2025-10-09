@@ -2,16 +2,19 @@ package external
 
 import (
 	"errors"
+	"fmt"
 
-	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/blocto/solana-go-sdk/common"
 	"github.com/blocto/solana-go-sdk/types"
+
+	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
 // Static errors for validation.
 var (
 	ErrChainIDRequired = errors.New("chainID must be set")
 	ErrTooManyAccounts = errors.New("too many accounts: maximum 64 allowed")
+	ErrPayloadTooShort = errors.New("payload too short")
 )
 
 // ExTxBuilder constructs external transaction intents for any chain
@@ -25,6 +28,7 @@ type ExTxBuilder struct {
 func NewExTxBuilder(data []byte, chainID apptypes.ChainType) *ExTxBuilder {
 	payloadCopy := make([]byte, len(data))
 	copy(payloadCopy, data)
+
 	return &ExTxBuilder{
 		payload: payloadCopy,
 		chainID: chainID,
@@ -35,6 +39,7 @@ func NewExTxBuilder(data []byte, chainID apptypes.ChainType) *ExTxBuilder {
 // This is used for building Solana transaction payloads.
 func (b *ExTxBuilder) AddSolanaAccounts(accounts []types.AccountMeta) *ExTxBuilder {
 	b.accounts = accounts
+
 	return b
 }
 
@@ -78,9 +83,11 @@ func (b *ExTxBuilder) BuildSolanaPayload() (*apptypes.ExternalTransaction, error
 		if account.IsSigner {
 			flags |= 1
 		}
+
 		if account.IsWritable {
 			flags |= 2
 		}
+
 		payload[offset] = flags
 		offset++
 	}
@@ -99,7 +106,7 @@ func (b *ExTxBuilder) BuildSolanaPayload() (*apptypes.ExternalTransaction, error
 // Returns the decoded accounts and data.
 func DecodeSolanaPayload(payload []byte) ([]types.AccountMeta, []byte, error) {
 	if len(payload) < 1 {
-		return nil, nil, errors.New("payload too short: missing num_accounts")
+		return nil, nil, fmt.Errorf("%w: missing num_accounts", ErrPayloadTooShort)
 	}
 
 	numAccounts := int(payload[0])
@@ -108,14 +115,14 @@ func DecodeSolanaPayload(payload []byte) ([]types.AccountMeta, []byte, error) {
 	// Validate we have enough data for all accounts
 	minAccountSize := 32 + 1 // pubkey + flags
 	if len(payload) < offset+numAccounts*minAccountSize {
-		return nil, nil, errors.New("payload too short: insufficient account data")
+		return nil, nil, fmt.Errorf("%w: insufficient account data", ErrPayloadTooShort)
 	}
 
 	accounts := make([]types.AccountMeta, numAccounts)
 
-	for i := 0; i < numAccounts; i++ {
+	for i := range numAccounts {
 		if offset+32+1 > len(payload) {
-			return nil, nil, errors.New("payload too short: incomplete account data")
+			return nil, nil, fmt.Errorf("%w: incomplete account data", ErrPayloadTooShort)
 		}
 
 		// Read pubkey

@@ -5,10 +5,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/0xAtelerix/sdk/gosdk"
-	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/blocto/solana-go-sdk/common"
 	"github.com/blocto/solana-go-sdk/types"
+
+	"github.com/0xAtelerix/sdk/gosdk"
+	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
 func TestBasicBuilder(t *testing.T) {
@@ -162,6 +163,7 @@ func TestSolanaPayload_BuildAndDecode(t *testing.T) {
 		"amount":      "1000000",
 		"memo":        "test transfer",
 	}
+
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		t.Fatalf("Failed to marshal payload: %v", err)
@@ -170,17 +172,23 @@ func TestSolanaPayload_BuildAndDecode(t *testing.T) {
 	// Create test accounts
 	accounts := []types.AccountMeta{
 		{
-			PubKey:     common.PublicKeyFromString("11111111111111111111111111111112"), // System program
+			PubKey: common.PublicKeyFromString(
+				"11111111111111111111111111111112",
+			), // System program
 			IsSigner:   false,
 			IsWritable: false,
 		},
 		{
-			PubKey:     common.PublicKeyFromString("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"), // From account
+			PubKey: common.PublicKeyFromString(
+				"9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+			), // From account
 			IsSigner:   true,
 			IsWritable: true,
 		},
 		{
-			PubKey:     common.PublicKeyFromString("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"), // To account
+			PubKey: common.PublicKeyFromString(
+				"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+			), // To account
 			IsSigner:   false,
 			IsWritable: true,
 		},
@@ -212,6 +220,7 @@ func TestSolanaPayload_BuildAndDecode(t *testing.T) {
 	for i, expected := range accounts {
 		if i >= len(decodedAccounts) {
 			t.Errorf("Missing account at index %d", i)
+
 			continue
 		}
 
@@ -219,24 +228,42 @@ func TestSolanaPayload_BuildAndDecode(t *testing.T) {
 		if actual.PubKey != expected.PubKey {
 			t.Errorf("Account %d: expected PubKey %s, got %s", i, expected.PubKey, actual.PubKey)
 		}
+
 		if actual.IsSigner != expected.IsSigner {
-			t.Errorf("Account %d: expected IsSigner %v, got %v", i, expected.IsSigner, actual.IsSigner)
+			t.Errorf(
+				"Account %d: expected IsSigner %v, got %v",
+				i,
+				expected.IsSigner,
+				actual.IsSigner,
+			)
 		}
+
 		if actual.IsWritable != expected.IsWritable {
-			t.Errorf("Account %d: expected IsWritable %v, got %v", i, expected.IsWritable, actual.IsWritable)
+			t.Errorf(
+				"Account %d: expected IsWritable %v, got %v",
+				i,
+				expected.IsWritable,
+				actual.IsWritable,
+			)
 		}
 	}
 
 	// Verify data
 	var decodedPayload map[string]any
+
 	err = json.Unmarshal(decodedData, &decodedPayload)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal decoded data: %v", err)
 	}
 
 	if decodedPayload["instruction"] != payload["instruction"] {
-		t.Errorf("Expected instruction %s, got %s", payload["instruction"], decodedPayload["instruction"])
+		t.Errorf(
+			"Expected instruction %s, got %s",
+			payload["instruction"],
+			decodedPayload["instruction"],
+		)
 	}
+
 	if decodedPayload["amount"] != payload["amount"] {
 		t.Errorf("Expected amount %s, got %s", payload["amount"], decodedPayload["amount"])
 	}
@@ -296,11 +323,17 @@ func TestSolanaPayload_SingleAccount(t *testing.T) {
 	if decodedAccounts[0].PubKey != account.PubKey {
 		t.Errorf("Expected PubKey %s, got %s", account.PubKey, decodedAccounts[0].PubKey)
 	}
+
 	if decodedAccounts[0].IsSigner != account.IsSigner {
 		t.Errorf("Expected IsSigner %v, got %v", account.IsSigner, decodedAccounts[0].IsSigner)
 	}
+
 	if decodedAccounts[0].IsWritable != account.IsWritable {
-		t.Errorf("Expected IsWritable %v, got %v", account.IsWritable, decodedAccounts[0].IsWritable)
+		t.Errorf(
+			"Expected IsWritable %v, got %v",
+			account.IsWritable,
+			decodedAccounts[0].IsWritable,
+		)
 	}
 
 	if string(decodedData) != string(payloadBytes) {
@@ -342,16 +375,18 @@ func TestSolanaPayload_MaxAccounts(t *testing.T) {
 		if decodedAccounts[i].PubKey != accounts[i].PubKey {
 			t.Errorf("Account %d: PubKey mismatch", i)
 		}
+
 		if decodedAccounts[i].IsSigner != accounts[i].IsSigner {
 			t.Errorf("Account %d: IsSigner mismatch", i)
 		}
+
 		if decodedAccounts[i].IsWritable != accounts[i].IsWritable {
 			t.Errorf("Account %d: IsWritable mismatch", i)
 		}
 	}
 
 	if string(decodedData) != string(payloadBytes) {
-		t.Errorf("Data mismatch")
+		t.Error("Data mismatch")
 	}
 }
 
@@ -402,8 +437,41 @@ func TestDecodeSolanaPayload_InvalidData(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "missing flags",
-			payload: []byte{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}, // pubkey but no flags
+			name: "missing flags",
+			payload: []byte{
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+				1,
+			}, // pubkey but no flags
 			wantErr: true,
 		},
 	}
@@ -429,9 +497,25 @@ func TestSolanaPayload_RoundTrip(t *testing.T) {
 			name:    "simple transfer",
 			payload: []byte(`{"instruction":"transfer","amount":"1000000"}`),
 			accounts: []types.AccountMeta{
-				{PubKey: common.PublicKeyFromString("11111111111111111111111111111112"), IsSigner: false, IsWritable: false},
-				{PubKey: common.PublicKeyFromString("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"), IsSigner: true, IsWritable: true},
-				{PubKey: common.PublicKeyFromString("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"), IsSigner: false, IsWritable: true},
+				{
+					PubKey:     common.PublicKeyFromString("11111111111111111111111111111112"),
+					IsSigner:   false,
+					IsWritable: false,
+				},
+				{
+					PubKey: common.PublicKeyFromString(
+						"9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+					),
+					IsSigner:   true,
+					IsWritable: true,
+				},
+				{
+					PubKey: common.PublicKeyFromString(
+						"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+					),
+					IsSigner:   false,
+					IsWritable: true,
+				},
 			},
 		},
 		{
@@ -443,7 +527,13 @@ func TestSolanaPayload_RoundTrip(t *testing.T) {
 			name:    "program only",
 			payload: []byte(`{"instruction":"create","size":100}`),
 			accounts: []types.AccountMeta{
-				{PubKey: common.PublicKeyFromString("BPFLoaderUpgradeab1e11111111111111111111111"), IsSigner: false, IsWritable: false},
+				{
+					PubKey: common.PublicKeyFromString(
+						"BPFLoaderUpgradeab1e11111111111111111111111",
+					),
+					IsSigner:   false,
+					IsWritable: false,
+				},
 			},
 		},
 	}
@@ -466,13 +556,18 @@ func TestSolanaPayload_RoundTrip(t *testing.T) {
 
 			// Verify
 			if len(decodedAccounts) != len(tc.accounts) {
-				t.Errorf("Account count mismatch: expected %d, got %d", len(tc.accounts), len(decodedAccounts))
+				t.Errorf(
+					"Account count mismatch: expected %d, got %d",
+					len(tc.accounts),
+					len(decodedAccounts),
+				)
 			}
 
 			for i, expected := range tc.accounts {
 				if i >= len(decodedAccounts) {
 					continue
 				}
+
 				actual := decodedAccounts[i]
 				if actual.PubKey != expected.PubKey ||
 					actual.IsSigner != expected.IsSigner ||
@@ -482,7 +577,11 @@ func TestSolanaPayload_RoundTrip(t *testing.T) {
 			}
 
 			if string(decodedData) != string(tc.payload) {
-				t.Errorf("Data mismatch: expected %s, got %s", string(tc.payload), string(decodedData))
+				t.Errorf(
+					"Data mismatch: expected %s, got %s",
+					string(tc.payload),
+					string(decodedData),
+				)
 			}
 		})
 	}
