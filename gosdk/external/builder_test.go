@@ -7,6 +7,8 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/blocto/solana-go-sdk/common"
+	"github.com/blocto/solana-go-sdk/types"
 )
 
 func TestBasicBuilder(t *testing.T) {
@@ -21,10 +23,7 @@ func TestBasicBuilder(t *testing.T) {
 	}
 
 	// Test Ethereum transaction
-	ethTx, err := NewExTxBuilder().
-		Ethereum().
-		SetPayload(payloadBytes).
-		Build()
+	ethTx, err := NewExTxBuilder(payloadBytes, gosdk.EthereumChainID).Build()
 	if err != nil {
 		t.Fatalf("Failed to build Ethereum transaction: %v", err)
 	}
@@ -50,57 +49,55 @@ func TestChainHelperMethods(t *testing.T) {
 	payload := []byte(`{"test": "payload"}`)
 
 	tests := []struct {
-		name        string
-		builderFunc func() *ExTxBuilder
-		expectedID  apptypes.ChainType
+		name       string
+		chainID    apptypes.ChainType
+		expectedID apptypes.ChainType
 	}{
 		{
 			"Ethereum",
-			func() *ExTxBuilder { return NewExTxBuilder().Ethereum() },
+			gosdk.EthereumChainID,
 			gosdk.EthereumChainID,
 		},
 		{
 			"EthereumSepolia",
-			func() *ExTxBuilder { return NewExTxBuilder().EthereumSepolia() },
+			gosdk.EthereumSepoliaChainID,
 			gosdk.EthereumSepoliaChainID,
 		},
 		{
 			"Polygon",
-			func() *ExTxBuilder { return NewExTxBuilder().Polygon() },
+			gosdk.PolygonChainID,
 			gosdk.PolygonChainID,
 		},
 		{
 			"PolygonAmoy",
-			func() *ExTxBuilder { return NewExTxBuilder().PolygonAmoy() },
+			gosdk.PolygonAmoyChainID,
 			gosdk.PolygonAmoyChainID,
 		},
 		{
 			"BSC",
-			func() *ExTxBuilder { return NewExTxBuilder().BSC() },
+			gosdk.BNBChainID,
 			gosdk.BNBChainID,
 		},
 		{
 			"BSCTestnet",
-			func() *ExTxBuilder { return NewExTxBuilder().BSCTestnet() },
+			gosdk.BNBTestnetChainID,
 			gosdk.BNBTestnetChainID,
 		},
 		{
 			"SolanaMainnet",
-			func() *ExTxBuilder { return NewExTxBuilder().SolanaMainnet() },
+			gosdk.SolanaChainID,
 			gosdk.SolanaChainID,
 		},
 		{
 			"SolanaDevnet",
-			func() *ExTxBuilder { return NewExTxBuilder().SolanaDevnet() },
+			gosdk.SolanaDevnetChainID,
 			gosdk.SolanaDevnetChainID,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			tx, err := test.builderFunc().
-				SetPayload(payload).
-				Build()
+			tx, err := NewExTxBuilder(payload, test.chainID).Build()
 			if err != nil {
 				t.Fatalf("Failed to build %s transaction: %v", test.name, err)
 			}
@@ -130,10 +127,7 @@ func TestSolanaTransactions(t *testing.T) {
 	}
 
 	// Test Solana mainnet
-	mainnetTx, err := NewExTxBuilder().
-		SolanaMainnet().
-		SetPayload(payloadBytes).
-		Build()
+	mainnetTx, err := NewExTxBuilder(payloadBytes, gosdk.SolanaChainID).Build()
 	if err != nil {
 		t.Fatalf("Failed to build Solana mainnet transaction: %v", err)
 	}
@@ -147,10 +141,7 @@ func TestSolanaTransactions(t *testing.T) {
 	}
 
 	// Test Solana devnet
-	devnetTx, err := NewExTxBuilder().
-		SolanaDevnet().
-		SetPayload(payloadBytes).
-		Build()
+	devnetTx, err := NewExTxBuilder(payloadBytes, gosdk.SolanaDevnetChainID).Build()
 	if err != nil {
 		t.Fatalf("Failed to build Solana devnet transaction: %v", err)
 	}
@@ -164,11 +155,342 @@ func TestSolanaTransactions(t *testing.T) {
 	}
 }
 
+func TestSolanaPayload_BuildAndDecode(t *testing.T) {
+	// Test data
+	payload := map[string]any{
+		"instruction": "transfer",
+		"amount":      "1000000",
+		"memo":        "test transfer",
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("Failed to marshal payload: %v", err)
+	}
+
+	// Create test accounts
+	accounts := []types.AccountMeta{
+		{
+			PubKey:     common.PublicKeyFromString("11111111111111111111111111111112"), // System program
+			IsSigner:   false,
+			IsWritable: false,
+		},
+		{
+			PubKey:     common.PublicKeyFromString("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"), // From account
+			IsSigner:   true,
+			IsWritable: true,
+		},
+		{
+			PubKey:     common.PublicKeyFromString("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"), // To account
+			IsSigner:   false,
+			IsWritable: true,
+		},
+	}
+
+	// Build Solana payload
+	tx, err := NewExTxBuilder(payloadBytes, gosdk.SolanaChainID).
+		AddSolanaAccounts(accounts).
+		Build()
+	if err != nil {
+		t.Fatalf("Failed to build Solana payload: %v", err)
+	}
+
+	if tx.ChainID != gosdk.SolanaChainID {
+		t.Errorf("Expected ChainID %d, got %d", gosdk.SolanaChainID, tx.ChainID)
+	}
+
+	// Decode the payload
+	decodedAccounts, decodedData, err := DecodeSolanaPayload(tx.Tx)
+	if err != nil {
+		t.Fatalf("Failed to decode Solana payload: %v", err)
+	}
+
+	// Verify accounts
+	if len(decodedAccounts) != len(accounts) {
+		t.Errorf("Expected %d accounts, got %d", len(accounts), len(decodedAccounts))
+	}
+
+	for i, expected := range accounts {
+		if i >= len(decodedAccounts) {
+			t.Errorf("Missing account at index %d", i)
+			continue
+		}
+
+		actual := decodedAccounts[i]
+		if actual.PubKey != expected.PubKey {
+			t.Errorf("Account %d: expected PubKey %s, got %s", i, expected.PubKey, actual.PubKey)
+		}
+		if actual.IsSigner != expected.IsSigner {
+			t.Errorf("Account %d: expected IsSigner %v, got %v", i, expected.IsSigner, actual.IsSigner)
+		}
+		if actual.IsWritable != expected.IsWritable {
+			t.Errorf("Account %d: expected IsWritable %v, got %v", i, expected.IsWritable, actual.IsWritable)
+		}
+	}
+
+	// Verify data
+	var decodedPayload map[string]any
+	err = json.Unmarshal(decodedData, &decodedPayload)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal decoded data: %v", err)
+	}
+
+	if decodedPayload["instruction"] != payload["instruction"] {
+		t.Errorf("Expected instruction %s, got %s", payload["instruction"], decodedPayload["instruction"])
+	}
+	if decodedPayload["amount"] != payload["amount"] {
+		t.Errorf("Expected amount %s, got %s", payload["amount"], decodedPayload["amount"])
+	}
+}
+
+func TestSolanaPayload_EmptyAccounts(t *testing.T) {
+	payloadBytes := []byte(`{"test": "empty accounts"}`)
+
+	// Build with empty accounts
+	tx, err := NewExTxBuilder(payloadBytes, gosdk.SolanaChainID).
+		AddSolanaAccounts([]types.AccountMeta{}).
+		Build()
+	if err != nil {
+		t.Fatalf("Failed to build Solana payload with empty accounts: %v", err)
+	}
+
+	// Decode
+	decodedAccounts, decodedData, err := DecodeSolanaPayload(tx.Tx)
+	if err != nil {
+		t.Fatalf("Failed to decode Solana payload: %v", err)
+	}
+
+	if len(decodedAccounts) != 0 {
+		t.Errorf("Expected 0 accounts, got %d", len(decodedAccounts))
+	}
+
+	if string(decodedData) != string(payloadBytes) {
+		t.Errorf("Expected data %s, got %s", string(payloadBytes), string(decodedData))
+	}
+}
+
+func TestSolanaPayload_SingleAccount(t *testing.T) {
+	payloadBytes := []byte(`{"action": "create_account"}`)
+
+	account := types.AccountMeta{
+		PubKey:     common.PublicKeyFromString("11111111111111111111111111111112"),
+		IsSigner:   true,
+		IsWritable: false,
+	}
+
+	tx, err := NewExTxBuilder(payloadBytes, gosdk.SolanaChainID).
+		AddSolanaAccounts([]types.AccountMeta{account}).
+		Build()
+	if err != nil {
+		t.Fatalf("Failed to build Solana payload: %v", err)
+	}
+
+	decodedAccounts, decodedData, err := DecodeSolanaPayload(tx.Tx)
+	if err != nil {
+		t.Fatalf("Failed to decode Solana payload: %v", err)
+	}
+
+	if len(decodedAccounts) != 1 {
+		t.Errorf("Expected 1 account, got %d", len(decodedAccounts))
+	}
+
+	if decodedAccounts[0].PubKey != account.PubKey {
+		t.Errorf("Expected PubKey %s, got %s", account.PubKey, decodedAccounts[0].PubKey)
+	}
+	if decodedAccounts[0].IsSigner != account.IsSigner {
+		t.Errorf("Expected IsSigner %v, got %v", account.IsSigner, decodedAccounts[0].IsSigner)
+	}
+	if decodedAccounts[0].IsWritable != account.IsWritable {
+		t.Errorf("Expected IsWritable %v, got %v", account.IsWritable, decodedAccounts[0].IsWritable)
+	}
+
+	if string(decodedData) != string(payloadBytes) {
+		t.Errorf("Expected data %s, got %s", string(payloadBytes), string(decodedData))
+	}
+}
+
+func TestSolanaPayload_MaxAccounts(t *testing.T) {
+	payloadBytes := []byte(`{"test": "max accounts"}`)
+
+	// Create 64 accounts (maximum allowed)
+	accounts := make([]types.AccountMeta, 64)
+	for i := range accounts {
+		accounts[i] = types.AccountMeta{
+			PubKey:     common.PublicKeyFromString("11111111111111111111111111111112"),
+			IsSigner:   i%2 == 0, // Alternate signers
+			IsWritable: i%3 == 0, // Every third account writable
+		}
+	}
+
+	tx, err := NewExTxBuilder(payloadBytes, gosdk.SolanaChainID).
+		AddSolanaAccounts(accounts).
+		Build()
+	if err != nil {
+		t.Fatalf("Failed to build Solana payload with max accounts: %v", err)
+	}
+
+	decodedAccounts, decodedData, err := DecodeSolanaPayload(tx.Tx)
+	if err != nil {
+		t.Fatalf("Failed to decode Solana payload: %v", err)
+	}
+
+	if len(decodedAccounts) != 64 {
+		t.Errorf("Expected 64 accounts, got %d", len(decodedAccounts))
+	}
+
+	// Verify first few accounts
+	for i := 0; i < 5 && i < len(decodedAccounts); i++ {
+		if decodedAccounts[i].PubKey != accounts[i].PubKey {
+			t.Errorf("Account %d: PubKey mismatch", i)
+		}
+		if decodedAccounts[i].IsSigner != accounts[i].IsSigner {
+			t.Errorf("Account %d: IsSigner mismatch", i)
+		}
+		if decodedAccounts[i].IsWritable != accounts[i].IsWritable {
+			t.Errorf("Account %d: IsWritable mismatch", i)
+		}
+	}
+
+	if string(decodedData) != string(payloadBytes) {
+		t.Errorf("Data mismatch")
+	}
+}
+
+func TestSolanaPayload_TooManyAccounts(t *testing.T) {
+	payloadBytes := []byte(`{"test": "too many"}`)
+
+	// Create 65 accounts (exceeds maximum)
+	accounts := make([]types.AccountMeta, 65)
+	for i := range accounts {
+		accounts[i] = types.AccountMeta{
+			PubKey:     common.PublicKeyFromString("11111111111111111111111111111112"),
+			IsSigner:   false,
+			IsWritable: false,
+		}
+	}
+
+	_, err := NewExTxBuilder(payloadBytes, gosdk.SolanaChainID).
+		AddSolanaAccounts(accounts).
+		Build()
+	if err == nil {
+		t.Error("Expected error for too many accounts, got nil")
+	}
+
+	if !errors.Is(err, ErrTooManyAccounts) {
+		t.Errorf("Expected ErrTooManyAccounts, got %v", err)
+	}
+}
+
+func TestDecodeSolanaPayload_InvalidData(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload []byte
+		wantErr bool
+	}{
+		{
+			name:    "empty payload",
+			payload: []byte{},
+			wantErr: true,
+		},
+		{
+			name:    "incomplete account data",
+			payload: []byte{1}, // num_accounts=1, but no account data
+			wantErr: true,
+		},
+		{
+			name:    "truncated pubkey",
+			payload: []byte{1, 1, 2, 3}, // num_accounts=1, incomplete pubkey
+			wantErr: true,
+		},
+		{
+			name:    "missing flags",
+			payload: []byte{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}, // pubkey but no flags
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := DecodeSolanaPayload(tt.payload)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("DecodeSolanaPayload() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestSolanaPayload_RoundTrip(t *testing.T) {
+	// Test various combinations of accounts and data
+	testCases := []struct {
+		name     string
+		payload  []byte
+		accounts []types.AccountMeta
+	}{
+		{
+			name:    "simple transfer",
+			payload: []byte(`{"instruction":"transfer","amount":"1000000"}`),
+			accounts: []types.AccountMeta{
+				{PubKey: common.PublicKeyFromString("11111111111111111111111111111112"), IsSigner: false, IsWritable: false},
+				{PubKey: common.PublicKeyFromString("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"), IsSigner: true, IsWritable: true},
+				{PubKey: common.PublicKeyFromString("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"), IsSigner: false, IsWritable: true},
+			},
+		},
+		{
+			name:     "no accounts",
+			payload:  []byte(`{"instruction":"memo","message":"hello world"}`),
+			accounts: []types.AccountMeta{},
+		},
+		{
+			name:    "program only",
+			payload: []byte(`{"instruction":"create","size":100}`),
+			accounts: []types.AccountMeta{
+				{PubKey: common.PublicKeyFromString("BPFLoaderUpgradeab1e11111111111111111111111"), IsSigner: false, IsWritable: false},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Build
+			tx, err := NewExTxBuilder(tc.payload, gosdk.SolanaChainID).
+				AddSolanaAccounts(tc.accounts).
+				Build()
+			if err != nil {
+				t.Fatalf("Failed to build: %v", err)
+			}
+
+			// Decode
+			decodedAccounts, decodedData, err := DecodeSolanaPayload(tx.Tx)
+			if err != nil {
+				t.Fatalf("Failed to decode: %v", err)
+			}
+
+			// Verify
+			if len(decodedAccounts) != len(tc.accounts) {
+				t.Errorf("Account count mismatch: expected %d, got %d", len(tc.accounts), len(decodedAccounts))
+			}
+
+			for i, expected := range tc.accounts {
+				if i >= len(decodedAccounts) {
+					continue
+				}
+				actual := decodedAccounts[i]
+				if actual.PubKey != expected.PubKey ||
+					actual.IsSigner != expected.IsSigner ||
+					actual.IsWritable != expected.IsWritable {
+					t.Errorf("Account %d mismatch", i)
+				}
+			}
+
+			if string(decodedData) != string(tc.payload) {
+				t.Errorf("Data mismatch: expected %s, got %s", string(tc.payload), string(decodedData))
+			}
+		})
+	}
+}
+
 func TestValidation(t *testing.T) {
 	// Test missing chainID
-	_, err := NewExTxBuilder().
-		SetPayload([]byte(`{"test": "payload"}`)).
-		Build()
+	_, err := NewExTxBuilder([]byte(`{"test": "payload"}`), 0).Build()
 	if err == nil {
 		t.Error("Expected error for missing chainID, got nil")
 	}
@@ -178,10 +500,7 @@ func TestValidation(t *testing.T) {
 	}
 
 	// Test valid transaction
-	tx, err := NewExTxBuilder().
-		SetChainID(gosdk.EthereumChainID).
-		SetPayload([]byte(`{"test": "payload"}`)).
-		Build()
+	tx, err := NewExTxBuilder([]byte(`{"test": "payload"}`), gosdk.EthereumChainID).Build()
 	if err != nil {
 		t.Errorf("Unexpected error for valid transaction: %v", err)
 	}
@@ -209,10 +528,7 @@ func TestAdvancedPayloads(t *testing.T) {
 		t.Fatalf("Failed to marshal DeFi payload: %v", err)
 	}
 
-	defiTx, err := NewExTxBuilder().
-		Ethereum().
-		SetPayload(defiBytes).
-		Build()
+	defiTx, err := NewExTxBuilder(defiBytes, gosdk.EthereumChainID).Build()
 	if err != nil {
 		t.Fatalf("Failed to build DeFi transaction: %v", err)
 	}
@@ -259,10 +575,7 @@ func TestGameNFTPayload(t *testing.T) {
 		t.Fatalf("Failed to marshal game payload: %v", err)
 	}
 
-	gameTx, err := NewExTxBuilder().
-		Polygon(). // Gaming often uses Polygon for low fees
-		SetPayload(gameBytes).
-		Build()
+	gameTx, err := NewExTxBuilder(gameBytes, gosdk.PolygonChainID).Build()
 	if err != nil {
 		t.Fatalf("Failed to build game transaction: %v", err)
 	}
@@ -308,26 +621,24 @@ func TestMultiChainWorkflow(t *testing.T) {
 	}{
 		{
 			"Ethereum",
-			func() *ExTxBuilder { return NewExTxBuilder().Ethereum() },
+			func() *ExTxBuilder { return NewExTxBuilder(payloadBytes, gosdk.EthereumChainID) },
 			gosdk.EthereumChainID,
 		},
 		{
 			"Polygon",
-			func() *ExTxBuilder { return NewExTxBuilder().Polygon() },
+			func() *ExTxBuilder { return NewExTxBuilder(payloadBytes, gosdk.PolygonChainID) },
 			gosdk.PolygonChainID,
 		},
 		{
 			"BSC",
-			func() *ExTxBuilder { return NewExTxBuilder().BSC() },
+			func() *ExTxBuilder { return NewExTxBuilder(payloadBytes, gosdk.BNBChainID) },
 			gosdk.BNBChainID,
 		},
 	}
 
 	for _, chain := range chains {
 		t.Run(chain.name, func(t *testing.T) {
-			tx, err := chain.builder().
-				SetPayload(payloadBytes).
-				Build()
+			tx, err := chain.builder().Build()
 			if err != nil {
 				t.Fatalf("Error creating %s transaction: %v", chain.name, err)
 			}
@@ -374,10 +685,7 @@ func TestCustomChain(t *testing.T) {
 	}
 
 	// Test custom chain with explicit chainID
-	tx, err := NewExTxBuilder().
-		SetChainID(999999).
-		SetPayload(payloadBytes).
-		Build()
+	tx, err := NewExTxBuilder(payloadBytes, apptypes.ChainType(999999)).Build()
 	if err != nil {
 		t.Fatalf("Failed to create custom chain transaction: %v", err)
 	}
@@ -426,31 +734,29 @@ func TestTestnetWorkflow(t *testing.T) {
 	}{
 		{
 			"EthereumSepolia",
-			func() *ExTxBuilder { return NewExTxBuilder().EthereumSepolia() },
+			func() *ExTxBuilder { return NewExTxBuilder(payloadBytes, gosdk.EthereumSepoliaChainID) },
 			gosdk.EthereumSepoliaChainID,
 		},
 		{
 			"PolygonAmoy",
-			func() *ExTxBuilder { return NewExTxBuilder().PolygonAmoy() },
+			func() *ExTxBuilder { return NewExTxBuilder(payloadBytes, gosdk.PolygonAmoyChainID) },
 			gosdk.PolygonAmoyChainID,
 		},
 		{
 			"BSCTestnet",
-			func() *ExTxBuilder { return NewExTxBuilder().BSCTestnet() },
+			func() *ExTxBuilder { return NewExTxBuilder(payloadBytes, gosdk.BNBTestnetChainID) },
 			gosdk.BNBTestnetChainID,
 		},
 		{
 			"SolanaDevnet",
-			func() *ExTxBuilder { return NewExTxBuilder().SolanaDevnet() },
+			func() *ExTxBuilder { return NewExTxBuilder(payloadBytes, gosdk.SolanaDevnetChainID) },
 			gosdk.SolanaDevnetChainID,
 		},
 	}
 
 	for _, testnet := range testnets {
 		t.Run(testnet.name, func(t *testing.T) {
-			tx, err := testnet.builder().
-				SetPayload(payloadBytes).
-				Build()
+			tx, err := testnet.builder().Build()
 			if err != nil {
 				t.Fatalf("Error deploying to %s: %v", testnet.name, err)
 			}
@@ -470,10 +776,7 @@ func TestTestnetWorkflow(t *testing.T) {
 func TestPayloadCopying(t *testing.T) {
 	originalPayload := []byte(`{"sensitive": "data"}`)
 
-	tx, err := NewExTxBuilder().
-		Ethereum().
-		SetPayload(originalPayload).
-		Build()
+	tx, err := NewExTxBuilder(originalPayload, gosdk.EthereumChainID).Build()
 	if err != nil {
 		t.Fatalf("Failed to build transaction: %v", err)
 	}
@@ -495,23 +798,17 @@ func TestBuilderChaining(t *testing.T) {
 	payload := []byte(`{"test": "chaining"}`)
 
 	// Test that builder methods return the same instance for chaining
-	builder := NewExTxBuilder()
+	builder := NewExTxBuilder(payload, gosdk.EthereumChainID)
 
-	result1 := builder.Ethereum()
-	result2 := result1.SetPayload(payload)
-
-	// These should all be the same instance
-	if result1 != builder {
-		t.Error("Ethereum() should return the same builder instance")
-	}
-
-	if result2 != builder {
-		t.Error("SetPayload() should return the same builder instance")
-	}
-
-	tx, err := result2.Build()
+	// Since the constructor already sets payload and chainID,
+	// we just need to test that Build() works
+	tx, err := builder.Build()
 	if err != nil {
-		t.Fatalf("Failed to build chained transaction: %v", err)
+		t.Fatalf("Failed to build transaction: %v", err)
+	}
+
+	if tx.ChainID != gosdk.EthereumChainID {
+		t.Errorf("Expected ChainID %d, got %d", gosdk.EthereumChainID, tx.ChainID)
 	}
 
 	if tx.ChainID != gosdk.EthereumChainID {
