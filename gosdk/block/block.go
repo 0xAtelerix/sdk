@@ -128,71 +128,71 @@ func GetBlock(tx kv.Tx, bucket string, key []byte) (any, error) {
 	}, nil
 }
 
-// // GetBlocks returns up to `count` most recent blocks from the BlockNumberBucket (newest first).
-// // It decodes each block into the concrete type of the provided `prototype`.
-// // If `count` is 0, it returns an empty slice. If the bucket is empty, returns ErrNoBlocks.
-// func GetBlocks(tx kv.Tx, count int, prototype apptypes.AppchainBlock) ([]apptypes.AppchainBlock, error) {
-// 	if count <= 0 {
-// 		return []apptypes.AppchainBlock{}, nil
-// 	}
-// 	if prototype == nil {
-// 		return nil, fmt.Errorf("nil block prototype")
-// 	}
-// 	cur, err := tx.Cursor(BlockNumberBucket)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	// Move to the last (highest-numbered) block
-// 	k, v, err := cur.Last()
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	if len(k) == 0 {
-// 		return nil, ErrNoBlocks
-// 	}
-// 	blocks := make([]apptypes.AppchainBlock, 0, count)
+// GetBlocks returns up to `count` most recent blocks from the BlockNumberBucket (newest first)
+// and formats each block as FieldsValues (same shape as GetBlock).
+// If count <= 0, it returns an empty slice. If the bucket is empty, returns ErrNoBlocks.
+func GetBlocks(tx kv.Tx, count int) (any, error) {
+	if count <= 0 {
+		return []FieldsValues{}, nil
+	}
 
-// 	// helper to allocate a fresh instance of the prototype's concrete type
-// 	newInstance := func() any {
-// 		typ := reflect.TypeOf(prototype)
-// 		if typ.Kind() == reflect.Ptr {
-// 			return reflect.New(typ.Elem()).Interface()
-// 		}
-// 		return reflect.New(typ).Interface()
-// 	}
+	cur, err := tx.Cursor(BlockNumberBucket)
+	if err != nil {
+		return nil, err
+	}
 
-// 	appendDecoded := func(val []byte) error {
-// 		inst := newInstance()
-// 		if err := cbor.Unmarshal(val, inst); err != nil {
-// 			return err
-// 		}
-// 		// Prefer pointer assertion; fall back to element if needed
-// 		if b, ok := inst.(apptypes.AppchainBlock); ok {
-// 			blocks = append(blocks, b)
-// 			return nil
-// 		}
-// 		iv := reflect.ValueOf(inst)
-// 		if iv.Kind() == reflect.Ptr {
-// 			iv = iv.Elem()
-// 		}
-// 		if b2, ok := iv.Interface().(apptypes.AppchainBlock); ok {
-// 			blocks = append(blocks, b2)
-// 			return nil
-// 		}
-// 		return fmt.Errorf("decoded value does not implement AppchainBlock: %T", inst)
-// 	}
+	// Move to the last (highest-numbered) block.
+	k, v, err := cur.Last()
+	if err != nil {
+		return nil, err
+	}
+	if len(k) == 0 {
+		return nil, ErrNoBlocks
+	}
 
-// 	for i := 0; i < count && len(k) > 0; i++ {
-// 		if err := appendDecoded(v); err != nil {
-// 			return nil, err
-// 		}
-// 		k, v, err = cur.Prev()
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 	}
-// 	return blocks, nil
-// }
+	// Prepare field names once using the concrete Block's json tags (declaration order).
+	var zero Block
+	t := reflect.TypeOf(zero)
+	fields := make([]string, 0, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		name := f.Tag.Get("json")
+		if name == "" || name == "-" {
+			name = f.Name
+		}
+		fields = append(fields, name)
+	}
+
+	out := make([]FieldsValues, 0, count)
+
+	appendOne := func(val []byte) error {
+		var b Block
+		if err := cbor.Unmarshal(val, &b); err != nil {
+			return err
+		}
+		values := []string{
+			fmt.Sprintf("%d", b.Number),
+			fmt.Sprintf("0x%x", b.Hash),
+			fmt.Sprintf("0x%x", b.StateRoot),
+			fmt.Sprintf("%d", b.Timestamp),
+		}
+		out = append(out, FieldsValues{Fields: fields, Values: values})
+		return nil
+	}
+
+	for i := 0; i < count && len(k) > 0; i++ {
+		if err := appendOne(v); err != nil {
+			return nil, err
+		}
+		k, v, err = cur.Prev()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return out, nil
+}
+
 
 func NumberToBytes(input uint64) []byte {
 	// Create a byte slice of length 8, as uint64 occupies 8 bytes
