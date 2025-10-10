@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"strings"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/goccy/go-json"
@@ -1232,3 +1233,148 @@ func TestStandardRPCServer_getBlockByHash(t *testing.T) {
         assert.Contains(t, resp.Error.Message, hashStr)
     })
 }
+
+func TestStandardRPCServer_getBlocks(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	// Ensure the RPC method is registered for these tests even if
+	// AddBlockMethods doesn't register it yet.
+	bm := NewBlockMethods(appchainDB)
+	server.AddMethod("getBlocks", bm.GetBlocks) // uses methods in methods_block.go
+
+	t.Run("requires 1 param", func(t *testing.T) {
+		rr := makeJSONRPCRequest(t, server, "getBlocks", []any{})
+		require.Equal(t, http.StatusOK, rr.Code)
+
+		var resp JSONRPCResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		require.NotNil(t, resp.Error)
+		assert.Equal(t, -32603, resp.Error.Code)
+	})
+
+	t.Run("invalid param type", func(t *testing.T) {
+		rr := makeJSONRPCRequest(t, server, "getBlocks", []any{true})
+		require.Equal(t, http.StatusOK, rr.Code)
+
+		var resp JSONRPCResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		require.NotNil(t, resp.Error)
+		assert.Equal(t, -32603, resp.Error.Code)
+		assert.Contains(t, resp.Error.Message, "invalid block number")
+	})
+
+	t.Run("invalid hex string", func(t *testing.T) {
+		rr := makeJSONRPCRequest(t, server, "getBlocks", []any{"0xZZ"})
+		require.Equal(t, http.StatusOK, rr.Code)
+
+		var resp JSONRPCResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		require.NotNil(t, resp.Error)
+		assert.Equal(t, -32603, resp.Error.Code)
+		assert.Contains(t, resp.Error.Message, "invalid hex block number")
+	})
+
+	t.Run("zero count returns empty array", func(t *testing.T) {
+		rr := makeJSONRPCRequest(t, server, "getBlocks", []any{0})
+		require.Equal(t, http.StatusOK, rr.Code)
+
+		var resp JSONRPCResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		require.Nil(t, resp.Error)
+
+		blocks, ok := resp.Result.([]any)
+		require.True(t, ok, "result should be array, got: %T (%v)", resp.Result, resp.Result)
+		assert.Len(t, blocks, 0)
+	})
+
+	t.Run("empty DB returns error", func(t *testing.T) {
+		rr := makeJSONRPCRequest(t, server, "getBlocks", []any{5})
+		require.Equal(t, http.StatusOK, rr.Code)
+
+		var resp JSONRPCResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		require.NotNil(t, resp.Error)
+		assert.Equal(t, -32603, resp.Error.Code)
+		assert.Contains(t, resp.Error.Message, "failed to get latest 5 blocks")
+	})
+
+	t.Run("order & shape: newest-first fields/values", func(t *testing.T) {
+		// Seed 10 blocks numbered 0..9 into BlockNumberBucket.
+		// Each value is CBOR-encoded block.Block with fields:
+		// number, hash, stateroot, timestamp. The state root is computed via method.
+		err := appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
+			for i := 0; i < 10; i++ {
+				// Prepare a realistic block.Block
+				h := sha256.Sum256([]byte(fmt.Sprintf("block-%d", i)))
+				b := block.Block{
+					Number:    uint64(i),
+					Hash:      h,
+					Timestamp: uint64(1630000000 + i*10),
+				}
+				b.StateRoot = b.ComputeStateRoot() // derive stateroot from CBOR of the block
+
+				enc, e := cbor.Marshal(b)
+				if e != nil {
+					return e
+				}
+				if e := tx.Put(block.BlockNumberBucket, block.NumberToBytes(b.Number), enc); e != nil {
+					return e
+				}
+			}
+			return nil
+		})
+		require.NoError(t, err)
+
+		// Ask for the latest 5 → expect 9,8,7,6,5 (newest first)
+		rr := makeJSONRPCRequest(t, server, "getBlocks", []any{5})
+		require.Equal(t, http.StatusOK, rr.Code)
+
+		var resp JSONRPCResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		require.Nil(t, resp.Error)
+
+		result, ok := resp.Result.([]any)
+		require.True(t, ok, "result should be array, got: %T", resp.Result)
+		require.Len(t, result, 5)
+
+		wantNums := []uint64{9, 8, 7, 6, 5}
+		expectedFields := []string{"number", "hash", "stateroot", "timestamp"}
+
+		for i, entryAny := range result {
+			entry, ok := entryAny.(map[string]any)
+			require.True(t, ok, "entry should be object with Fields/Values, got: %T", entryAny)
+
+			fieldsAny, ok := entry["Fields"].([]any)
+			require.True(t, ok, "Fields should be array, got: %T", entry["Fields"])
+
+			valuesAny, ok := entry["Values"].([]any)
+			require.True(t, ok, "Values should be array, got: %T", entry["Values"])
+
+			// Convert []any -> []string
+			toStrings := func(a []any) []string {
+				out := make([]string, len(a))
+				for i := range a {
+					out[i], _ = a[i].(string)
+				}
+				return out
+			}
+			fields := toStrings(fieldsAny)
+			values := toStrings(valuesAny)
+
+			// Shape checks
+			assert.Equal(t, expectedFields, fields)
+			require.Len(t, values, 4)
+
+			// number
+			assert.Equal(t, fmt.Sprintf("%d", wantNums[i]), values[0])
+			// hash, stateroot must be 0x-prefixed hex
+			assert.True(t, strings.HasPrefix(values[1], "0x"))
+			assert.True(t, strings.HasPrefix(values[2], "0x"))
+			// timestamp follows deterministic pattern used in seeding
+			wantTs := 1630000000 + wantNums[i]*10
+			assert.Equal(t, fmt.Sprintf("%d", wantTs), values[3])
+		}
+	})
+}
+
