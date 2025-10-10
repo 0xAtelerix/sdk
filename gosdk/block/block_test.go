@@ -72,6 +72,19 @@ func adaptResult(t *testing.T, result any) (fields, values []string) {
 	}
 }
 
+// adaptBlocksResult normalizes GetBlocks(any,error) to []FieldsValues
+func adaptBlocksResult(t *testing.T, result any) []FieldsValues {
+	switch v := result.(type) {
+	case []FieldsValues:
+		return v
+	case *[]FieldsValues:
+		return *v
+	default:
+		require.Failf(t, "unexpected result type from GetBlocks", "got %T", result)
+		return nil
+	}
+}
+
 // -------------------- GetBlock(any,error) tests --------------------
 
 func TestStoreAndGetBlockByHash(t *testing.T) {
@@ -233,168 +246,116 @@ func TestGetBlockNonExistent(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// // -------------------- Latest blocks (GetBlocks) tests --------------------
+// -------------------- GetBlocks(count) []FieldsValues tests --------------------
 
-// type TestBlock struct {
-// 	H    [32]byte `json:"hash" cbor:"1,keyasint"`
-// 	N    uint64   `json:"number" cbor:"2,keyasint"`
-// 	Data string   `json:"data" cbor:"3,keyasint"`
-// }
+func TestGetBlocks_OrderAndCount(t *testing.T) {
+	t.Parallel()
 
-// func (b *TestBlock) Hash() [32]byte { return b.H }
-// func (b *TestBlock) Number() uint64 { return b.N }
+	db := createDB(t, BlockNumberBucket)
+	defer db.Close()
 
-// func (b *TestBlock) StateRoot() [32]byte {
-// 	return sha256.Sum256(b.Bytes())
-// }
+	// Seed 10 blocks numbered 0..9 (as raw CBOR of the on-disk Block layout)
+	err := db.Update(context.Background(), func(tx kv.RwTx) error {
+		for i := 0; i < 10; i++ {
+			enc, b := makeCBORBlock(uint64(i), fmt.Sprintf("blk-%d", i))
+			if e := tx.Put(BlockNumberBucket, NumberToBytes(b.Number), enc); e != nil {
+				return e
+			}
+		}
+		return nil
+	})
+	require.NoError(t, err)
 
-// func (b *TestBlock) Bytes() []byte {
-// 	buf := make([]byte, 0, 32+8+len(b.Data))
-// 	buf = append(buf, b.H[:]...)
-// 	var n [8]byte
-// 	binary.BigEndian.PutUint64(n[:], b.N)
-// 	buf = append(buf, n[:]...)
-// 	buf = append(buf, []byte(b.Data)...)
-// 	return buf
-// }
+	// Retrieve last 5 blocks → expect 9,8,7,6,5 (newest first)
+	err = db.View(context.Background(), func(tx kv.Tx) error {
+		resAny, e := GetBlocks(tx, 5)
+		if e != nil {
+			return e
+		}
+		res := adaptBlocksResult(t, resAny)
+		require.Len(t, res, 5)      
 
-// func newTestBlock(num uint64, data string) *TestBlock {
-// 	h := sha256.Sum256([]byte(fmt.Sprintf("%d:%s", num, data)))
-// 	return &TestBlock{H: h, N: num, Data: data}
-// }
 
-// func asTestBlock(t *testing.T, v any) *TestBlock {
-// 	switch b := v.(type) {
-// 	case *TestBlock:
-// 		return b
-// 	case TestBlock:
-// 		return &b
-// 	default:
-// 		require.Failf(t, "type assertion failed", "expected TestBlock, got %T", v)
-// 		return nil
-// 	}
-// }
+		wantNums := []uint64{9, 8, 7, 6, 5}
+		assert.Equal(t, expectedFieldOrder(), res[0].Fields) // same for all entries
 
-// func TestGetLatestBlocks_OrderAndCount(t *testing.T) {
-// 	t.Parallel()
+		for i, fv := range res {
+			require.Len(t, fv.Values, 4)
+			// number
+			assert.Equal(t, fmt.Sprintf("%d", wantNums[i]), fv.Values[0])
+			// hash, stateroot as hex
+			assert.True(t, strings.HasPrefix(fv.Values[1], "0x"))
+			assert.True(t, strings.HasPrefix(fv.Values[2], "0x"))
+			// timestamp matches the deterministic pattern used by makeCBORBlock
+			wantTs := 1630000000 + wantNums[i]*10
+			assert.Equal(t, fmt.Sprintf("%d", wantTs), fv.Values[3])
+		}
+		return nil
+	})
+	require.NoError(t, err)
+}
 
-// 	db := createDB(t, BlockNumberBucket)
-// 	defer db.Close()
+func TestGetBlocks_CountExceedsAvailable(t *testing.T) {
+	t.Parallel()
 
-// 	// store 10 blocks numbered 0..9
-// 	err := db.Update(context.Background(), func(tx kv.RwTx) error {
-// 		for i := 0; i < 10; i++ {
-// 			if e := StoreBlockbyNumber(tx, BlockNumberBucket, newTestBlock(uint64(i), fmt.Sprintf("blk-%d", i))); e != nil {
-// 				return e
-// 			}
-// 		}
-// 		return nil
-// 	})
-// 	require.NoError(t, err)
+	db := createDB(t, BlockNumberBucket)
+	defer db.Close()
 
-// 	// retrieve last 5 blocks, expect 9,8,7,6,5
-// 	err = db.View(context.Background(), func(tx kv.Tx) error {
-// 		res, e := GetBlocks(tx, 5, &TestBlock{})
-// 		if e != nil {
-// 			return e
-// 		}
-// 		require.Len(t, res, 5)
-// 		want := []uint64{9, 8, 7, 6, 5}
-// 		for i, blkAny := range res {
-// 			blk := asTestBlock(t, blkAny)
-// 			assert.Equal(t, want[i], blk.Number())
-// 			assert.Equal(t, fmt.Sprintf("blk-%d", want[i]), blk.Data)
-// 		}
-// 		return nil
-// 	})
-// 	require.NoError(t, err)
-// }
+	// Seed 3 blocks (0,1,2)
+	err := db.Update(context.Background(), func(tx kv.RwTx) error {
+		for i := 0; i < 3; i++ {
+			enc, b := makeCBORBlock(uint64(i), fmt.Sprintf("n=%d", i))
+			if e := tx.Put(BlockNumberBucket, NumberToBytes(b.Number), enc); e != nil {
+				return e
+			}
+		}
+		return nil
+	})
+	require.NoError(t, err)
 
-// func TestGetLatestBlocks_CountExceedsAvailable(t *testing.T) {
-// 	t.Parallel()
+	// Request 10 → should return all 3: 2,1,0
+	err = db.View(context.Background(), func(tx kv.Tx) error {
+		resAny, e := GetBlocks(tx, 10)
+		if e != nil {
+			return e
+		}
+		res := adaptBlocksResult(t, resAny)
+		require.Len(t, res, 3)
+		wantNums := []uint64{2, 1, 0}
+		for i, fv := range res {
+			assert.Equal(t, fmt.Sprintf("%d", wantNums[i]), fv.Values[0])
+		}
+		return nil
+	})
+	require.NoError(t, err)
+}
 
-// 	db := createDB(t, BlockNumberBucket)
-// 	defer db.Close()
+func TestGetBlocks_ZeroCount(t *testing.T) {
+	t.Parallel()
 
-// 	// store 3 blocks
-// 	err := db.Update(context.Background(), func(tx kv.RwTx) error {
-// 		for i := 0; i < 3; i++ {
-// 			if e := StoreBlockbyNumber(tx, BlockNumberBucket, newTestBlock(uint64(i), fmt.Sprintf("n=%d", i))); e != nil {
-// 				return e
-// 			}
-// 		}
-// 		return nil
-// 	})
-// 	require.NoError(t, err)
+	db := createDB(t, BlockNumberBucket)
+	defer db.Close()
 
-// 	// request more than available; should return all (newest first)
-// 	err = db.View(context.Background(), func(tx kv.Tx) error {
-// 		res, e := GetBlocks(tx, 10, &TestBlock{})
-// 		if e != nil {
-// 			return e
-// 		}
-// 		require.Len(t, res, 3)
-// 		want := []uint64{2, 1, 0}
-// 		for i, blkAny := range res {
-// 			blk := asTestBlock(t, blkAny)
-// 			assert.Equal(t, want[i], blk.Number())
-// 		}
-// 		return nil
-// 	})
-// 	require.NoError(t, err)
-// }
+	err := db.View(context.Background(), func(tx kv.Tx) error {
+		resAny, e := GetBlocks(tx, 0)
+		res := adaptBlocksResult(t, resAny)
+		require.NoError(t, e)
+		assert.Empty(t, res)
+		return nil
+	})
+	require.NoError(t, err)
+}
 
-// func TestGetLatestBlocks_ZeroCount(t *testing.T) {
-// 	t.Parallel()
+func TestGetBlocks_EmptyDB(t *testing.T) {
+	t.Parallel()
 
-// 	db := createDB(t, BlockNumberBucket)
-// 	defer db.Close()
+	db := createDB(t, BlockNumberBucket)
+	defer db.Close()
 
-// 	err := db.View(context.Background(), func(tx kv.Tx) error {
-// 		res, e := GetBlocks(tx, 0, &TestBlock{})
-// 		require.NoError(t, e)
-// 		assert.Empty(t, res)
-// 		return nil
-// 	})
-// 	require.NoError(t, err)
-// }
-
-// func TestGetLatestBlocks_EmptyDB(t *testing.T) {
-// 	t.Parallel()
-
-// 	db := createDB(t, BlockNumberBucket)
-// 	defer db.Close()
-
-// 	err := db.View(context.Background(), func(tx kv.Tx) error {
-// 		_, e := GetBlocks(tx, 5, &TestBlock{})
-// 		assert.ErrorIs(t, e, ErrNoBlocks)
-// 		return nil
-// 	})
-// 	require.NoError(t, err)
-// }
-
-// // -------------------- NumberToBytes test --------------------
-
-// func TestNumberToBytesBigEndian(t *testing.T) {
-// 	cases := []struct {
-// 		name string
-// 		in   uint64
-// 	}{
-// 		{"zero", 0},
-// 		{"one", 1},
-// 		{"pattern", 0x0102030405060708},
-// 		{"max", math.MaxUint64},
-// 	}
-
-// 	for _, tc := range cases {
-// 		t.Run(tc.name, func(tr *testing.T) {
-// 			got := NumberToBytes(tc.in)
-
-// 			// expected big endian encoding
-// 			var want [8]byte
-// 			binary.BigEndian.PutUint64(want[:], tc.in)
-
-// 			assert.Equal(tr, want[:], got)
-// 		})
-// 	}
-// }
+	err := db.View(context.Background(), func(tx kv.Tx) error {
+		_, e := GetBlocks(tx, 5)
+		assert.ErrorIs(t, e, ErrNoBlocks)
+		return nil
+	})
+	require.NoError(t, err)
+}
