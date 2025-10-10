@@ -23,6 +23,8 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/receipt"
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
+
+	"github.com/0xAtelerix/sdk/gosdk/block"
 )
 
 const (
@@ -101,6 +103,8 @@ func setupTestEnvironment(
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return kv.TableCfg{
 				receipt.ReceiptBucket: {},
+				block.BlockNumberBucket: {},
+        		block.BlockHashBucket: {},
 			}
 		}).
 		Open()
@@ -114,6 +118,7 @@ func setupTestEnvironment(
 
 	// Add standard methods to maintain compatibility with existing tests
 	AddStandardMethods(server, appchainDB, txPool)
+	AddBlockMethods(server, appchainDB)
 
 	cleanup = func() {
 		localDB.Close()
@@ -1101,3 +1106,130 @@ func TestStandardRPCServer_corsHealthEndpoint(t *testing.T) {
 	assert.Equal(t, "Accept", w.Header().Get("Access-Control-Allow-Headers"))
 	assert.Equal(t, 200, w.Code)
 }
+
+
+// ============= BLOCK METHODS TESTS =============
+
+func TestStandardRPCServer_getBlockByNumber(t *testing.T) {
+    server, _, cleanup := setupTestEnvironment(t)
+    defer cleanup()
+
+    t.Run("requires 1 param", func(t *testing.T) {
+        rr := makeJSONRPCRequest(t, server, "getBlockByNumber", []any{})
+        require.Equal(t, http.StatusOK, rr.Code)
+
+        var resp JSONRPCResponse
+        require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+        require.NotNil(t, resp.Error)
+        assert.Equal(t, -32603, resp.Error.Code)
+    })
+
+    t.Run("invalid param type", func(t *testing.T) {
+        rr := makeJSONRPCRequest(t, server, "getBlockByNumber", []any{true})
+        require.Equal(t, http.StatusOK, rr.Code)
+
+        var resp JSONRPCResponse
+        require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+        require.NotNil(t, resp.Error)
+        assert.Equal(t, -32603, resp.Error.Code)
+        assert.Contains(t, resp.Error.Message, "invalid block number")
+    })
+
+    t.Run("invalid hex string", func(t *testing.T) {
+        rr := makeJSONRPCRequest(t, server, "getBlockByNumber", []any{"0xZZ"})
+        require.Equal(t, http.StatusOK, rr.Code)
+
+        var resp JSONRPCResponse
+        require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+        require.NotNil(t, resp.Error)
+        assert.Equal(t, -32603, resp.Error.Code)
+        assert.Contains(t, resp.Error.Message, "invalid hex block number")
+    })
+
+    t.Run("negative numeric", func(t *testing.T) {
+        rr := makeJSONRPCRequest(t, server, "getBlockByNumber", []any{-1})
+        require.Equal(t, http.StatusOK, rr.Code)
+
+        var resp JSONRPCResponse
+        require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+        require.NotNil(t, resp.Error)
+        assert.Equal(t, -32603, resp.Error.Code)
+        assert.Contains(t, resp.Error.Message, "invalid block number: negative")
+    })
+
+    t.Run("valid decimal but not found", func(t *testing.T) {
+        rr := makeJSONRPCRequest(t, server, "getBlockByNumber", []any{"123"})
+        require.Equal(t, http.StatusOK, rr.Code)
+
+        var resp JSONRPCResponse
+        require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+        require.NotNil(t, resp.Error)
+        assert.Equal(t, -32603, resp.Error.Code)
+        assert.Contains(t, resp.Error.Message, "failed to get block by number 123")
+    })
+
+    t.Run("valid hex but not found", func(t *testing.T) {
+        rr := makeJSONRPCRequest(t, server, "getBlockByNumber", []any{"0x7b"})
+        require.Equal(t, http.StatusOK, rr.Code)
+
+        var resp JSONRPCResponse
+        require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+        require.NotNil(t, resp.Error)
+        assert.Equal(t, -32603, resp.Error.Code)
+        // Parsed as decimal internally
+        assert.Contains(t, resp.Error.Message, "failed to get block by number 123")
+    })
+}
+
+func TestStandardRPCServer_getBlockByHash(t *testing.T) {
+    server, _, cleanup := setupTestEnvironment(t)
+    defer cleanup()
+
+    t.Run("requires 1 param", func(t *testing.T) {
+        rr := makeJSONRPCRequest(t, server, "getBlockByHash", []any{})
+        require.Equal(t, http.StatusOK, rr.Code)
+
+        var resp JSONRPCResponse
+        require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+        require.NotNil(t, resp.Error)
+        assert.Equal(t, -32603, resp.Error.Code)
+    })
+
+    t.Run("param must be string", func(t *testing.T) {
+        rr := makeJSONRPCRequest(t, server, "getBlockByHash", []any{123})
+        require.Equal(t, http.StatusOK, rr.Code)
+
+        var resp JSONRPCResponse
+        require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+        require.NotNil(t, resp.Error)
+        assert.Equal(t, -32603, resp.Error.Code)
+        assert.Contains(t, resp.Error.Message, "hash parameter must be a string")
+    })
+
+    t.Run("invalid hash format", func(t *testing.T) {
+        rr := makeJSONRPCRequest(t, server, "getBlockByHash", []any{"0x123"})
+        require.Equal(t, http.StatusOK, rr.Code)
+
+        var resp JSONRPCResponse
+        require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+        require.NotNil(t, resp.Error)
+        assert.Equal(t, -32603, resp.Error.Code)
+        assert.Contains(t, resp.Error.Message, "invalid hash format")
+    })
+
+    t.Run("valid hash but not found", func(t *testing.T) {
+        h := sha256.Sum256([]byte("non-existent-block"))
+        hashStr := "0x" + hex.EncodeToString(h[:])
+
+        rr := makeJSONRPCRequest(t, server, "getBlockByHash", []any{hashStr})
+        require.Equal(t, http.StatusOK, rr.Code)
+
+        var resp JSONRPCResponse
+        require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+        require.NotNil(t, resp.Error)
+        assert.Equal(t, -32603, resp.Error.Code)
+        assert.Contains(t, resp.Error.Message, "failed to get block by hash")
+        assert.Contains(t, resp.Error.Message, hashStr)
+    })
+}
+

@@ -26,4 +26,6 @@ var (
 	ErrHashMustBe32Bytes              = errors.New("hash must be 32 bytes")
 	ErrReceiptNotFound                = errors.New("receipt not found")
 	ErrTransactionNotFound            = errors.New("transaction not found")
+
+	ErrGetBlockByNumberRequires1Param = errors.New("getBlockByNumber requires exactly 1 parameter")
 )
