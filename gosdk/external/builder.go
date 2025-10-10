@@ -44,16 +44,16 @@ func (b *ExTxBuilder) AddSolanaAccounts(accounts []types.AccountMeta) *ExTxBuild
 }
 
 // Build constructs the final ExternalTransaction.
-func (b *ExTxBuilder) Build() (*apptypes.ExternalTransaction, error) {
+func (b *ExTxBuilder) Build() (apptypes.ExternalTransaction, error) {
 	if b.chainID == 0 {
-		return nil, ErrChainIDRequired
+		return apptypes.ExternalTransaction{}, ErrChainIDRequired
 	}
 
 	if b.accounts != nil {
 		return b.BuildSolanaPayload()
 	}
 
-	return &apptypes.ExternalTransaction{
+	return apptypes.ExternalTransaction{
 		ChainID: b.chainID,
 		Tx:      b.payload,
 	}, nil
@@ -61,9 +61,9 @@ func (b *ExTxBuilder) Build() (*apptypes.ExternalTransaction, error) {
 
 // BuildSolanaPayload builds a Solana payload with account metadata prefix.
 // Format: [u8 num_accounts][[32]pubkey + u8 flags][data...]
-func (b *ExTxBuilder) BuildSolanaPayload() (*apptypes.ExternalTransaction, error) {
+func (b *ExTxBuilder) BuildSolanaPayload() (apptypes.ExternalTransaction, error) {
 	if len(b.accounts) > 64 {
-		return nil, ErrTooManyAccounts
+		return apptypes.ExternalTransaction{}, ErrTooManyAccounts
 	}
 
 	// Calculate total size: 1 (num_accounts) + len(accounts)*(32+1) + len(data)
@@ -95,7 +95,7 @@ func (b *ExTxBuilder) BuildSolanaPayload() (*apptypes.ExternalTransaction, error
 	// Append the data
 	copy(payload[offset:], b.payload)
 
-	return &apptypes.ExternalTransaction{
+	return apptypes.ExternalTransaction{
 		ChainID: b.chainID,
 		Tx:      payload,
 	}, nil
