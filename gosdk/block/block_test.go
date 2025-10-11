@@ -120,7 +120,7 @@ func TestStoreAndGetBlockByHash(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestStoreAndGetBlockByNumber(t *testing.T) {
+func TestStoreAndgetBlockbyNumber(t *testing.T) {
 	t.Parallel()
 
 	db := createDB(t, BlockNumberBucket)
@@ -273,8 +273,7 @@ func TestGetBlocks_OrderAndCount(t *testing.T) {
 			return e
 		}
 		res := adaptBlocksResult(t, resAny)
-		require.Len(t, res, 5)      
-
+		require.Len(t, res, 5)
 
 		wantNums := []uint64{9, 8, 7, 6, 5}
 		assert.Equal(t, expectedFieldOrder(), res[0].Fields) // same for all entries
@@ -359,3 +358,196 @@ func TestGetBlocks_EmptyDB(t *testing.T) {
 	})
 	require.NoError(t, err)
 }
+
+// -------------------- getBlockbyNumber / getTransactionforBlock / GetTransactionsByBlockNumber tests --------------------
+
+// testTx mirrors the CBOR/JSON shape used by block.go's tx struct (from, to, value)
+type testTx struct {
+	From  string `json:"from"  cbor:"1,keyasint"`
+	To    string `json:"to"    cbor:"2,keyasint"`
+	Value int    `json:"value" cbor:"3,keyasint"`
+}
+
+// normalizeTxs marshals the returned (any or slice) into CBOR and unmarshals
+// into []testTx so we can compare values without referencing the internal type name.
+func normalizeTxs(t *testing.T, v any) []testTx {
+	t.Helper()
+	raw, err := cbor.Marshal(v)
+	require.NoError(t, err)
+	var out []testTx
+	require.NoError(t, cbor.Unmarshal(raw, &out))
+	return out
+}
+
+func Test_getBlockbyNumber_Found(t *testing.T) {
+	t.Parallel()
+
+	db := createDB(t, BlockNumberBucket)
+	defer db.Close()
+
+	enc, want := makeCBORBlock(123, "gbn-found")
+	key := NumberToBytes(want.Number)
+
+	// Seed block by number
+	require.NoError(t, db.Update(context.Background(), func(tx kv.RwTx) error {
+		return tx.Put(BlockNumberBucket, key, enc)
+	}))
+
+	// Retrieve and verify
+	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
+		b, err := getBlockbyNumber(tx, want.Number)
+		require.NoError(t, err)
+
+		assert.Equal(t, want.Number, b.Number)
+		assert.Equal(t, want.Hash, b.Hash)
+		assert.Equal(t, want.StateRoot, b.StateRoot)
+		assert.Equal(t, want.Timestamp, b.Timestamp)
+		return nil
+	}))
+}
+
+func Test_getBlockbyNumber_NotFound(t *testing.T) {
+	t.Parallel()
+
+	db := createDB(t, BlockNumberBucket)
+	defer db.Close()
+
+	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
+		_, err := getBlockbyNumber(tx, 999_999)
+		assert.ErrorIs(t, err, ErrNoBlocks)
+		return nil
+	}))
+}
+
+func Test_getTransactionforBlock_Empty(t *testing.T) {
+	t.Parallel()
+
+	db := createDB(t, BlockTransactionsBucket)
+	defer db.Close()
+
+	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
+		// No entry for number 7 → expect empty slice, no error
+		got, err := getTransactionsForBlock(tx, Block{Number: 7})
+		require.NoError(t, err)
+		assert.Empty(t, got)
+		return nil
+	}))
+}
+
+func Test_getTransactionforBlock_DirectEncoding(t *testing.T) {
+	t.Parallel()
+
+	db := createDB(t, BlockTransactionsBucket)
+	defer db.Close()
+
+	blockNum := uint64(5)
+	want := []testTx{
+		{From: "alice", To: "bob", Value: 1},
+		{From: "carol", To: "dave", Value: 2},
+	}
+	enc, err := cbor.Marshal(want)
+	require.NoError(t, err)
+
+	// Seed direct slice encoding: CBOR([]testTx)
+	require.NoError(t, db.Update(context.Background(), func(tx kv.RwTx) error {
+		return tx.Put(BlockTransactionsBucket, NumberToBytes(blockNum), enc)
+	}))
+
+	// Retrieve via getTransactionforBlock
+	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
+		got, err := getTransactionsForBlock(tx, Block{Number: blockNum})
+		require.NoError(t, err)
+
+		gotNorm := normalizeTxs(t, got)
+		assert.Equal(t, want, gotNorm)
+		return nil
+	}))
+}
+
+func Test_getTransactionforBlock_NestedEncoding(t *testing.T) {
+	t.Parallel()
+
+	db := createDB(t, BlockTransactionsBucket)
+	defer db.Close()
+
+	blockNum := uint64(6)
+	want := []testTx{
+		{From: "eve", To: "frank", Value: 7},
+		{From: "grace", To: "heidi", Value: 8},
+	}
+
+	// Build nested encoding: CBOR([][]byte) where each []byte is CBOR(testTx)
+	raw := make([][]byte, 0, len(want))
+	for _, tx := range want {
+		b, err := cbor.Marshal(tx)
+		require.NoError(t, err)
+		raw = append(raw, b)
+	}
+	enc, err := cbor.Marshal(raw)
+	require.NoError(t, err)
+
+	// Seed nested payload
+	require.NoError(t, db.Update(context.Background(), func(tx kv.RwTx) error {
+		return tx.Put(BlockTransactionsBucket, NumberToBytes(blockNum), enc)
+	}))
+
+	// Retrieve via getTransactionforBlock
+	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
+		got, err := getTransactionsForBlock(tx, Block{Number: blockNum})
+		require.NoError(t, err)
+
+		gotNorm := normalizeTxs(t, got)
+		assert.Equal(t, want, gotNorm)
+		return nil
+	}))
+}
+
+func Test_GetTransactionsByBlockNumber_DirectEncoding(t *testing.T) {
+	t.Parallel()
+
+	db := createDB(t, BlockNumberBucket, BlockTransactionsBucket)
+	defer db.Close()
+
+	// Seed the block header (so lookup by number succeeds)
+	blkEnc, blk := makeCBORBlock(77, "txs-direct")
+	require.NoError(t, db.Update(context.Background(), func(tx kv.RwTx) error {
+		return tx.Put(BlockNumberBucket, NumberToBytes(blk.Number), blkEnc)
+	}))
+
+	// Seed txs (direct slice)
+	want := []testTx{
+		{From: "isaac", To: "judy", Value: 10},
+		{From: "kate", To: "liam", Value: 11},
+	}
+	txsEnc, err := cbor.Marshal(want)
+	require.NoError(t, err)
+
+	require.NoError(t, db.Update(context.Background(), func(tx kv.RwTx) error {
+		return tx.Put(BlockTransactionsBucket, NumberToBytes(blk.Number), txsEnc)
+	}))
+
+	// Call GetTransactionsByBlockNumber
+	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
+		resAny, err := GetTransactionsByBlockNumber(tx, blk.Number)
+		require.NoError(t, err)
+
+		gotNorm := normalizeTxs(t, resAny)
+		assert.Equal(t, want, gotNorm)
+		return nil
+	}))
+}
+
+func Test_GetTransactionsByBlockNumber_BlockMissing(t *testing.T) {
+	t.Parallel()
+
+	db := createDB(t, BlockNumberBucket, BlockTransactionsBucket)
+	defer db.Close()
+
+	// No block with this number exists → expect ErrNoBlocks
+	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
+		_, err := GetTransactionsByBlockNumber(tx, 999)
+		assert.ErrorIs(t, err, ErrNoBlocks)
+		return nil
+	}))
+}
+

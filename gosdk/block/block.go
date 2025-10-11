@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	BlockHashBucket   = "blockhash"   // block-hash -> block
-	BlockNumberBucket = "blocknumber" // block-number -> block
+	BlockHashBucket         = "blockhash"   // block-hash -> block
+	BlockNumberBucket       = "blocknumber" // block-number -> block
+	BlockTransactionsBucket = "blocktxs"    // block-number -> txs
 )
 
 var ErrNoBlocks = errors.New("no blocks found")
@@ -65,23 +66,6 @@ type FieldsValues struct {
 	Fields []string
 	Values []string
 }
-
-// func GetBlock(tx kv.Tx, bucket string, key []byte, block apptypes.AppchainBlock) (apptypes.AppchainBlock, error) {
-// 	value, err := tx.GetOne(bucket, key)
-// 	if err != nil {
-// 		return block, err
-// 	}
-
-// 	if len(value) == 0 {
-// 		return block, ErrNoBlocks
-// 	}
-
-// 	if err := cbor.Unmarshal(value, &block); err != nil {
-// 		return block, err
-// 	}
-
-// 	return block, nil
-// }
 
 // GetBlock loads a block and returns two slices of strings:
 //  1. the field names of Block (in declaration order)
@@ -150,7 +134,7 @@ func GetBlocks(tx kv.Tx, count int) (any, error) {
 		return nil, ErrNoBlocks
 	}
 
-	// Prepare field names once using the concrete Block's json tags (declaration order).
+	// Field names from `json` tags in declaration order
 	var zero Block
 	t := reflect.TypeOf(zero)
 	fields := make([]string, 0, t.NumField())
@@ -193,6 +177,84 @@ func GetBlocks(tx kv.Tx, count int) (any, error) {
 	return out, nil
 }
 
+// Mirror of txpool_test.go CustomTransaction shape (same JSON and CBOR tags).
+// We cannot import the test type, but we guarantee identical (un)marshal shape.
+// TODO replace it with apptypes.AppTransaction
+type blockCustomTx struct {
+	From  string `json:"from"  cbor:"1,keyasint"`
+	To    string `json:"to"    cbor:"2,keyasint"`
+	Value int    `json:"value" cbor:"3,keyasint"`
+}
+
+// getBlockbyNumber loads and decodes a Block by its number from BlockNumberBucket.
+func getBlockbyNumber(tx kv.Tx, number uint64) (Block, error) {
+	key := NumberToBytes(number)
+
+	value, err := tx.GetOne(BlockNumberBucket, key)
+	if err != nil {
+		return Block{}, err
+	}
+	if len(value) == 0 {
+		return Block{}, ErrNoBlocks
+	}
+
+	var b Block
+	if err := cbor.Unmarshal(value, &b); err != nil {
+		return Block{}, err
+	}
+	return b, nil
+}
+
+// getTransactionforBlock retrieves transactions for the given concrete Block.
+// It supports two encodings under BlockTransactionsBucket:
+//  1. CBOR of []blockCustomTx
+//  2. CBOR of [][]byte, where each element is CBOR(blockCustomTx)
+//
+// If nothing is stored, it returns an empty slice instead of an error.
+func getTransactionsForBlock(tx kv.Tx, b Block) ([]blockCustomTx, error) {
+	val, err := tx.GetOne(BlockTransactionsBucket, NumberToBytes(b.Number))
+	if err != nil || len(val) == 0 {
+		// Treat missing bucket/value as "no transactions"
+		return []blockCustomTx{}, nil
+	}
+
+	// Try direct CBOR([]blockCustomTx)
+	var direct []blockCustomTx
+	if e := cbor.Unmarshal(val, &direct); e == nil {
+		return direct, nil
+	}
+
+	// Try CBOR([][]byte) with nested CBOR(blockCustomTx)
+	var raw [][]byte
+	if e := cbor.Unmarshal(val, &raw); e == nil {
+		out := make([]blockCustomTx, 0, len(raw))
+		for i, r := range raw {
+			var t blockCustomTx
+			if ue := cbor.Unmarshal(r, &t); ue != nil {
+				return nil, fmt.Errorf("decode tx %d for block %d failed: %w", i, b.Number, ue)
+			}
+			out = append(out, t)
+		}
+		return out, nil
+	}
+
+	return nil, fmt.Errorf("unsupported transactions payload format for block %d", b.Number)
+}
+
+// GetTransactionsByBlockNumber is a convenience that chains getBlockbyNumber
+// and getTransactionforBlock, returning the tx list as `any`.
+func GetTransactionsByBlockNumber(tx kv.Tx, number uint64) (any, error) {
+	// TODO consider to replace it with GetBlock implementation to return FieldsValues
+	b, err := getBlockbyNumber(tx, number)
+	if err != nil {
+		return nil, err
+	}
+	txs, err := getTransactionsForBlock(tx, b)
+	if err != nil {
+		return nil, err
+	}
+	return txs, nil
+}
 
 func NumberToBytes(input uint64) []byte {
 	// Create a byte slice of length 8, as uint64 occupies 8 bytes

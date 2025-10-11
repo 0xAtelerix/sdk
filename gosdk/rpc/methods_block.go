@@ -7,14 +7,15 @@ import (
 	"strings"
 
 	"github.com/ledgerwatch/erigon-lib/kv"
+	//"github.com/fxamacker/cbor/v2"
 
-	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/block"
+	//"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
 
 // BlockMethods provides comprehensive block-related RPC methods
 type BlockMethods struct {
-	block      apptypes.AppchainBlock
+	block      block.Block
 	appchainDB kv.RwDB
 }
 
@@ -99,6 +100,28 @@ func (m *BlockMethods) GetBlocks(ctx context.Context, params []any) (any, error)
 	return result, nil
 }
 
+// GetTransactionsByBlockNumber retrieves transactions for a given block number.
+// Accepts decimal, hex "0x..", or numeric JSON; returns (any, error).
+func (m *BlockMethods) GetTransactionsByBlockNumber(ctx context.Context, params []any) (any, error) {
+	if len(params) != 1 {
+		return nil, ErrGetBlockByNumberRequires1Param
+	}
+	num, err := parseNumber(params[0])
+	if err != nil {
+		return nil, err
+	}
+
+	var result any
+	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
+		var e error
+		result, e = block.GetTransactionsByBlockNumber(tx, num)
+		return e
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get transactions for block %d: %w", num, err)
+	}
+	return result, nil
+}
 
 
 // AddBlockMethods adds block-related methods to the RPC server.
@@ -108,8 +131,7 @@ func AddBlockMethods(server *StandardRPCServer, appchainDB kv.RwDB) {
 	server.AddMethod("getBlockByNumber", methods.GetBlockByNumber)
 	server.AddMethod("getBlockByHash", methods.GetBlockByHash)
 	server.AddMethod("getBlocks", methods.GetBlocks)
-	// server.AddMethod("getTransactionsByBlockNumber", methods.GetTransactionsByBlockNumber)
-	// server.AddMethod("getTransactionsByBlockHash", methods.GetTransactionsByBlockHash)
+	server.AddMethod("getTransactionsByBlockNumber", methods.GetTransactionsByBlockNumber)
 }
 
 // parseNumber converts a JSON-RPC parameter into a uint64 block number.
