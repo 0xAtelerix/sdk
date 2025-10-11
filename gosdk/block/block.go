@@ -73,6 +73,7 @@ type FieldsValues struct {
 //
 // Stringification:
 //   - uint64    → decimal string
+//.  - string   -> bucket
 //   - [32]byte  → 0x-prefixed lowercase hex
 func GetBlock(tx kv.Tx, bucket string, key []byte) (any, error) {
 	value, err := tx.GetOne(bucket, key)
