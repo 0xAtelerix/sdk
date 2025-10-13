@@ -15,6 +15,8 @@ contract Example {
     // Event emitted when a user initiates a cross-chain swap
     event Swap(address indexed user, string tokenIn, string tokenOut, uint256 amountIn);
 
+    event WithdrawToSolana(uint256 amount);
+
     // Deposit function with token specification
     function deposit(string memory token, uint256 amount) external {
         require(amount > 0, "Must deposit some amount");
@@ -34,5 +36,11 @@ contract Example {
 
         // Emit swap event that will trigger cross-chain transfer
         emit Swap(msg.sender, tokenIn, tokenOut, amountIn);
+    }
+
+    function withdrawToSolana(uint256 amount) external {
+        require(amount > 0, "Mist withdraw some amount");
+    
+        emit WithdrawToSolana(amount);
     }
 }
