@@ -48,6 +48,32 @@ func (b Block) Bytes() []byte {
 	return data
 }
 
+// TODO test it 
+func (b *Block) convertToFieldsValues() BlockFieldsValues {
+	
+	// Field names from `json` tags in declaration order
+	t := reflect.TypeOf(b)
+	fields := make([]string, 0, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		name := f.Tag.Get("json")
+		if name == "" || name == "-" {
+			name = f.Name
+		}
+		fields = append(fields, name)
+	}
+	// Values aligned with fields order
+	values := []string{
+		fmt.Sprintf("%d", b.Number),
+		fmt.Sprintf("0x%x", b.Hash),
+		fmt.Sprintf("0x%x", b.StateRoot),
+		fmt.Sprintf("%d", b.Timestamp),
+	}
+
+	return BlockFieldsValues{Fields: fields, Values: values}
+}
+
+
 // var _ apptypes.AppchainBlock = (*Block)(nil)
 // type Block struct {
 // 	Number    uint64   `json:"number" cbor:"1,keyasint"`
@@ -95,48 +121,28 @@ type BlockFieldsValues struct {
 	Values []string
 }
 
+
 // GetBlock loads a block
 // TODO consider to pass third argument of type apptypes.AppchainBlock to decode into concrete type
-func GetBlock(tx kv.Tx, bucket string, key []byte, block apptypes.AppchainBlock) (any, error) {
+func GetBlock(tx kv.Tx, bucket string, key []byte, block apptypes.AppchainBlock) (BlockFieldsValues, error) {
 	value, err := tx.GetOne(bucket, key)
 	if err != nil {
-		return nil, err
+		return BlockFieldsValues{}, err
 	}
 	if len(value) == 0 {
-		return nil, ErrNoBlocks
+		return BlockFieldsValues{}, ErrNoBlocks
 	}
 	// Decode into the concrete Block to access fields deterministically
 	b, ok := block.(*Block)
 	if !ok {
-		return nil, ErrUnsupportedBlockType 
+		return BlockFieldsValues{}, ErrUnsupportedBlockType 
 	}
 
 	if err := cbor.Unmarshal(value, &b); err != nil {
-		return nil, err
-	}
-	// Field names from `json` tags in declaration order
-	t := reflect.TypeOf(b)
-	fields := make([]string, 0, t.NumField())
-	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
-		name := f.Tag.Get("json")
-		if name == "" || name == "-" {
-			name = f.Name
-		}
-		fields = append(fields, name)
-	}
-	// Values aligned with fields order
-	values := []string{
-		fmt.Sprintf("%d", b.Number),
-		fmt.Sprintf("0x%x", b.Hash),
-		fmt.Sprintf("0x%x", b.StateRoot),
-		fmt.Sprintf("%d", b.Timestamp),
+		return BlockFieldsValues{}, err
 	}
 
-	return BlockFieldsValues{
-		Fields: fields,
-		Values: values,
-	}, nil
+	return b.convertToFieldsValues(), nil
 }
 
 // GetBlocks returns up to `count` most recent blocks from the BlockNumberBucket (newest first)

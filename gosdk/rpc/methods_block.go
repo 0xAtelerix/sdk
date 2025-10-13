@@ -8,6 +8,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 	//"github.com/fxamacker/cbor/v2"
 
+	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/block"
 	//"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
@@ -35,16 +36,19 @@ func (m *BlockMethods) GetBlockByNumber(ctx context.Context, params []any) (any,
 		return nil, err
 	}
 
-	var BlockFieldsValues any
+	var (
+		blockFieldsValuesResp block.BlockFieldsValues
+		blockI apptypes.AppchainBlock
+	)
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
 		var getErr error
-		BlockFieldsValues, getErr = block.GetBlock(tx, block.BlockNumberBucket, block.NumberToBytes(number))
+		blockFieldsValuesResp, getErr = block.GetBlock(tx, block.BlockNumberBucket, block.NumberToBytes(number), blockI)
 		return getErr
 	})
 	if err != nil {
 		return nil, ErrFailedToGetBlockByNumber
 	}
-	return BlockFieldsValues, nil
+	return blockFieldsValuesResp, nil
 }
 
 // GetBlockByHash retrieves a block by its hash (expects a 0x-prefixed hex string).
@@ -63,16 +67,19 @@ func (m *BlockMethods) GetBlockByHash(ctx context.Context, params []any) (any, e
 		return nil, ErrInvalidHashFormat
 	}
 
-	var BlockFieldsValues any
+	var (
+		blockFieldsValuesResp block.BlockFieldsValues
+		blockI apptypes.AppchainBlock
+	)
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
 		var getErr error
-		BlockFieldsValues, getErr = block.GetBlock(tx, block.BlockHashBucket, hash[:])
+		blockFieldsValuesResp, getErr = block.GetBlock(tx, block.BlockHashBucket, hash[:], blockI)
 		return getErr
 	})
 	if err != nil {
 		return nil, ErrFailedToGetBlockByHash
 	}
-	return BlockFieldsValues, nil
+	return blockFieldsValuesResp, nil
 }
 
 // GetBlocks returns the N most recent blocks (newest first).
