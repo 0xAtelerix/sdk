@@ -42,7 +42,7 @@ type testBlock struct {
 	Timestamp uint64   `json:"timestamp" cbor:"4,keyasint"`
 }
 
-func makeCBORBlock(num uint64, note string) ([]byte, testBlock) {
+func newTestBlock(num uint64, note string) ([]byte, testBlock) {
 	// Derive a deterministic hash
 	h := sha256.Sum256([]byte(fmt.Sprintf("block-%d-%s", num, note)))
 	blk := testBlock{
@@ -73,6 +73,7 @@ func adaptResult(t *testing.T, result any) (fields, values []string) {
 }
 
 // adaptBlocksResult normalizes GetBlocks(any,error) to []FieldsValues
+// TODO remove duplicated code
 func adaptBlocksResult(t *testing.T, result any) []FieldsValues {
 	switch v := result.(type) {
 	case []FieldsValues:
@@ -93,7 +94,7 @@ func TestStoreAndGetBlockByHash(t *testing.T) {
 	db := createDB(t, BlockHashBucket)
 	defer db.Close()
 
-	enc, want := makeCBORBlock(1, "by-hash")
+	enc, want := newTestBlock(1, "by-hash")
 
 	// Store by hash
 	err := db.Update(context.Background(), func(tx kv.RwTx) error {
@@ -126,7 +127,7 @@ func TestStoreAndgetBlockbyNumber(t *testing.T) {
 	db := createDB(t, BlockNumberBucket)
 	defer db.Close()
 
-	enc, want := makeCBORBlock(42, "by-number")
+	enc, want := newTestBlock(42, "by-number")
 	key := NumberToBytes(want.Number)
 
 	// Store by number
@@ -162,8 +163,8 @@ func TestStoreMultipleBlocksAndRetrieve_GetBlockShape(t *testing.T) {
 
 	encs := make([][]byte, 0, 10)
 	blks := make([]testBlock, 0, 10)
-	for i := 0; i < 10; i++ {
-		enc, b := makeCBORBlock(uint64(i), fmt.Sprintf("blk-%d", i))
+	for i := range 10 {
+		enc, b := newTestBlock(uint64(i), fmt.Sprintf("blk-%d", i))
 		encs = append(encs, enc)
 		blks = append(blks, b)
 	}
@@ -256,8 +257,8 @@ func TestGetBlocks_OrderAndCount(t *testing.T) {
 
 	// Seed 10 blocks numbered 0..9 (as raw CBOR of the on-disk Block layout)
 	err := db.Update(context.Background(), func(tx kv.RwTx) error {
-		for i := 0; i < 10; i++ {
-			enc, b := makeCBORBlock(uint64(i), fmt.Sprintf("blk-%d", i))
+		for i := range 10 {
+			enc, b := newTestBlock(uint64(i), fmt.Sprintf("blk-%d", i))
 			if e := tx.Put(BlockNumberBucket, NumberToBytes(b.Number), enc); e != nil {
 				return e
 			}
@@ -285,7 +286,7 @@ func TestGetBlocks_OrderAndCount(t *testing.T) {
 			// hash, stateroot as hex
 			assert.True(t, strings.HasPrefix(fv.Values[1], "0x"))
 			assert.True(t, strings.HasPrefix(fv.Values[2], "0x"))
-			// timestamp matches the deterministic pattern used by makeCBORBlock
+			// timestamp matches the deterministic pattern used by newTestBlock
 			wantTs := 1630000000 + wantNums[i]*10
 			assert.Equal(t, fmt.Sprintf("%d", wantTs), fv.Values[3])
 		}
@@ -303,7 +304,7 @@ func TestGetBlocks_CountExceedsAvailable(t *testing.T) {
 	// Seed 3 blocks (0,1,2)
 	err := db.Update(context.Background(), func(tx kv.RwTx) error {
 		for i := 0; i < 3; i++ {
-			enc, b := makeCBORBlock(uint64(i), fmt.Sprintf("n=%d", i))
+			enc, b := newTestBlock(uint64(i), fmt.Sprintf("n=%d", i))
 			if e := tx.Put(BlockNumberBucket, NumberToBytes(b.Number), enc); e != nil {
 				return e
 			}
@@ -385,7 +386,7 @@ func Test_getBlockbyNumber_Found(t *testing.T) {
 	db := createDB(t, BlockNumberBucket)
 	defer db.Close()
 
-	enc, want := makeCBORBlock(123, "gbn-found")
+	enc, want := newTestBlock(123, "gbn-found")
 	key := NumberToBytes(want.Number)
 
 	// Seed block by number
@@ -427,7 +428,9 @@ func Test_getTransactionforBlock_Empty(t *testing.T) {
 
 	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
 		// No entry for number 7 → expect empty slice, no error
-		got, err := getTransactionsForBlock(tx, Block{Number: 7})
+		var blockNum uint64
+		blockNum = 7
+		got, err := getTransactionsForBlock(tx, blockNum)
 		require.NoError(t, err)
 		assert.Empty(t, got)
 		return nil
@@ -455,7 +458,9 @@ func Test_getTransactionforBlock_DirectEncoding(t *testing.T) {
 
 	// Retrieve via getTransactionforBlock
 	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
-		got, err := getTransactionsForBlock(tx, Block{Number: blockNum})
+		var blockNum uint64
+		blockNum = 7
+		got, err := getTransactionsForBlock(tx, blockNum)
 		require.NoError(t, err)
 
 		gotNorm := normalizeTxs(t, got)
@@ -493,7 +498,9 @@ func Test_getTransactionforBlock_NestedEncoding(t *testing.T) {
 
 	// Retrieve via getTransactionforBlock
 	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
-		got, err := getTransactionsForBlock(tx, Block{Number: blockNum})
+		var blockNum uint64
+		blockNum = 7
+		got, err := getTransactionsForBlock(tx, blockNum)
 		require.NoError(t, err)
 
 		gotNorm := normalizeTxs(t, got)
@@ -509,7 +516,7 @@ func Test_GetTransactionsByBlockNumber_DirectEncoding(t *testing.T) {
 	defer db.Close()
 
 	// Seed the block header (so lookup by number succeeds)
-	blkEnc, blk := makeCBORBlock(77, "txs-direct")
+	blkEnc, blk := newTestBlock(77, "txs-direct")
 	require.NoError(t, db.Update(context.Background(), func(tx kv.RwTx) error {
 		return tx.Put(BlockNumberBucket, NumberToBytes(blk.Number), blkEnc)
 	}))
@@ -550,4 +557,3 @@ func Test_GetTransactionsByBlockNumber_BlockMissing(t *testing.T) {
 		return nil
 	}))
 }
-

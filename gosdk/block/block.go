@@ -3,7 +3,6 @@ package block
 import (
 	"crypto/sha256"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"reflect"
 
@@ -19,8 +18,8 @@ const (
 	BlockTransactionsBucket = "blocktxs"    // block-number -> txs
 )
 
-var ErrNoBlocks = errors.New("no blocks found")
-
+// TODO consider to asserrt apptypes.AppchainBlock interface
+// var _ apptypes.AppchainBlock = (*Block)(nil)
 type Block struct {
 	Number    uint64   `json:"number" cbor:"1,keyasint"`
 	Hash      [32]byte `json:"hash" cbor:"2,keyasint"`
@@ -73,7 +72,8 @@ type FieldsValues struct {
 //
 // Stringification:
 //   - uint64    → decimal string
-//.  - string   -> bucket
+//
+// .  - string   -> bucket
 //   - [32]byte  → 0x-prefixed lowercase hex
 func GetBlock(tx kv.Tx, bucket string, key []byte) (any, error) {
 	value, err := tx.GetOne(bucket, key)
@@ -116,8 +116,8 @@ func GetBlock(tx kv.Tx, bucket string, key []byte) (any, error) {
 // GetBlocks returns up to `count` most recent blocks from the BlockNumberBucket (newest first)
 // and formats each block as FieldsValues (same shape as GetBlock).
 // If count <= 0, it returns an empty slice. If the bucket is empty, returns ErrNoBlocks.
-func GetBlocks(tx kv.Tx, count int) (any, error) {
-	if count <= 0 {
+func GetBlocks(tx kv.Tx, count uint64) (any, error) {
+	if count == 0 {
 		return []FieldsValues{}, nil
 	}
 
@@ -152,7 +152,7 @@ func GetBlocks(tx kv.Tx, count int) (any, error) {
 
 	appendOne := func(val []byte) error {
 		var b Block
-		if err := cbor.Unmarshal(val, &b); err != nil {
+		if err = cbor.Unmarshal(val, &b); err != nil {
 			return err
 		}
 		values := []string{
@@ -165,8 +165,8 @@ func GetBlocks(tx kv.Tx, count int) (any, error) {
 		return nil
 	}
 
-	for i := 0; i < count && len(k) > 0; i++ {
-		if err := appendOne(v); err != nil {
+	for i := uint64(0); i < count && len(k) > 0; i++ {
+		if err = appendOne(v); err != nil {
 			return nil, err
 		}
 		k, v, err = cur.Prev()
@@ -180,7 +180,7 @@ func GetBlocks(tx kv.Tx, count int) (any, error) {
 
 // Mirror of txpool_test.go CustomTransaction shape (same JSON and CBOR tags).
 // We cannot import the test type, but we guarantee identical (un)marshal shape.
-// TODO replace it with apptypes.AppTransaction
+// TODO consider replace it with apptypes.AppTransaction
 type blockCustomTx struct {
 	From  string `json:"from"  cbor:"1,keyasint"`
 	To    string `json:"to"    cbor:"2,keyasint"`
@@ -212,11 +212,14 @@ func getBlockbyNumber(tx kv.Tx, number uint64) (Block, error) {
 //  2. CBOR of [][]byte, where each element is CBOR(blockCustomTx)
 //
 // If nothing is stored, it returns an empty slice instead of an error.
-func getTransactionsForBlock(tx kv.Tx, b Block) ([]blockCustomTx, error) {
-	val, err := tx.GetOne(BlockTransactionsBucket, NumberToBytes(b.Number))
-	if err != nil || len(val) == 0 {
-		// Treat missing bucket/value as "no transactions"
-		return []blockCustomTx{}, nil
+func getTransactionsForBlock(tx kv.Tx, blockNum uint64) ([]blockCustomTx, error) {
+	val, err := tx.GetOne(BlockTransactionsBucket, NumberToBytes(blockNum))
+	if err != nil {
+		return nil, err
+	}
+
+	if len(val) == 0 {
+		return nil, nil
 	}
 
 	// Try direct CBOR([]blockCustomTx)
@@ -229,28 +232,29 @@ func getTransactionsForBlock(tx kv.Tx, b Block) ([]blockCustomTx, error) {
 	var raw [][]byte
 	if e := cbor.Unmarshal(val, &raw); e == nil {
 		out := make([]blockCustomTx, 0, len(raw))
-		for i, r := range raw {
+		for _, r := range raw {
 			var t blockCustomTx
 			if ue := cbor.Unmarshal(r, &t); ue != nil {
-				return nil, fmt.Errorf("decode tx %d for block %d failed: %w", i, b.Number, ue)
+				return nil, ErrDecodeTransactionPayloadFailed
 			}
 			out = append(out, t)
 		}
 		return out, nil
 	}
 
-	return nil, fmt.Errorf("unsupported transactions payload format for block %d", b.Number)
+	return nil, ErrUnsupportedTransactionPayload
 }
 
 // GetTransactionsByBlockNumber is a convenience that chains getBlockbyNumber
 // and getTransactionforBlock, returning the tx list as `any`.
 func GetTransactionsByBlockNumber(tx kv.Tx, number uint64) (any, error) {
 	// TODO consider to replace it with GetBlock implementation to return FieldsValues
-	b, err := getBlockbyNumber(tx, number)
-	if err != nil {
-		return nil, err
-	}
-	txs, err := getTransactionsForBlock(tx, b)
+	// b, err := getBlockbyNumber(tx, number)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// TODO consider to implement storeTransactionForBlock
+	txs, err := getTransactionsForBlock(tx, number)
 	if err != nil {
 		return nil, err
 	}

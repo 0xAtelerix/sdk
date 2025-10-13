@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -43,7 +42,7 @@ func (m *BlockMethods) GetBlockByNumber(ctx context.Context, params []any) (any,
 		return getErr
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get block by number %d: %w", number, err)
+		return nil, ErrFailedToGetBlockByNumber
 	}
 	return fieldsValues, nil
 }
@@ -61,7 +60,7 @@ func (m *BlockMethods) GetBlockByHash(ctx context.Context, params []any) (any, e
 
 	hash, err := parseHash(hashStr)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidHashFormat, err)
+		return nil, ErrInvalidHashFormat
 	}
 
 	var fieldsValues any
@@ -71,7 +70,7 @@ func (m *BlockMethods) GetBlockByHash(ctx context.Context, params []any) (any, e
 		return getErr
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get block by hash %s: %w", hashStr, err)
+		return nil, ErrFailedToGetBlockByHash
 	}
 	return fieldsValues, nil
 }
@@ -91,11 +90,11 @@ func (m *BlockMethods) GetBlocks(ctx context.Context, params []any) (any, error)
 	var result any
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
 		var e error
-		result, e = block.GetBlocks(tx, int(countU64))
+		result, e = block.GetBlocks(tx, countU64)
 		return e
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get latest %d blocks: %w", int(countU64), err)
+		return nil, ErrFailedToGetLatestBlocks
 	}
 	return result, nil
 }
@@ -118,11 +117,10 @@ func (m *BlockMethods) GetTransactionsByBlockNumber(ctx context.Context, params 
 		return e
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get transactions for block %d: %w", num, err)
+		return nil, ErrFailedToGetTransactionsByBlockNumber
 	}
 	return result, nil
 }
-
 
 // AddBlockMethods adds block-related methods to the RPC server.
 func AddBlockMethods(server *StandardRPCServer, appchainDB kv.RwDB) {
@@ -136,21 +134,22 @@ func AddBlockMethods(server *StandardRPCServer, appchainDB kv.RwDB) {
 
 // parseNumber converts a JSON-RPC parameter into a uint64 block number.
 // Supports numeric values and strings in either decimal (e.g. "123") or hex ("0x7b").
+// TODO consider to remove certain cases if they are not needed
 func parseNumber(v any) (uint64, error) {
 	switch n := v.(type) {
 	case float64:
 		if n < 0 {
-			return 0, fmt.Errorf("invalid block number: negative")
+			return 0, ErrNegativeBlockNumber
 		}
 		return uint64(n), nil
 	case int:
 		if n < 0 {
-			return 0, fmt.Errorf("invalid block number: negative")
+			return 0, ErrNegativeBlockNumber
 		}
 		return uint64(n), nil
 	case int64:
 		if n < 0 {
-			return 0, fmt.Errorf("invalid block number: negative")
+			return 0, ErrNegativeBlockNumber
 		}
 		return uint64(n), nil
 	case uint64:
@@ -160,16 +159,16 @@ func parseNumber(v any) (uint64, error) {
 		if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
 			ui, err := strconv.ParseUint(s[2:], 16, 64)
 			if err != nil {
-				return 0, fmt.Errorf("invalid hex block number %q: %w", s, err)
+				return 0, ErrInvalidBlockNumber
 			}
 			return ui, nil
 		}
 		ui, err := strconv.ParseUint(s, 10, 64)
 		if err != nil {
-			return 0, fmt.Errorf("invalid decimal block number %q: %w", s, err)
+			return 0, ErrInvalidBlockNumber
 		}
 		return ui, nil
 	default:
-		return 0, fmt.Errorf("invalid block number param of type %T", v)
+		return 0, ErrInvalidBlockNumber
 	}
 }
