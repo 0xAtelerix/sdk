@@ -18,14 +18,43 @@ const (
 	BlockTransactionsBucket = "blocktxs"    // block-number -> txs
 )
 
-// TODO consider to asserrt apptypes.AppchainBlock interface
-// var _ apptypes.AppchainBlock = (*Block)(nil)
+var _ apptypes.AppchainBlock = (*Block)(nil)
+
 type Block struct {
-	Number    uint64   `json:"number" cbor:"1,keyasint"`
-	Hash      [32]byte `json:"hash" cbor:"2,keyasint"`
-	StateRoot [32]byte `json:"stateroot" cbor:"3,keyasint"`
-	Timestamp uint64   `json:"timestamp" cbor:"4,keyasint"`
+	BlockNumber uint64   `json:"number"    cbor:"1,keyasint"`
+	BlockHash   [32]byte `json:"hash"      cbor:"2,keyasint"`
+	BlockRoot   [32]byte `json:"stateroot" cbor:"3,keyasint"`
+	Timestamp   uint64   `json:"timestamp" cbor:"4,keyasint"`
 }
+
+// Number implements apptypes.AppchainBlock.
+func (b Block) Number() uint64 { return b.BlockNumber }
+
+// Hash implements apptypes.AppchainBlock.
+func (b Block) Hash() [32]byte { return b.BlockHash }
+
+// StateRoot implements apptypes.AppchainBlock.
+func (b Block) StateRoot() [32]byte {
+	return sha256.Sum256(b.Bytes())
+}
+
+// Bytes implements apptypes.AppchainBlock.
+// We use CBOR to keep it consistent with storage/other hashes in this package.
+func (b Block) Bytes() []byte {
+	data, err := cbor.Marshal(b)
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
+// var _ apptypes.AppchainBlock = (*Block)(nil)
+// type Block struct {
+// 	Number    uint64   `json:"number" cbor:"1,keyasint"`
+// 	Hash      [32]byte `json:"hash" cbor:"2,keyasint"`
+// 	StateRoot [32]byte `json:"stateroot" cbor:"3,keyasint"`
+// 	Timestamp uint64   `json:"timestamp" cbor:"4,keyasint"`
+// }
 
 // // Number implements apptypes.AppchainBlock.
 // func (b *Block) Number() uint64 { return b.Number }
@@ -34,10 +63,10 @@ type Block struct {
 // func (b *Block) Hash() [32]byte { return b.hash }
 
 // StateRoot implements apptypes.AppchainBlock.
-func (b *Block) ComputeStateRoot() [32]byte {
-	data, _ := cbor.Marshal(b)
-	return sha256.Sum256(data)
-}
+// func (b *Block) ComputeStateRoot() [32]byte {
+// 	data, _ := cbor.Marshal(b)
+// 	return sha256.Sum256(data)
+// }
 
 func StoreBlockbyHash(tx kv.RwTx, block apptypes.AppchainBlock) error {
 	key := block.Hash()
@@ -61,7 +90,7 @@ func StoreBlockbyNumber(tx kv.RwTx, bucket string, block apptypes.AppchainBlock)
 	return tx.Put(bucket, key, value)
 }
 
-type FieldsValues struct {
+type BlockFieldsValues struct {
 	Fields []string
 	Values []string
 }
@@ -107,18 +136,18 @@ func GetBlock(tx kv.Tx, bucket string, key []byte) (any, error) {
 		fmt.Sprintf("%d", b.Timestamp),
 	}
 
-	return FieldsValues{
+	return BlockFieldsValues{
 		Fields: fields,
 		Values: values,
 	}, nil
 }
 
 // GetBlocks returns up to `count` most recent blocks from the BlockNumberBucket (newest first)
-// and formats each block as FieldsValues (same shape as GetBlock).
+// and formats each block as BlockFieldsValues (same shape as GetBlock).
 // If count <= 0, it returns an empty slice. If the bucket is empty, returns ErrNoBlocks.
 func GetBlocks(tx kv.Tx, count uint64) (any, error) {
 	if count == 0 {
-		return []FieldsValues{}, nil
+		return []BlockFieldsValues{}, nil
 	}
 
 	cur, err := tx.Cursor(BlockNumberBucket)
@@ -148,7 +177,7 @@ func GetBlocks(tx kv.Tx, count uint64) (any, error) {
 		fields = append(fields, name)
 	}
 
-	out := make([]FieldsValues, 0, count)
+	out := make([]BlockFieldsValues, 0, count)
 
 	appendOne := func(val []byte) error {
 		var b Block
@@ -161,7 +190,7 @@ func GetBlocks(tx kv.Tx, count uint64) (any, error) {
 			fmt.Sprintf("0x%x", b.StateRoot),
 			fmt.Sprintf("%d", b.Timestamp),
 		}
-		out = append(out, FieldsValues{Fields: fields, Values: values})
+		out = append(out, BlockFieldsValues{Fields: fields, Values: values})
 		return nil
 	}
 
@@ -247,8 +276,9 @@ func getTransactionsForBlock(tx kv.Tx, blockNum uint64) ([]blockCustomTx, error)
 
 // GetTransactionsByBlockNumber is a convenience that chains getBlockbyNumber
 // and getTransactionforBlock, returning the tx list as `any`.
+
 func GetTransactionsByBlockNumber(tx kv.Tx, number uint64) (any, error) {
-	// TODO consider to replace it with GetBlock implementation to return FieldsValues
+	// TODO consider to replace it with GetBlock implementation to return BlockFieldsValues
 	// b, err := getBlockbyNumber(tx, number)
 	// if err != nil {
 	// 	return nil, err

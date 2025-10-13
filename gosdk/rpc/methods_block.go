@@ -35,16 +35,16 @@ func (m *BlockMethods) GetBlockByNumber(ctx context.Context, params []any) (any,
 		return nil, err
 	}
 
-	var fieldsValues any
+	var BlockFieldsValues any
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
 		var getErr error
-		fieldsValues, getErr = block.GetBlock(tx, block.BlockNumberBucket, block.NumberToBytes(number))
+		BlockFieldsValues, getErr = block.GetBlock(tx, block.BlockNumberBucket, block.NumberToBytes(number))
 		return getErr
 	})
 	if err != nil {
 		return nil, ErrFailedToGetBlockByNumber
 	}
-	return fieldsValues, nil
+	return BlockFieldsValues, nil
 }
 
 // GetBlockByHash retrieves a block by its hash (expects a 0x-prefixed hex string).
@@ -63,21 +63,21 @@ func (m *BlockMethods) GetBlockByHash(ctx context.Context, params []any) (any, e
 		return nil, ErrInvalidHashFormat
 	}
 
-	var fieldsValues any
+	var BlockFieldsValues any
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
 		var getErr error
-		fieldsValues, getErr = block.GetBlock(tx, block.BlockHashBucket, hash[:])
+		BlockFieldsValues, getErr = block.GetBlock(tx, block.BlockHashBucket, hash[:])
 		return getErr
 	})
 	if err != nil {
 		return nil, ErrFailedToGetBlockByHash
 	}
-	return fieldsValues, nil
+	return BlockFieldsValues, nil
 }
 
 // GetBlocks returns the N most recent blocks (newest first).
 // The parameter accepts decimal string, hex string, or a numeric JSON value.
-// The result is []block.FieldsValues (wrapped as `any`) with aligned Fields/Values for each block.
+// The result is []block.BlockFieldsValues (wrapped as `any`) with aligned Fields/Values for each block.
 func (m *BlockMethods) GetBlocks(ctx context.Context, params []any) (any, error) {
 	if len(params) != 1 {
 		return nil, ErrGetBlockByNumberRequires1Param
