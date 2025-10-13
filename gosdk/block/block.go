@@ -64,9 +64,9 @@ func (b *Block) convertToFieldsValues() BlockFieldsValues {
 	}
 	// Values aligned with fields order
 	values := []string{
-		fmt.Sprintf("%d", b.Number),
-		fmt.Sprintf("0x%x", b.Hash),
-		fmt.Sprintf("0x%x", b.StateRoot),
+		fmt.Sprintf("%d", b.Number()),
+		fmt.Sprintf("0x%x", b.Hash()),
+		fmt.Sprintf("0x%x", b.StateRoot()),
 		fmt.Sprintf("%d", b.Timestamp),
 	}
 
@@ -188,9 +188,9 @@ func GetBlocks(tx kv.Tx, count uint64) (any, error) {
 			return err
 		}
 		values := []string{
-			fmt.Sprintf("%d", b.Number),
-			fmt.Sprintf("0x%x", b.Hash),
-			fmt.Sprintf("0x%x", b.StateRoot),
+			fmt.Sprintf("%d", b.Number()),
+			fmt.Sprintf("0x%x", b.Hash()),
+			fmt.Sprintf("0x%x", b.StateRoot()),
 			fmt.Sprintf("%d", b.Timestamp),
 		}
 		out = append(out, BlockFieldsValues{Fields: fields, Values: values})
