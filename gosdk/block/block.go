@@ -95,16 +95,9 @@ type BlockFieldsValues struct {
 	Values []string
 }
 
-// GetBlock loads a block and returns two slices of strings:
-//  1. the field names of Block (in declaration order)
-//  2. the stringified values of those fields
-//
-// Stringification:
-//   - uint64    → decimal string
-//
-// .  - string   -> bucket
-//   - [32]byte  → 0x-prefixed lowercase hex
-func GetBlock(tx kv.Tx, bucket string, key []byte) (any, error) {
+// GetBlock loads a block
+// TODO consider to pass third argument of type apptypes.AppchainBlock to decode into concrete type
+func GetBlock(tx kv.Tx, bucket string, key []byte, block apptypes.AppchainBlock) (any, error) {
 	value, err := tx.GetOne(bucket, key)
 	if err != nil {
 		return nil, err
@@ -113,7 +106,11 @@ func GetBlock(tx kv.Tx, bucket string, key []byte) (any, error) {
 		return nil, ErrNoBlocks
 	}
 	// Decode into the concrete Block to access fields deterministically
-	var b Block
+	b, ok := block.(*Block)
+	if !ok {
+		return nil, ErrUnsupportedBlockType 
+	}
+
 	if err := cbor.Unmarshal(value, &b); err != nil {
 		return nil, err
 	}
