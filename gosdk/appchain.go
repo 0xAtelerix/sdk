@@ -298,6 +298,7 @@ runFor:
 		logger.Debug().Int("batches num", len(batches)).Msg("received new batches")
 
 		for i, batch := range batches {
+			fmt.Println("!!!!!!!!-batch")
 			logger.Debug().Int("batch", i).Int("tx", len(batches[i].Transactions)).Int("blocks", len(batches[i].ExternalBlocks)).Msg("received new batch")
 
 			start := time.Now() // метка начала
@@ -658,6 +659,7 @@ func startPrometheusServer(ctx context.Context, addr string) {
 // fixme надо писать чекпоинт в staged sync
 // должен быть совместим с GetCheckpoints
 func WriteCheckpoint(ctx context.Context, dbTx kv.RwTx, checkpoint apptypes.Checkpoint) error {
+	fmt.Println("!!!!!!!!!!!!!!!!!!-WriteCheckpoint", checkpoint)
 	logger := log.Ctx(ctx)
 
 	// Генерируем ключ из LatestBlockNumber (8 байт)

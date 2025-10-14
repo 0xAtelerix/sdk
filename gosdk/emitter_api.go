@@ -49,7 +49,7 @@ func (s *AppchainEmitterServer[appTx, R]) GetCheckpoints(
 	ctx context.Context,
 	req *emitterproto.GetCheckpointsRequest,
 ) (*emitterproto.CheckpointResponse, error) {
-	fmt.Println("!!!!!!!!!!!!!!!")
+	fmt.Println("!!!!!!!!!!!!!!!-1", req.GetLatestPreviousCheckpointBlockNumber())
 	s.logger.Debug().
 		Str("method", "GetCheckpoints").
 		Uint64("latest_previous_checkpoint_block_number", req.GetLatestPreviousCheckpointBlockNumber()).
@@ -87,6 +87,8 @@ func (s *AppchainEmitterServer[appTx, R]) GetCheckpoints(
 		limit = req.GetLimit()
 	}
 
+	fmt.Println("!!!!!!!!!!!!!!!-2", limit)
+
 	// Начинаем поиск с блока >= LatestPreviousCheckpointBlockNumber
 	startKey := make([]byte, 8)
 	binary.BigEndian.PutUint64(startKey, req.GetLatestPreviousCheckpointBlockNumber())
@@ -94,6 +96,7 @@ func (s *AppchainEmitterServer[appTx, R]) GetCheckpoints(
 	count := uint32(0)
 	for k, v, err := cursor.Seek(startKey); err == nil && count < limit; k, v, err = cursor.Next() {
 		if len(k) == 0 {
+			fmt.Println("!!!!!!!!!!!!!!!-3.1")
 			break // Дошли до конца
 		}
 
