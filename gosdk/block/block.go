@@ -48,9 +48,9 @@ func (b Block) Bytes() []byte {
 	return data
 }
 
-// TODO test it 
+// TODO test it
 func (b *Block) convertToFieldsValues() BlockFieldsValues {
-	
+
 	// Field names from `json` tags in declaration order
 	t := reflect.TypeOf(b)
 	fields := make([]string, 0, t.NumField())
@@ -72,7 +72,6 @@ func (b *Block) convertToFieldsValues() BlockFieldsValues {
 
 	return BlockFieldsValues{Fields: fields, Values: values}
 }
-
 
 // var _ apptypes.AppchainBlock = (*Block)(nil)
 // type Block struct {
@@ -121,7 +120,6 @@ type BlockFieldsValues struct {
 	Values []string
 }
 
-
 // GetBlock loads a block
 // TODO consider to pass third argument of type apptypes.AppchainBlock to decode into concrete type
 func GetBlock(tx kv.Tx, bucket string, key []byte, block apptypes.AppchainBlock) (BlockFieldsValues, error) {
@@ -135,7 +133,7 @@ func GetBlock(tx kv.Tx, bucket string, key []byte, block apptypes.AppchainBlock)
 	// Decode into the concrete Block to access fields deterministically
 	b, ok := block.(*Block)
 	if !ok {
-		return BlockFieldsValues{}, ErrUnsupportedBlockType 
+		return BlockFieldsValues{}, ErrUnsupportedBlockType
 	}
 
 	if err := cbor.Unmarshal(value, &b); err != nil {
@@ -145,154 +143,155 @@ func GetBlock(tx kv.Tx, bucket string, key []byte, block apptypes.AppchainBlock)
 	return b.convertToFieldsValues(), nil
 }
 
-// GetBlocks returns up to `count` most recent blocks from the BlockNumberBucket (newest first)
-// and formats each block as BlockFieldsValues (same shape as GetBlock).
-// If count <= 0, it returns an empty slice. If the bucket is empty, returns ErrNoBlocks.
-func GetBlocks(tx kv.Tx, count uint64) (any, error) {
-	if count == 0 {
-		return []BlockFieldsValues{}, nil
-	}
+// // GetBlocks returns up to `count` most recent blocks from the BlockNumberBucket (newest first)
+// // and formats each block as BlockFieldsValues (same shape as GetBlock).
+// // If count <= 0, it returns an empty slice. If the bucket is empty, returns ErrNoBlocks.
+// func GetBlocks(tx kv.Tx, count uint64) (any, error) {
+// 	if count == 0 {
+// 		return []BlockFieldsValues{}, nil
+// 	}
 
-	cur, err := tx.Cursor(BlockNumberBucket)
-	if err != nil {
-		return nil, err
-	}
+// 	cur, err := tx.Cursor(BlockNumberBucket)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	// Move to the last (highest-numbered) block.
-	k, v, err := cur.Last()
-	if err != nil {
-		return nil, err
-	}
-	if len(k) == 0 {
-		return nil, ErrNoBlocks
-	}
+// 	// Move to the last (highest-numbered) block.
+// 	k, v, err := cur.Last()
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	if len(k) == 0 {
+// 		return nil, ErrNoBlocks
+// 	}
 
-	// Field names from `json` tags in declaration order
-	var zero Block
-	t := reflect.TypeOf(zero)
-	fields := make([]string, 0, t.NumField())
-	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
-		name := f.Tag.Get("json")
-		if name == "" || name == "-" {
-			name = f.Name
-		}
-		fields = append(fields, name)
-	}
+// 	// Field names from `json` tags in declaration order
+// 	// TODO declare standadlne function and remove code duplication with convertToFieldsValues
+// 	var zero Block
+// 	t := reflect.TypeOf(zero)
+// 	fields := make([]string, 0, t.NumField())
+// 	for i := 0; i < t.NumField(); i++ {
+// 		f := t.Field(i)
+// 		name := f.Tag.Get("json")
+// 		if name == "" || name == "-" {
+// 			name = f.Name
+// 		}
+// 		fields = append(fields, name)
+// 	}
 
-	out := make([]BlockFieldsValues, 0, count)
+// 	out := make([]BlockFieldsValues, 0, count)
 
-	appendOne := func(val []byte) error {
-		var b Block
-		if err = cbor.Unmarshal(val, &b); err != nil {
-			return err
-		}
-		values := []string{
-			fmt.Sprintf("%d", b.Number()),
-			fmt.Sprintf("0x%x", b.Hash()),
-			fmt.Sprintf("0x%x", b.StateRoot()),
-			fmt.Sprintf("%d", b.Timestamp),
-		}
-		out = append(out, BlockFieldsValues{Fields: fields, Values: values})
-		return nil
-	}
+// 	appendOne := func(val []byte) error {
+// 		var b Block
+// 		if err = cbor.Unmarshal(val, &b); err != nil {
+// 			return err
+// 		}
+// 		values := []string{
+// 			fmt.Sprintf("%d", b.Number()),
+// 			fmt.Sprintf("0x%x", b.Hash()),
+// 			fmt.Sprintf("0x%x", b.StateRoot()),
+// 			fmt.Sprintf("%d", b.Timestamp),
+// 		}
+// 		out = append(out, BlockFieldsValues{Fields: fields, Values: values})
+// 		return nil
+// 	}
 
-	for i := uint64(0); i < count && len(k) > 0; i++ {
-		if err = appendOne(v); err != nil {
-			return nil, err
-		}
-		k, v, err = cur.Prev()
-		if err != nil {
-			return nil, err
-		}
-	}
+// 	for i := uint64(0); i < count && len(k) > 0; i++ {
+// 		if err = appendOne(v); err != nil {
+// 			return nil, err
+// 		}
+// 		k, v, err = cur.Prev()
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 	}
 
-	return out, nil
-}
+// 	return out, nil
+// }
 
-// Mirror of txpool_test.go CustomTransaction shape (same JSON and CBOR tags).
-// We cannot import the test type, but we guarantee identical (un)marshal shape.
-// TODO consider replace it with apptypes.AppTransaction
-type blockCustomTx struct {
-	From  string `json:"from"  cbor:"1,keyasint"`
-	To    string `json:"to"    cbor:"2,keyasint"`
-	Value int    `json:"value" cbor:"3,keyasint"`
-}
+// // Mirror of txpool_test.go CustomTransaction shape (same JSON and CBOR tags).
+// // We cannot import the test type, but we guarantee identical (un)marshal shape.
+// // TODO consider replace it with apptypes.AppTransaction
+// type blockCustomTx struct {
+// 	From  string `json:"from"  cbor:"1,keyasint"`
+// 	To    string `json:"to"    cbor:"2,keyasint"`
+// 	Value int    `json:"value" cbor:"3,keyasint"`
+// }
 
-// getBlockbyNumber loads and decodes a Block by its number from BlockNumberBucket.
-func getBlockbyNumber(tx kv.Tx, number uint64) (Block, error) {
-	key := NumberToBytes(number)
+// // getBlockbyNumber loads and decodes a Block by its number from BlockNumberBucket.
+// func getBlockbyNumber(tx kv.Tx, number uint64) (Block, error) {
+// 	key := NumberToBytes(number)
 
-	value, err := tx.GetOne(BlockNumberBucket, key)
-	if err != nil {
-		return Block{}, err
-	}
-	if len(value) == 0 {
-		return Block{}, ErrNoBlocks
-	}
+// 	value, err := tx.GetOne(BlockNumberBucket, key)
+// 	if err != nil {
+// 		return Block{}, err
+// 	}
+// 	if len(value) == 0 {
+// 		return Block{}, ErrNoBlocks
+// 	}
 
-	var b Block
-	if err := cbor.Unmarshal(value, &b); err != nil {
-		return Block{}, err
-	}
-	return b, nil
-}
+// 	var b Block
+// 	if err := cbor.Unmarshal(value, &b); err != nil {
+// 		return Block{}, err
+// 	}
+// 	return b, nil
+// }
 
-// getTransactionforBlock retrieves transactions for the given concrete Block.
-// It supports two encodings under BlockTransactionsBucket:
-//  1. CBOR of []blockCustomTx
-//  2. CBOR of [][]byte, where each element is CBOR(blockCustomTx)
-//
-// If nothing is stored, it returns an empty slice instead of an error.
-func getTransactionsForBlock(tx kv.Tx, blockNum uint64) ([]blockCustomTx, error) {
-	val, err := tx.GetOne(BlockTransactionsBucket, NumberToBytes(blockNum))
-	if err != nil {
-		return nil, err
-	}
+// // getTransactionforBlock retrieves transactions for the given concrete Block.
+// // It supports two encodings under BlockTransactionsBucket:
+// //  1. CBOR of []blockCustomTx
+// //  2. CBOR of [][]byte, where each element is CBOR(blockCustomTx)
+// //
+// // If nothing is stored, it returns an empty slice instead of an error.
+// func getTransactionsForBlock(tx kv.Tx, blockNum uint64) ([]blockCustomTx, error) {
+// 	val, err := tx.GetOne(BlockTransactionsBucket, NumberToBytes(blockNum))
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	if len(val) == 0 {
-		return nil, nil
-	}
+// 	if len(val) == 0 {
+// 		return nil, nil
+// 	}
 
-	// Try direct CBOR([]blockCustomTx)
-	var direct []blockCustomTx
-	if e := cbor.Unmarshal(val, &direct); e == nil {
-		return direct, nil
-	}
+// 	// Try direct CBOR([]blockCustomTx)
+// 	var direct []blockCustomTx
+// 	if e := cbor.Unmarshal(val, &direct); e == nil {
+// 		return direct, nil
+// 	}
 
-	// Try CBOR([][]byte) with nested CBOR(blockCustomTx)
-	var raw [][]byte
-	if e := cbor.Unmarshal(val, &raw); e == nil {
-		out := make([]blockCustomTx, 0, len(raw))
-		for _, r := range raw {
-			var t blockCustomTx
-			if ue := cbor.Unmarshal(r, &t); ue != nil {
-				return nil, ErrDecodeTransactionPayloadFailed
-			}
-			out = append(out, t)
-		}
-		return out, nil
-	}
+// 	// Try CBOR([][]byte) with nested CBOR(blockCustomTx)
+// 	var raw [][]byte
+// 	if e := cbor.Unmarshal(val, &raw); e == nil {
+// 		out := make([]blockCustomTx, 0, len(raw))
+// 		for _, r := range raw {
+// 			var t blockCustomTx
+// 			if ue := cbor.Unmarshal(r, &t); ue != nil {
+// 				return nil, ErrDecodeTransactionPayloadFailed
+// 			}
+// 			out = append(out, t)
+// 		}
+// 		return out, nil
+// 	}
 
-	return nil, ErrUnsupportedTransactionPayload
-}
+// 	return nil, ErrUnsupportedTransactionPayload
+// }
 
-// GetTransactionsByBlockNumber is a convenience that chains getBlockbyNumber
-// and getTransactionforBlock, returning the tx list as `any`.
+// // GetTransactionsByBlockNumber is a convenience that chains getBlockbyNumber
+// // and getTransactionforBlock, returning the tx list as `any`.
 
-func GetTransactionsByBlockNumber(tx kv.Tx, number uint64) (any, error) {
-	// TODO consider to replace it with GetBlock implementation to return BlockFieldsValues
-	// b, err := getBlockbyNumber(tx, number)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// TODO consider to implement storeTransactionForBlock
-	txs, err := getTransactionsForBlock(tx, number)
-	if err != nil {
-		return nil, err
-	}
-	return txs, nil
-}
+// func GetTransactionsByBlockNumber(tx kv.Tx, number uint64) (any, error) {
+// 	// TODO consider to replace it with GetBlock implementation to return BlockFieldsValues
+// 	// b, err := getBlockbyNumber(tx, number)
+// 	// if err != nil {
+// 	// 	return nil, err
+// 	// }
+// 	// TODO consider to implement storeTransactionForBlock
+// 	txs, err := getTransactionsForBlock(tx, number)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	return txs, nil
+// }
 
 func NumberToBytes(input uint64) []byte {
 	// Create a byte slice of length 8, as uint64 occupies 8 bytes

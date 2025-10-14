@@ -38,7 +38,7 @@ func (m *BlockMethods) GetBlockByNumber(ctx context.Context, params []any) (any,
 
 	var (
 		blockFieldsValuesResp block.BlockFieldsValues
-		blockI apptypes.AppchainBlock
+		blockI                apptypes.AppchainBlock
 	)
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
 		var getErr error
@@ -69,7 +69,7 @@ func (m *BlockMethods) GetBlockByHash(ctx context.Context, params []any) (any, e
 
 	var (
 		blockFieldsValuesResp block.BlockFieldsValues
-		blockI apptypes.AppchainBlock
+		blockI                apptypes.AppchainBlock
 	)
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
 		var getErr error
@@ -85,49 +85,49 @@ func (m *BlockMethods) GetBlockByHash(ctx context.Context, params []any) (any, e
 // GetBlocks returns the N most recent blocks (newest first).
 // The parameter accepts decimal string, hex string, or a numeric JSON value.
 // The result is []block.BlockFieldsValues (wrapped as `any`) with aligned Fields/Values for each block.
-func (m *BlockMethods) GetBlocks(ctx context.Context, params []any) (any, error) {
-	if len(params) != 1 {
-		return nil, ErrGetBlockByNumberRequires1Param
-	}
-	countU64, err := parseNumber(params[0])
-	if err != nil {
-		return nil, err
-	}
+// func (m *BlockMethods) GetBlocks(ctx context.Context, params []any) (any, error) {
+// 	if len(params) != 1 {
+// 		return nil, ErrGetBlockByNumberRequires1Param
+// 	}
+// 	countU64, err := parseNumber(params[0])
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	var result any
-	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
-		var e error
-		result, e = block.GetBlocks(tx, countU64)
-		return e
-	})
-	if err != nil {
-		return nil, ErrFailedToGetLatestBlocks
-	}
-	return result, nil
-}
+// 	var result any
+// 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
+// 		var e error
+// 		result, e = block.GetBlocks(tx, countU64)
+// 		return e
+// 	})
+// 	if err != nil {
+// 		return nil, ErrFailedToGetLatestBlocks
+// 	}
+// 	return result, nil
+// }
 
 // GetTransactionsByBlockNumber retrieves transactions for a given block number.
 // Accepts decimal, hex "0x..", or numeric JSON; returns (any, error).
-func (m *BlockMethods) GetTransactionsByBlockNumber(ctx context.Context, params []any) (any, error) {
-	if len(params) != 1 {
-		return nil, ErrGetBlockByNumberRequires1Param
-	}
-	num, err := parseNumber(params[0])
-	if err != nil {
-		return nil, err
-	}
+// func (m *BlockMethods) GetTransactionsByBlockNumber(ctx context.Context, params []any) (any, error) {
+// 	if len(params) != 1 {
+// 		return nil, ErrGetBlockByNumberRequires1Param
+// 	}
+// 	num, err := parseNumber(params[0])
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	var result any
-	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
-		var e error
-		result, e = block.GetTransactionsByBlockNumber(tx, num)
-		return e
-	})
-	if err != nil {
-		return nil, ErrFailedToGetTransactionsByBlockNumber
-	}
-	return result, nil
-}
+// 	var result any
+// 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
+// 		var e error
+// 		result, e = block.GetTransactionsByBlockNumber(tx, num)
+// 		return e
+// 	})
+// 	if err != nil {
+// 		return nil, ErrFailedToGetTransactionsByBlockNumber
+// 	}
+// 	return result, nil
+// }
 
 // AddBlockMethods adds block-related methods to the RPC server.
 func AddBlockMethods(server *StandardRPCServer, appchainDB kv.RwDB) {
@@ -135,8 +135,8 @@ func AddBlockMethods(server *StandardRPCServer, appchainDB kv.RwDB) {
 
 	server.AddMethod("getBlockByNumber", methods.GetBlockByNumber)
 	server.AddMethod("getBlockByHash", methods.GetBlockByHash)
-	server.AddMethod("getBlocks", methods.GetBlocks)
-	server.AddMethod("getTransactionsByBlockNumber", methods.GetTransactionsByBlockNumber)
+	//server.AddMethod("getBlocks", methods.GetBlocks)
+	//server.AddMethod("getTransactionsByBlockNumber", methods.GetTransactionsByBlockNumber)
 }
 
 // parseNumber converts a JSON-RPC parameter into a uint64 block number.
