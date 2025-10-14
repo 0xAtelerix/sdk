@@ -22,10 +22,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/block"
 	"github.com/0xAtelerix/sdk/gosdk/receipt"
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
-
-	"github.com/0xAtelerix/sdk/gosdk/block"
 )
 
 const (
@@ -55,7 +54,7 @@ func (t TestTransaction[R]) Hash() [32]byte {
 func (TestTransaction[R]) Process(
 	_ kv.RwTx,
 ) (rec R, txs []apptypes.ExternalTransaction, err error) {
-	return
+	return rec, txs, err
 }
 
 // TestReceipt - test receipt implementation

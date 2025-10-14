@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"reflect"
+	"strconv"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
@@ -45,29 +46,37 @@ func (b Block) Bytes() []byte {
 	if err != nil {
 		return nil
 	}
+
 	return data
 }
 
-// TODO test it
+// TODO convertToFieldsValues converts Block to BlockFieldsValues.
 func (b *Block) convertToFieldsValues() BlockFieldsValues {
+	if b == nil {
+		b = &Block{}
+	}
 
 	// Field names from `json` tags in declaration order
-	t := reflect.TypeOf(b)
+	var zero Block
+	t := reflect.TypeOf(zero)
+
 	fields := make([]string, 0, t.NumField())
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
+
 		name := f.Tag.Get("json")
 		if name == "" || name == "-" {
 			name = f.Name
 		}
+
 		fields = append(fields, name)
 	}
 	// Values aligned with fields order
 	values := []string{
-		fmt.Sprintf("%d", b.Number()),
+		strconv.FormatUint(b.Number(), 10),
 		fmt.Sprintf("0x%x", b.Hash()),
 		fmt.Sprintf("0x%x", b.StateRoot()),
-		fmt.Sprintf("%d", b.Timestamp),
+		strconv.FormatUint(b.Timestamp, 10),
 	}
 
 	return BlockFieldsValues{Fields: fields, Values: values}
@@ -122,11 +131,17 @@ type BlockFieldsValues struct {
 
 // GetBlock loads a block
 // TODO consider to pass third argument of type apptypes.AppchainBlock to decode into concrete type
-func GetBlock(tx kv.Tx, bucket string, key []byte, block apptypes.AppchainBlock) (BlockFieldsValues, error) {
+func GetBlock(
+	tx kv.Tx,
+	bucket string,
+	key []byte,
+	block apptypes.AppchainBlock,
+) (BlockFieldsValues, error) {
 	value, err := tx.GetOne(bucket, key)
 	if err != nil {
 		return BlockFieldsValues{}, err
 	}
+
 	if len(value) == 0 {
 		return BlockFieldsValues{}, ErrNoBlocks
 	}

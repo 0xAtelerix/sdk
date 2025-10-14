@@ -544,7 +544,7 @@ func (c *CustomTransaction[R]) Hash() [32]byte {
 func (*CustomTransaction[R]) Process(
 	_ kv.RwTx,
 ) (res R, txs []apptypes.ExternalTransaction, err error) {
-	return
+	return res, txs, err
 }
 
 type Receipt struct{}

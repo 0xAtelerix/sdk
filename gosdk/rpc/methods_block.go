@@ -6,11 +6,9 @@ import (
 	"strings"
 
 	"github.com/ledgerwatch/erigon-lib/kv"
-	//"github.com/fxamacker/cbor/v2"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/block"
-	//"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
 
 // BlockMethods provides comprehensive block-related RPC methods
@@ -40,14 +38,23 @@ func (m *BlockMethods) GetBlockByNumber(ctx context.Context, params []any) (any,
 		blockFieldsValuesResp block.BlockFieldsValues
 		blockI                apptypes.AppchainBlock
 	)
+
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
 		var getErr error
-		blockFieldsValuesResp, getErr = block.GetBlock(tx, block.BlockNumberBucket, block.NumberToBytes(number), blockI)
+
+		blockFieldsValuesResp, getErr = block.GetBlock(
+			tx,
+			block.BlockNumberBucket,
+			block.NumberToBytes(number),
+			blockI,
+		)
+
 		return getErr
 	})
 	if err != nil {
 		return nil, ErrFailedToGetBlockByNumber
 	}
+
 	return blockFieldsValuesResp, nil
 }
 
@@ -71,14 +78,18 @@ func (m *BlockMethods) GetBlockByHash(ctx context.Context, params []any) (any, e
 		blockFieldsValuesResp block.BlockFieldsValues
 		blockI                apptypes.AppchainBlock
 	)
+
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
 		var getErr error
+
 		blockFieldsValuesResp, getErr = block.GetBlock(tx, block.BlockHashBucket, hash[:], blockI)
+
 		return getErr
 	})
 	if err != nil {
 		return nil, ErrFailedToGetBlockByHash
 	}
+
 	return blockFieldsValuesResp, nil
 }
 
@@ -135,8 +146,8 @@ func AddBlockMethods(server *StandardRPCServer, appchainDB kv.RwDB) {
 
 	server.AddMethod("getBlockByNumber", methods.GetBlockByNumber)
 	server.AddMethod("getBlockByHash", methods.GetBlockByHash)
-	//server.AddMethod("getBlocks", methods.GetBlocks)
-	//server.AddMethod("getTransactionsByBlockNumber", methods.GetTransactionsByBlockNumber)
+	// server.AddMethod("getBlocks", methods.GetBlocks)
+	// server.AddMethod("getTransactionsByBlockNumber", methods.GetTransactionsByBlockNumber)
 }
 
 // parseNumber converts a JSON-RPC parameter into a uint64 block number.
@@ -148,16 +159,19 @@ func parseNumber(v any) (uint64, error) {
 		if n < 0 {
 			return 0, ErrNegativeBlockNumber
 		}
+
 		return uint64(n), nil
 	case int:
 		if n < 0 {
 			return 0, ErrNegativeBlockNumber
 		}
+
 		return uint64(n), nil
 	case int64:
 		if n < 0 {
 			return 0, ErrNegativeBlockNumber
 		}
+
 		return uint64(n), nil
 	case uint64:
 		return n, nil
@@ -168,12 +182,15 @@ func parseNumber(v any) (uint64, error) {
 			if err != nil {
 				return 0, ErrInvalidBlockNumber
 			}
+
 			return ui, nil
 		}
+
 		ui, err := strconv.ParseUint(s, 10, 64)
 		if err != nil {
 			return 0, ErrInvalidBlockNumber
 		}
+
 		return ui, nil
 	default:
 		return 0, ErrInvalidBlockNumber
