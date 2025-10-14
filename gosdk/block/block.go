@@ -29,20 +29,40 @@ type Block struct {
 }
 
 // Number implements apptypes.AppchainBlock.
-func (b Block) Number() uint64 { return b.BlockNumber }
+func (b *Block) Number() uint64 {
+	if b == nil {
+		return 0
+	}
+
+	return b.BlockNumber
+}
 
 // Hash implements apptypes.AppchainBlock.
-func (b Block) Hash() [32]byte { return b.BlockHash }
+func (b *Block) Hash() [32]byte {
+	if b == nil {
+		return [32]byte{}
+	}
+
+	return b.BlockHash
+}
 
 // StateRoot implements apptypes.AppchainBlock.
-func (b Block) StateRoot() [32]byte {
+func (b *Block) StateRoot() [32]byte {
+	if b == nil {
+		return [32]byte{}
+	}
+
 	return sha256.Sum256(b.Bytes())
 }
 
 // Bytes implements apptypes.AppchainBlock.
 // We use CBOR to keep it consistent with storage/other hashes in this package.
-func (b Block) Bytes() []byte {
-	data, err := cbor.Marshal(b)
+func (b *Block) Bytes() []byte {
+	if b == nil {
+		return nil
+	}
+
+	data, err := cbor.Marshal(*b)
 	if err != nil {
 		return nil
 	}
@@ -50,18 +70,21 @@ func (b Block) Bytes() []byte {
 	return data
 }
 
-// TODO convertToFieldsValues converts Block to BlockFieldsValues.
-func (b *Block) convertToFieldsValues() BlockFieldsValues {
+// TODO convertToFieldsValues converts Block to FieldsValues.
+func (b *Block) convertToFieldsValues() FieldsValues {
 	if b == nil {
 		b = &Block{}
 	}
 
 	// Field names from `json` tags in declaration order
 	var zero Block
+
 	t := reflect.TypeOf(zero)
 
-	fields := make([]string, 0, t.NumField())
-	for i := 0; i < t.NumField(); i++ {
+	fieldCount := t.NumField()
+
+	fields := make([]string, 0, fieldCount)
+	for i := range fieldCount {
 		f := t.Field(i)
 
 		name := f.Tag.Get("json")
@@ -79,7 +102,7 @@ func (b *Block) convertToFieldsValues() BlockFieldsValues {
 		strconv.FormatUint(b.Timestamp, 10),
 	}
 
-	return BlockFieldsValues{Fields: fields, Values: values}
+	return FieldsValues{Fields: fields, Values: values}
 }
 
 // var _ apptypes.AppchainBlock = (*Block)(nil)
@@ -124,7 +147,7 @@ func StoreBlockbyNumber(tx kv.RwTx, bucket string, block apptypes.AppchainBlock)
 	return tx.Put(bucket, key, value)
 }
 
-type BlockFieldsValues struct {
+type FieldsValues struct {
 	Fields []string
 	Values []string
 }
@@ -136,34 +159,34 @@ func GetBlock(
 	bucket string,
 	key []byte,
 	block apptypes.AppchainBlock,
-) (BlockFieldsValues, error) {
+) (FieldsValues, error) {
 	value, err := tx.GetOne(bucket, key)
 	if err != nil {
-		return BlockFieldsValues{}, err
+		return FieldsValues{}, err
 	}
 
 	if len(value) == 0 {
-		return BlockFieldsValues{}, ErrNoBlocks
+		return FieldsValues{}, ErrNoBlocks
 	}
 	// Decode into the concrete Block to access fields deterministically
 	b, ok := block.(*Block)
 	if !ok {
-		return BlockFieldsValues{}, ErrUnsupportedBlockType
+		return FieldsValues{}, ErrUnsupportedBlockType
 	}
 
 	if err := cbor.Unmarshal(value, &b); err != nil {
-		return BlockFieldsValues{}, err
+		return FieldsValues{}, err
 	}
 
 	return b.convertToFieldsValues(), nil
 }
 
 // // GetBlocks returns up to `count` most recent blocks from the BlockNumberBucket (newest first)
-// // and formats each block as BlockFieldsValues (same shape as GetBlock).
+// // and formats each block as FieldsValues (same shape as GetBlock).
 // // If count <= 0, it returns an empty slice. If the bucket is empty, returns ErrNoBlocks.
 // func GetBlocks(tx kv.Tx, count uint64) (any, error) {
 // 	if count == 0 {
-// 		return []BlockFieldsValues{}, nil
+// 		return []FieldsValues{}, nil
 // 	}
 
 // 	cur, err := tx.Cursor(BlockNumberBucket)
@@ -194,7 +217,7 @@ func GetBlock(
 // 		fields = append(fields, name)
 // 	}
 
-// 	out := make([]BlockFieldsValues, 0, count)
+// 	out := make([]FieldsValues, 0, count)
 
 // 	appendOne := func(val []byte) error {
 // 		var b Block
@@ -207,7 +230,7 @@ func GetBlock(
 // 			fmt.Sprintf("0x%x", b.StateRoot()),
 // 			fmt.Sprintf("%d", b.Timestamp),
 // 		}
-// 		out = append(out, BlockFieldsValues{Fields: fields, Values: values})
+// 		out = append(out, FieldsValues{Fields: fields, Values: values})
 // 		return nil
 // 	}
 
@@ -295,7 +318,7 @@ func GetBlock(
 // // and getTransactionforBlock, returning the tx list as `any`.
 
 // func GetTransactionsByBlockNumber(tx kv.Tx, number uint64) (any, error) {
-// 	// TODO consider to replace it with GetBlock implementation to return BlockFieldsValues
+// 	// TODO consider to replace it with GetBlock implementation to return FieldsValues
 // 	// b, err := getBlockbyNumber(tx, number)
 // 	// if err != nil {
 // 	// 	return nil, err

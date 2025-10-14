@@ -62,9 +62,9 @@ package block
 // // adaptResult normalizes GetBlock(any,error) into (fields,values)
 // func adaptResult(t *testing.T, result any) (fields, values []string) {
 // 	switch v := result.(type) {
-// 	case BlockFieldsValues: // struct with Fields/Values
+// 	case FieldsValues: // struct with Fields/Values
 // 		return v.Fields, v.Values
-// 	case *BlockFieldsValues:
+// 	case *FieldsValues:
 // 		return v.Fields, v.Values
 // 	default:
 // 		require.Failf(t, "unexpected result type", "got %T", result)
@@ -74,11 +74,11 @@ package block
 
 // // adaptBlocksResult normalizes GetBlocks(any,error) to []BlockFieldsValues
 // // TODO remove duplicated code
-// func adaptBlocksResult(t *testing.T, result any) []BlockFieldsValues {
+// func adaptBlocksResult(t *testing.T, result any) []FieldsValues {
 // 	switch v := result.(type) {
-// 	case []BlockFieldsValues:
+// 	case []FieldsValues:
 // 		return v
-// 	case *[]BlockFieldsValues:
+// 	case *[]FieldsValues:
 // 		return *v
 // 	default:
 // 		require.Failf(t, "unexpected result type from GetBlocks", "got %T", result)
@@ -247,7 +247,7 @@ package block
 // 	require.NoError(t, err)
 // }
 
-// // -------------------- GetBlocks(count) []BlockFieldsValues tests --------------------
+// // -------------------- GetBlocks(count) []FieldsValues tests --------------------
 
 // func TestGetBlocks_OrderAndCount(t *testing.T) {
 // 	t.Parallel()

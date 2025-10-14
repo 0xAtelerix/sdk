@@ -3,6 +3,7 @@ package block
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 	"testing"
 )
 
@@ -12,6 +13,7 @@ func filled(b byte) [32]byte {
 	for i := range a {
 		a[i] = b
 	}
+
 	return a
 }
 
@@ -33,10 +35,10 @@ func TestBlockConvertToFieldsValues_HappyPath(t *testing.T) {
 	}
 
 	wantValues := []string{
-		fmt.Sprintf("%d", b.BlockNumber),
+		strconv.FormatUint(b.BlockNumber, 10),
 		fmt.Sprintf("0x%x", b.Hash()),
 		fmt.Sprintf("0x%x", b.StateRoot()),
-		fmt.Sprintf("%d", b.Timestamp),
+		strconv.FormatUint(b.Timestamp, 10),
 	}
 	if !reflect.DeepEqual(got.Values, wantValues) {
 		t.Fatalf("values mismatch:\n got:  %#v\n want: %#v", got.Values, wantValues)

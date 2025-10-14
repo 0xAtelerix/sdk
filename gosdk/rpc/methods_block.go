@@ -35,7 +35,7 @@ func (m *BlockMethods) GetBlockByNumber(ctx context.Context, params []any) (any,
 	}
 
 	var (
-		blockFieldsValuesResp block.BlockFieldsValues
+		blockFieldsValuesResp block.FieldsValues
 		blockI                apptypes.AppchainBlock
 	)
 
@@ -75,7 +75,7 @@ func (m *BlockMethods) GetBlockByHash(ctx context.Context, params []any) (any, e
 	}
 
 	var (
-		blockFieldsValuesResp block.BlockFieldsValues
+		blockFieldsValuesResp block.FieldsValues
 		blockI                apptypes.AppchainBlock
 	)
 
@@ -95,7 +95,7 @@ func (m *BlockMethods) GetBlockByHash(ctx context.Context, params []any) (any, e
 
 // GetBlocks returns the N most recent blocks (newest first).
 // The parameter accepts decimal string, hex string, or a numeric JSON value.
-// The result is []block.BlockFieldsValues (wrapped as `any`) with aligned Fields/Values for each block.
+// The result is []block.FieldsValues (wrapped as `any`) with aligned Fields/Values for each block.
 // func (m *BlockMethods) GetBlocks(ctx context.Context, params []any) (any, error) {
 // 	if len(params) != 1 {
 // 		return nil, ErrGetBlockByNumberRequires1Param

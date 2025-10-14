@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
-	//"strings"
 	"testing"
 
 	"github.com/fxamacker/cbor/v2"
