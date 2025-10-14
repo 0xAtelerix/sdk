@@ -1310,17 +1310,17 @@ func TestStandardRPCServer_getBlocks(t *testing.T) {
 				// Prepare a realistic block.Block
 				h := sha256.Sum256([]byte(fmt.Sprintf("block-%d", i)))
 				b := block.Block{
-					Number:    uint64(i),
-					Hash:      h,
+					BlockNumber:    uint64(i),
+					BlockHash:      h,
 					Timestamp: uint64(1630000000 + i*10),
 				}
-				b.StateRoot = b.ComputeStateRoot() // derive stateroot from CBOR of the block
+				b.BlockRoot = b.StateRoot() 
 
 				enc, e := cbor.Marshal(b)
 				if e != nil {
 					return e
 				}
-				if e := tx.Put(block.BlockNumberBucket, block.NumberToBytes(b.Number), enc); e != nil {
+				if e := tx.Put(block.BlockNumberBucket, block.NumberToBytes(b.Number()), enc); e != nil {
 					return e
 				}
 			}
@@ -1480,8 +1480,8 @@ func TestStandardRPCServer_getTransactionsByBlockNumber_DirectEncoding(t *testin
 	// 1) Seed a block in BlockNumberBucket
 	const num = uint64(77)
 	h := sha256.Sum256([]byte(fmt.Sprintf("block-%d-direct", num)))
-	blk := block.Block{Number: num, Hash: h, Timestamp: 1630000000 + num*10}
-	blk.StateRoot = blk.ComputeStateRoot()
+	blk := block.Block{BlockNumber: num, BlockHash: h, Timestamp: 1630000000 + num*10}
+	blk.BlockRoot = blk.StateRoot()
 
 	blkEnc, err := cbor.Marshal(blk)
 	require.NoError(t, err)
@@ -1534,8 +1534,8 @@ func TestStandardRPCServer_getTransactionsByBlockNumber_NestedEncoding(t *testin
 	// 1) Seed a block
 	const num = uint64(78)
 	h := sha256.Sum256([]byte(fmt.Sprintf("block-%d-nested", num)))
-	blk := block.Block{Number: num, Hash: h, Timestamp: 1630000000 + num*10}
-	blk.StateRoot = blk.ComputeStateRoot()
+	blk := block.Block{BlockNumber: num, BlockHash: h, Timestamp: 1630000000 + num*10}
+	blk.BlockRoot = blk.StateRoot()
 	blkEnc, err := cbor.Marshal(blk)
 	require.NoError(t, err)
 
@@ -1583,8 +1583,8 @@ func TestStandardRPCServer_getTransactionsByBlockNumber_EmptyTxs(t *testing.T) {
 	// Seed a block but DO NOT write any txs entry
 	const num = uint64(79)
 	h := sha256.Sum256([]byte(fmt.Sprintf("block-%d-empty", num)))
-	blk := block.Block{Number: num, Hash: h, Timestamp: 1630000000 + num*10}
-	blk.StateRoot = blk.ComputeStateRoot()
+	blk := block.Block{BlockNumber: num, BlockHash: h, Timestamp: 1630000000 + num*10}
+	blk.BlockRoot = blk.StateRoot()
 	blkEnc, err := cbor.Marshal(blk)
 	require.NoError(t, err)
 	require.NoError(t, appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
