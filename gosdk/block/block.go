@@ -149,26 +149,6 @@ func (b *Block[appTx, R]) convertToFieldsValues() FieldsValues {
 	return FieldsValues{Fields: fields, Values: values}
 }
 
-// var _ apptypes.AppchainBlock = (*Block)(nil)
-// type Block struct {
-// 	Number    uint64   `json:"number" cbor:"1,keyasint"`
-// 	Hash      [32]byte `json:"hash" cbor:"2,keyasint"`
-// 	StateRoot [32]byte `json:"stateroot" cbor:"3,keyasint"`
-// 	Timestamp uint64   `json:"timestamp" cbor:"4,keyasint"`
-// }
-
-// // Number implements apptypes.AppchainBlock.
-// func (b *Block) Number() uint64 { return b.Number }
-
-// // Hash implements apptypes.AppchainBlock.
-// func (b *Block) Hash() [32]byte { return b.hash }
-
-// StateRoot implements apptypes.AppchainBlock.
-// func (b *Block) ComputeStateRoot() [32]byte {
-// 	data, _ := cbor.Marshal(b)
-// 	return sha256.Sum256(data)
-// }
-
 func StoreBlockbyHash(tx kv.RwTx, block apptypes.AppchainBlock) error {
 	key := block.Hash()
 
@@ -195,97 +175,6 @@ type FieldsValues struct {
 	Fields []string
 	Values []string
 }
-
-// GetBlock loads a block
-// TODO consider to pass third argument of type apptypes.AppchainBlock to decode into concrete type
-func GetBlock(
-	tx kv.Tx,
-	bucket string,
-	key []byte,
-	_ apptypes.AppchainBlock,
-) (FieldsValues, error) {
-	value, err := tx.GetOne(bucket, key)
-	if err != nil {
-		return FieldsValues{}, err
-	}
-
-	if len(value) == 0 {
-		return FieldsValues{}, ErrNoBlocks
-	}
-
-	var b Block[apptypes.AppTransaction[apptypes.Receipt], apptypes.Receipt]
-	if err := cbor.Unmarshal(value, &b); err != nil {
-		return FieldsValues{}, err
-	}
-
-	return b.convertToFieldsValues(), nil
-}
-
-// // GetBlocks returns up to `count` most recent blocks from the BlockNumberBucket (newest first)
-// // and formats each block as FieldsValues (same shape as GetBlock).
-// // If count <= 0, it returns an empty slice. If the bucket is empty, returns ErrNoBlocks.
-// func GetBlocks(tx kv.Tx, count uint64) (any, error) {
-// 	if count == 0 {
-// 		return []FieldsValues{}, nil
-// 	}
-
-// 	cur, err := tx.Cursor(BlockNumberBucket)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	// Move to the last (highest-numbered) block.
-// 	k, v, err := cur.Last()
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	if len(k) == 0 {
-// 		return nil, ErrNoBlocks
-// 	}
-
-// 	// Field names from `json` tags in declaration order
-// 	// TODO declare standadlne function and remove code duplication with convertToFieldsValues
-// 	var zero Block
-// 	t := reflect.TypeOf(zero)
-// 	fields := make([]string, 0, t.NumField())
-// 	for i := 0; i < t.NumField(); i++ {
-// 		f := t.Field(i)
-// 		name := f.Tag.Get("json")
-// 		if name == "" || name == "-" {
-// 			name = f.Name
-// 		}
-// 		fields = append(fields, name)
-// 	}
-
-// 	out := make([]FieldsValues, 0, count)
-
-// 	appendOne := func(val []byte) error {
-// 		var b Block
-// 		if err = cbor.Unmarshal(val, &b); err != nil {
-// 			return err
-// 		}
-// 		values := []string{
-// 			fmt.Sprintf("%d", b.Number()),
-// 			fmt.Sprintf("0x%x", b.Hash()),
-// 			fmt.Sprintf("0x%x", b.StateRoot()),
-// 			fmt.Sprintf("%d", b.Timestamp),
-// 		}
-// 		out = append(out, FieldsValues{Fields: fields, Values: values})
-// 		return nil
-// 	}
-
-// 	for i := uint64(0); i < count && len(k) > 0; i++ {
-// 		if err = appendOne(v); err != nil {
-// 			return nil, err
-// 		}
-// 		k, v, err = cur.Prev()
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 	}
-
-// 	return out, nil
-// }
 
 // // Mirror of txpool_test.go CustomTransaction shape (same JSON and CBOR tags).
 // // We cannot import the test type, but we guarantee identical (un)marshal shape.
