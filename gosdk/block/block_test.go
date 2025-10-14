@@ -11,14 +11,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func sampleBlock() *Block[testTx, testReceipt] {
+func sampleBlock() *Block[testTx, testReceiptError] {
 	return buildBlock(123, filled(0xAA), 456789, []testTx{newTestTx(1), newTestTx(2)})
 }
 
 func TestBlockNumber(t *testing.T) {
 	t.Parallel()
 
-	var zero *Block[testTx, testReceipt]
+	var zero *Block[testTx, testReceiptError]
 	require.Equal(t, uint64(0), zero.Number())
 
 	b := sampleBlock()
@@ -28,7 +28,7 @@ func TestBlockNumber(t *testing.T) {
 func TestBlockHashIncludesTransactions(t *testing.T) {
 	t.Parallel()
 
-	var zero *Block[testTx, testReceipt]
+	var zero *Block[testTx, testReceiptError]
 	require.Equal(t, [32]byte{}, zero.Hash())
 
 	b := sampleBlock()
@@ -43,7 +43,7 @@ func TestBlockHashIncludesTransactions(t *testing.T) {
 func TestBlockStateRoot(t *testing.T) {
 	t.Parallel()
 
-	var zero *Block[testTx, testReceipt]
+	var zero *Block[testTx, testReceiptError]
 	require.Equal(t, [32]byte{}, zero.StateRoot())
 
 	b := sampleBlock()
@@ -55,7 +55,7 @@ func TestBlockStateRoot(t *testing.T) {
 func TestBlockBytes(t *testing.T) {
 	t.Parallel()
 
-	var zero *Block[testTx, testReceipt]
+	var zero *Block[testTx, testReceiptError]
 	require.Nil(t, zero.Bytes())
 
 	b := sampleBlock()
@@ -86,7 +86,7 @@ func TestBlockConvertToFieldsValues(t *testing.T) {
 	zeroTemplate := buildBlock(0, [32]byte{}, 0, nil)
 	zeroTemplate.Hash()
 
-	var zero *Block[testTx, testReceipt]
+	var zero *Block[testTx, testReceiptError]
 
 	gotZero := zero.convertToFieldsValues()
 	require.Equal(t, fmt.Sprint(wantFields), fmt.Sprint(gotZero.Fields))

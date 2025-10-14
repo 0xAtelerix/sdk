@@ -73,3 +73,50 @@ func GetBlocks(tx kv.Tx, count uint64) ([]FieldsValues, error) {
 
 	return out, nil
 }
+
+func GetTransactionsForBlockNumber[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
+	tx kv.Tx,
+	number uint64,
+	_ appTx,
+) ([]appTx, error) {
+	value, err := tx.GetOne(BlockNumberBucket, NumberToBytes(number))
+	if err != nil {
+		return nil, err
+	}
+
+	if len(value) == 0 {
+		return nil, ErrNoBlocks
+	}
+
+	return extractTransactions[appTx, R](value)
+}
+
+// TODO add bucket argument to make it more generic
+func GetTransactionsForBlockHash[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
+	tx kv.Tx,
+	hash [32]byte,
+	_ appTx,
+) ([]appTx, error) {
+	value, err := tx.GetOne(BlockHashBucket, hash[:])
+	if err != nil {
+		return nil, err
+	}
+
+	if len(value) == 0 {
+		return nil, ErrNoBlocks
+	}
+
+	return extractTransactions[appTx, R](value)
+}
+
+func extractTransactions[
+	appTx apptypes.AppTransaction[R],
+	R apptypes.Receipt,
+](value []byte) ([]appTx, error) {
+	var block Block[appTx, R]
+	if err := cbor.Unmarshal(value, &block); err != nil {
+		return nil, err
+	}
+
+	return append([]appTx(nil), block.Transactions...), nil
+}

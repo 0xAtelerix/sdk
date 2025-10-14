@@ -10,12 +10,12 @@ import (
 func TestBlockConvertToFieldsValues_HappyPath(t *testing.T) {
 	t.Helper()
 
-	b := &Block[testTx, testReceipt]{
+	b := &Block[testTx, testReceiptError]{
 		BlockNumber:  777,
 		BlockHash:    filled(0x11),
 		BlockRoot:    filled(0x22),
 		Timestamp:    1699999999,
-		Transactions: []testTx{{hash: filled(0x33)}, {hash: filled(0x44)}},
+		Transactions: []testTx{{HashValue: filled(0x33)}, {HashValue: filled(0x44)}},
 	}
 
 	if got, want := b.Hash(), expectedHash(b); got != want {
@@ -44,7 +44,7 @@ func TestBlockConvertToFieldsValues_HappyPath(t *testing.T) {
 func TestBlockConvertToFieldsValues_ZeroBlock(t *testing.T) {
 	t.Helper()
 
-	b := &Block[testTx, testReceipt]{} // zero-value block
+	b := &Block[testTx, testReceiptError]{} // zero-value block
 
 	if got, want := b.Hash(), expectedHash(b); got != want {
 		t.Fatalf("hash mismatch on zero block: got %x want %x", got, want)

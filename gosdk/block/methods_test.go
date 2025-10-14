@@ -35,7 +35,7 @@ func TestGetBlocks(t *testing.T) {
 		db := createDB(tr, BlockNumberBucket)
 		defer db.Close()
 
-		blocks := []*Block[testTx, testReceipt]{
+		blocks := []*Block[testTx, testReceiptError]{
 			buildBlock(1, filled(0x01), 100, nil),
 			buildBlock(2, filled(0x02), 200, nil),
 			buildBlock(5, filled(0x05), 500, nil),
@@ -106,7 +106,7 @@ func TestGetBlock(t *testing.T) {
 	})
 
 	t.Run("store multiple blocks", func(tr *testing.T) {
-		blocks := []*Block[testTx, testReceipt]{
+		blocks := []*Block[testTx, testReceiptError]{
 			buildBlock(1, filled(0x01), 100, nil),
 			buildBlock(2, filled(0x02), 200, nil),
 			buildBlock(3, filled(0x03), 300, nil),
@@ -154,7 +154,7 @@ func TestGetBlock(t *testing.T) {
 func requireFieldsValues(
 	tb testing.TB,
 	fv FieldsValues,
-	blk *Block[testTx, testReceipt],
+	blk *Block[testTx, testReceiptError],
 	hash [32]byte,
 ) {
 	tb.Helper()
@@ -170,4 +170,116 @@ func requireFieldsValues(
 		strconv.Itoa(len(blk.Transactions)),
 	}
 	require.Equal(tb, fmt.Sprint(expectedValues), fmt.Sprint(fv.Values))
+}
+
+func TestGetTransactionsForBlockNumber(t *testing.T) {
+	t.Parallel()
+
+	db := createDB(t, BlockNumberBucket)
+	defer db.Close()
+
+	block := buildBlock(77, filled(0x77), 1111, []testTx{newTestTx(0x01), newTestTx(0x02)})
+	block.Hash()
+	payload := encodeBlock(block)
+	require.NotNil(t, payload)
+
+	require.NoError(t, db.Update(context.Background(), func(tx kv.RwTx) error {
+		return tx.Put(BlockNumberBucket, NumberToBytes(block.BlockNumber), payload)
+	}))
+
+	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
+		res, err := GetTransactionsForBlockNumber[testTx](tx, block.BlockNumber, testTx{})
+		require.NoError(t, err)
+		require.Len(t, res, len(block.Transactions))
+
+		for i, tx := range res {
+			require.Equal(t, block.Transactions[i].HashValue, tx.Hash())
+		}
+
+		return nil
+	}))
+
+	t.Run("non-existent block", func(tr *testing.T) {
+		require.NoError(tr, db.View(context.Background(), func(tx kv.Tx) error {
+			_, err := GetTransactionsForBlockNumber[testTx](tx, 999, testTx{})
+			require.ErrorIs(tr, err, ErrNoBlocks)
+
+			return nil
+		}))
+	})
+
+	t.Run("empty transactions slice", func(tr *testing.T) {
+		empty := buildBlock(88, filled(0x88), 2222, nil)
+		empty.Hash()
+		payloadEmpty := encodeBlock(empty)
+		require.NotNil(tr, payloadEmpty)
+
+		require.NoError(tr, db.Update(context.Background(), func(tx kv.RwTx) error {
+			return tx.Put(BlockNumberBucket, NumberToBytes(empty.BlockNumber), payloadEmpty)
+		}))
+
+		require.NoError(tr, db.View(context.Background(), func(tx kv.Tx) error {
+			res, err := GetTransactionsForBlockNumber[testTx](tx, empty.BlockNumber, testTx{})
+			require.NoError(tr, err)
+			require.Empty(tr, res)
+
+			return nil
+		}))
+	})
+}
+
+func TestGetTransactionsForBlockHash(t *testing.T) {
+	t.Parallel()
+
+	db := createDB(t, BlockHashBucket)
+	defer db.Close()
+
+	block := buildBlock(91, filled(0x91), 3333, []testTx{newTestTx(0x09)})
+	hash := block.Hash()
+	payload := encodeBlock(block)
+	require.NotNil(t, payload)
+
+	require.NoError(t, db.Update(context.Background(), func(tx kv.RwTx) error {
+		return tx.Put(BlockHashBucket, hash[:], payload)
+	}))
+
+	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
+		res, err := GetTransactionsForBlockHash[testTx](tx, hash, testTx{})
+		require.NoError(t, err)
+		require.Len(t, res, len(block.Transactions))
+
+		for i, tx := range res {
+			require.Equal(t, block.Transactions[i].HashValue, tx.Hash())
+		}
+
+		return nil
+	}))
+
+	t.Run("non-existent block hash", func(tr *testing.T) {
+		require.NoError(tr, db.View(context.Background(), func(tx kv.Tx) error {
+			_, err := GetTransactionsForBlockHash[testTx](tx, filled(0x00), testTx{})
+			require.ErrorIs(tr, err, ErrNoBlocks)
+
+			return nil
+		}))
+	})
+
+	t.Run("empty transactions slice", func(tr *testing.T) {
+		empty := buildBlock(92, filled(0x92), 4444, nil)
+		emptyHash := empty.Hash()
+		payloadEmpty := encodeBlock(empty)
+		require.NotNil(t, payloadEmpty)
+
+		require.NoError(t, db.Update(context.Background(), func(tx kv.RwTx) error {
+			return tx.Put(BlockHashBucket, emptyHash[:], payloadEmpty)
+		}))
+
+		require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
+			res, err := GetTransactionsForBlockHash[testTx](tx, emptyHash, testTx{})
+			require.NoError(tr, err)
+			require.Empty(tr, res)
+
+			return nil
+		}))
+	})
 }

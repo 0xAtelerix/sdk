@@ -10,20 +10,21 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-type testReceipt struct{}
+type testReceiptError struct{}
 
-func (testReceipt) TxHash() [32]byte                 { return [32]byte{} }
-func (testReceipt) Status() apptypes.TxReceiptStatus { return apptypes.ReceiptUnknown }
-func (testReceipt) Error() string                    { return "" }
+func (testReceiptError) TxHash() [32]byte                 { return [32]byte{} }
+func (testReceiptError) Status() apptypes.TxReceiptStatus { return apptypes.ReceiptUnknown }
+func (testReceiptError) Error() string                    { return "" }
 
+// TODO consider to import testTx from receipt package instead of redefining it here
 type testTx struct {
-	hash [32]byte
+	HashValue [32]byte `cbor:"1,keyasint"`
 }
 
-func (t testTx) Hash() [32]byte { return t.hash }
+func (t testTx) Hash() [32]byte { return t.HashValue }
 
-func (testTx) Process(kv.RwTx) (testReceipt, []apptypes.ExternalTransaction, error) {
-	return testReceipt{}, nil, nil
+func (testTx) Process(kv.RwTx) (testReceiptError, []apptypes.ExternalTransaction, error) {
+	return testReceiptError{}, nil, nil
 }
 
 func filled(b byte) [32]byte {
@@ -40,7 +41,7 @@ func newTestTx(seed byte) testTx {
 
 	h[0] = seed
 
-	return testTx{hash: h}
+	return testTx{HashValue: h}
 }
 
 func buildBlock(
@@ -48,8 +49,8 @@ func buildBlock(
 	root [32]byte,
 	timestamp uint64,
 	txs []testTx,
-) *Block[testTx, testReceipt] {
-	return &Block[testTx, testReceipt]{
+) *Block[testTx, testReceiptError] {
+	return &Block[testTx, testReceiptError]{
 		BlockNumber:  number,
 		BlockRoot:    root,
 		Timestamp:    timestamp,
@@ -57,7 +58,7 @@ func buildBlock(
 	}
 }
 
-func encodeBlock(b *Block[testTx, testReceipt]) []byte {
+func encodeBlock(b *Block[testTx, testReceiptError]) []byte {
 	raw, err := cbor.Marshal(*b)
 	if err != nil {
 		return nil
@@ -66,7 +67,7 @@ func encodeBlock(b *Block[testTx, testReceipt]) []byte {
 	return raw
 }
 
-func expectedHash(b *Block[testTx, testReceipt]) [32]byte {
+func expectedHash(b *Block[testTx, testReceiptError]) [32]byte {
 	hasher := sha256.New()
 
 	var buf [8]byte
@@ -88,7 +89,7 @@ func expectedHash(b *Block[testTx, testReceipt]) [32]byte {
 	return out
 }
 
-func expectedStateRoot(b *Block[testTx, testReceipt]) [32]byte {
+func expectedStateRoot(b *Block[testTx, testReceiptError]) [32]byte {
 	raw := encodeBlock(b)
 
 	return sha256.Sum256(raw)
