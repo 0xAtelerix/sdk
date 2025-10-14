@@ -92,6 +92,7 @@ func GetTransactionsForBlockNumber[appTx apptypes.AppTransaction[R], R apptypes.
 }
 
 // TODO add bucket argument to make it more generic
+// TODO remove one from GetTransactionsForBlockNumber and GetTransactionsForBlockHash to make API more generic
 func GetTransactionsForBlockHash[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	tx kv.Tx,
 	hash [32]byte,
