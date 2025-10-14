@@ -49,6 +49,7 @@ func (s *AppchainEmitterServer[appTx, R]) GetCheckpoints(
 	ctx context.Context,
 	req *emitterproto.GetCheckpointsRequest,
 ) (*emitterproto.CheckpointResponse, error) {
+	fmt.Println("!!!!!!!!!!!!!!!")
 	s.logger.Debug().
 		Str("method", "GetCheckpoints").
 		Uint64("latest_previous_checkpoint_block_number", req.GetLatestPreviousCheckpointBlockNumber()).
