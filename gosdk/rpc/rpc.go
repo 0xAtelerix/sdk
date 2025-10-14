@@ -40,9 +40,9 @@ func (s *StandardRPCServer) StartHTTPServer(ctx context.Context, addr string) er
 	http.HandleFunc("/rpc", s.handleRPC)
 	http.HandleFunc("/health", s.healthcheck)
 
-	s.logger.Info().Msgf("Starting Standard RPC server on %s\n", addr)
-	s.logger.Info().Msgf("Available methods: %d methods registered\n", len(s.methods))
-	s.logger.Info().Msgf("Health endpoint available at: %s/health\n", addr)
+	s.logger.Info().Msgf("Starting Standard RPC server on %s", addr)
+	s.logger.Info().Msgf("Available methods: %d methods registered", len(s.methods))
+	s.logger.Info().Msgf("Health endpoint available at: %s/health", addr)
 
 	server := &http.Server{
 		Addr:         addr,

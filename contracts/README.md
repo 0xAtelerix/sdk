@@ -24,7 +24,7 @@ This directory contains example smart contracts for the Atelerix SDK, organized 
   - [Build Contracts](#build-contracts)
   - [Test Contracts](#test-contracts)
   - [Clean Build Artifacts](#clean-build-artifacts)
-- [🔄 External Transaction Flow](#🔄-external-transaction-flow)
+- [🔄 External Transaction Flow](#-external-transaction-flow)
 
 ## 📁 Directory Structure
 
