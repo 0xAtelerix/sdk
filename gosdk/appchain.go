@@ -28,9 +28,9 @@ import (
 )
 
 func WithRootCalculator[STI StateTransitionInterface[AppTx, R],
-	AppTx apptypes.AppTransaction[R],
-	R apptypes.Receipt,
-	AppBlock apptypes.AppchainBlock](rc apptypes.RootCalculator) func(a *Appchain[STI, AppTx, R, AppBlock]) {
+AppTx apptypes.AppTransaction[R],
+R apptypes.Receipt,
+AppBlock apptypes.AppchainBlock](rc apptypes.RootCalculator) func(a *Appchain[STI, AppTx, R, AppBlock]) {
 	return func(a *Appchain[STI, AppTx, R, AppBlock]) {
 		a.rootCalculator = rc
 	}
@@ -65,9 +65,9 @@ func MakeAppchainConfig(
 }
 
 func NewAppchain[STI StateTransitionInterface[AppTx, R],
-	AppTx apptypes.AppTransaction[R],
-	R apptypes.Receipt,
-	AppBlock apptypes.AppchainBlock](
+AppTx apptypes.AppTransaction[R],
+R apptypes.Receipt,
+AppBlock apptypes.AppchainBlock](
 	sti STI,
 	blockBuilder apptypes.AppchainBlockConstructor[AppTx, R, AppBlock],
 	txpool apptypes.TxPoolInterface[AppTx, R],
@@ -298,7 +298,7 @@ runFor:
 		logger.Debug().Int("batches num", len(batches)).Msg("received new batches")
 
 		for i, batch := range batches {
-			fmt.Println("!!!!!!!!-batch")
+			logger.Warn().Msg("!!!!!!!!-batch")
 			logger.Debug().Int("batch", i).Int("tx", len(batches[i].Transactions)).Int("blocks", len(batches[i].ExternalBlocks)).Msg("received new batch")
 
 			start := time.Now() // метка начала
@@ -659,8 +659,9 @@ func startPrometheusServer(ctx context.Context, addr string) {
 // fixme надо писать чекпоинт в staged sync
 // должен быть совместим с GetCheckpoints
 func WriteCheckpoint(ctx context.Context, dbTx kv.RwTx, checkpoint apptypes.Checkpoint) error {
-	fmt.Println("!!!!!!!!!!!!!!!!!!-WriteCheckpoint", checkpoint)
 	logger := log.Ctx(ctx)
+
+	logger.Warn().Any("checkpoint", checkpoint).Msg("!!!!!!!!!!!!!!!!!!-WriteCheckpoint")
 
 	// Генерируем ключ из LatestBlockNumber (8 байт)
 	key := make([]byte, 8)
