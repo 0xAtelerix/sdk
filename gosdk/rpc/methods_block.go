@@ -7,13 +7,11 @@ import (
 
 	"github.com/ledgerwatch/erigon-lib/kv"
 
-	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/block"
 )
 
 // BlockMethods provides comprehensive block-related RPC methods
 type BlockMethods struct {
-	block      block.Block
 	appchainDB kv.RwDB
 }
 
@@ -34,10 +32,7 @@ func (m *BlockMethods) GetBlockByNumber(ctx context.Context, params []any) (any,
 		return nil, err
 	}
 
-	var (
-		blockFieldsValuesResp block.FieldsValues
-		blockI                apptypes.AppchainBlock
-	)
+	var blockFieldsValuesResp block.FieldsValues
 
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
 		var getErr error
@@ -46,7 +41,7 @@ func (m *BlockMethods) GetBlockByNumber(ctx context.Context, params []any) (any,
 			tx,
 			block.BlockNumberBucket,
 			block.NumberToBytes(number),
-			blockI,
+			nil,
 		)
 
 		return getErr
@@ -74,15 +69,12 @@ func (m *BlockMethods) GetBlockByHash(ctx context.Context, params []any) (any, e
 		return nil, ErrInvalidHashFormat
 	}
 
-	var (
-		blockFieldsValuesResp block.FieldsValues
-		blockI                apptypes.AppchainBlock
-	)
+	var blockFieldsValuesResp block.FieldsValues
 
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
 		var getErr error
 
-		blockFieldsValuesResp, getErr = block.GetBlock(tx, block.BlockHashBucket, hash[:], blockI)
+		blockFieldsValuesResp, getErr = block.GetBlock(tx, block.BlockHashBucket, hash[:], nil)
 
 		return getErr
 	})

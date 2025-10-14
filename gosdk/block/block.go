@@ -19,17 +19,20 @@ const (
 	BlockTransactionsBucket = "blocktxs"    // block-number -> txs
 )
 
-var _ apptypes.AppchainBlock = (*Block)(nil)
+var _ apptypes.AppchainBlock = (*Block[apptypes.AppTransaction[apptypes.Receipt], apptypes.Receipt])(
+	nil,
+)
 
-type Block struct {
-	BlockNumber uint64   `json:"number"    cbor:"1,keyasint"`
-	BlockHash   [32]byte `json:"hash"      cbor:"2,keyasint"`
-	BlockRoot   [32]byte `json:"stateroot" cbor:"3,keyasint"`
-	Timestamp   uint64   `json:"timestamp" cbor:"4,keyasint"`
+type Block[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
+	BlockNumber  uint64   `json:"number"       cbor:"1,keyasint"`
+	BlockHash    [32]byte `json:"hash"         cbor:"2,keyasint"`
+	BlockRoot    [32]byte `json:"stateroot"    cbor:"3,keyasint"`
+	Timestamp    uint64   `json:"timestamp"    cbor:"4,keyasint"`
+	Transactions []appTx  `json:"transactions" cbor:"5,keyasint"`
 }
 
 // Number implements apptypes.AppchainBlock.
-func (b *Block) Number() uint64 {
+func (b *Block[appTx, R]) Number() uint64 {
 	if b == nil {
 		return 0
 	}
@@ -37,17 +40,57 @@ func (b *Block) Number() uint64 {
 	return b.BlockNumber
 }
 
-// Hash implements apptypes.AppchainBlock.
-func (b *Block) Hash() [32]byte {
+func (b *Block[appTx, R]) computeTransactionsHash() [32]byte {
 	if b == nil {
 		return [32]byte{}
 	}
 
-	return b.BlockHash
+	hasher := sha256.New()
+
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], b.BlockNumber)
+
+	if _, err := hasher.Write(buf[:]); err != nil {
+		return [32]byte{}
+	}
+
+	if _, err := hasher.Write(b.BlockRoot[:]); err != nil {
+		return [32]byte{}
+	}
+
+	binary.BigEndian.PutUint64(buf[:], b.Timestamp)
+
+	if _, err := hasher.Write(buf[:]); err != nil {
+		return [32]byte{}
+	}
+
+	for _, tx := range b.Transactions {
+		txHash := tx.Hash()
+		if _, err := hasher.Write(txHash[:]); err != nil {
+			return [32]byte{}
+		}
+	}
+
+	var out [32]byte
+	copy(out[:], hasher.Sum(nil))
+
+	return out
+}
+
+// Hash implements apptypes.AppchainBlock.
+func (b *Block[appTx, R]) Hash() [32]byte {
+	if b == nil {
+		return [32]byte{}
+	}
+
+	out := b.computeTransactionsHash()
+	b.BlockHash = out
+
+	return out
 }
 
 // StateRoot implements apptypes.AppchainBlock.
-func (b *Block) StateRoot() [32]byte {
+func (b *Block[appTx, R]) StateRoot() [32]byte {
 	if b == nil {
 		return [32]byte{}
 	}
@@ -57,7 +100,7 @@ func (b *Block) StateRoot() [32]byte {
 
 // Bytes implements apptypes.AppchainBlock.
 // We use CBOR to keep it consistent with storage/other hashes in this package.
-func (b *Block) Bytes() []byte {
+func (b *Block[appTx, R]) Bytes() []byte {
 	if b == nil {
 		return nil
 	}
@@ -71,13 +114,13 @@ func (b *Block) Bytes() []byte {
 }
 
 // TODO convertToFieldsValues converts Block to FieldsValues.
-func (b *Block) convertToFieldsValues() FieldsValues {
+func (b *Block[appTx, R]) convertToFieldsValues() FieldsValues {
 	if b == nil {
-		b = &Block{}
+		b = &Block[appTx, R]{}
 	}
 
 	// Field names from `json` tags in declaration order
-	var zero Block
+	var zero Block[appTx, R]
 
 	t := reflect.TypeOf(zero)
 
@@ -100,6 +143,7 @@ func (b *Block) convertToFieldsValues() FieldsValues {
 		fmt.Sprintf("0x%x", b.Hash()),
 		fmt.Sprintf("0x%x", b.StateRoot()),
 		strconv.FormatUint(b.Timestamp, 10),
+		strconv.FormatUint(uint64(len(b.Transactions)), 10),
 	}
 
 	return FieldsValues{Fields: fields, Values: values}
@@ -158,7 +202,7 @@ func GetBlock(
 	tx kv.Tx,
 	bucket string,
 	key []byte,
-	block apptypes.AppchainBlock,
+	_ apptypes.AppchainBlock,
 ) (FieldsValues, error) {
 	value, err := tx.GetOne(bucket, key)
 	if err != nil {
@@ -168,12 +212,8 @@ func GetBlock(
 	if len(value) == 0 {
 		return FieldsValues{}, ErrNoBlocks
 	}
-	// Decode into the concrete Block to access fields deterministically
-	b, ok := block.(*Block)
-	if !ok {
-		return FieldsValues{}, ErrUnsupportedBlockType
-	}
 
+	var b Block[apptypes.AppTransaction[apptypes.Receipt], apptypes.Receipt]
 	if err := cbor.Unmarshal(value, &b); err != nil {
 		return FieldsValues{}, err
 	}
