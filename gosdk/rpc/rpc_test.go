@@ -37,7 +37,6 @@ var (
 )
 
 // TestTransaction - test transaction implementation
-// TODO rremove my implementation and use this one
 type TestTransaction[R TestReceipt] struct {
 	From  string `json:"from"  cbor:"1,keyasint"`
 	To    string `json:"to"    cbor:"2,keyasint"`

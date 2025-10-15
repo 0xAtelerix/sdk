@@ -154,6 +154,7 @@ type FieldsValues struct {
 	Values []string
 }
 
+// NumberToBytes converts a uint64 number to an 8-byte big-endian representation.
 func NumberToBytes(input uint64) []byte {
 	// Create a byte slice of length 8, as uint64 occupies 8 bytes
 	b := make([]byte, 8)

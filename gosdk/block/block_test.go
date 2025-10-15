@@ -134,6 +134,25 @@ func TestBlockComputeTransactionsHash(t *testing.T) {
 	})
 }
 
+func TestNumberToBytes(t *testing.T) {
+	t.Parallel()
+
+	t.Run("encodes zero", func(tr *testing.T) {
+		bytes := NumberToBytes(0)
+		require.Len(tr, bytes, 8)
+
+		for _, b := range bytes {
+			require.Zero(tr, b)
+		}
+	})
+
+	t.Run("encodes big endian", func(tr *testing.T) {
+		val := uint64(0x0102030405060708)
+		bytes := NumberToBytes(val)
+		require.Equal(tr, []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}, bytes)
+	})
+}
+
 func createDB(tb testing.TB, buckets ...string) kv.RwDB {
 	tb.Helper()
 	db := memdb.NewTestDB(tb)
