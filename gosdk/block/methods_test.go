@@ -215,7 +215,7 @@ func TestGetTransactionsByBlockNumber(t *testing.T) {
 
 	t.Run("non-existent block", func(tr *testing.T) {
 		require.NoError(tr, db.View(context.Background(), func(tx kv.Tx) error {
-			_, err := GetTransactionsByBlockNumber(tx, 999,  testTx{})
+			_, err := GetTransactionsByBlockNumber(tx, 999, testTx{})
 			require.ErrorIs(tr, err, ErrNoBlocks)
 
 			return nil
