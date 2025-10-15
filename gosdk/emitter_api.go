@@ -50,7 +50,7 @@ func (s *AppchainEmitterServer[appTx, R]) GetCheckpoints(
 	req *emitterproto.GetCheckpointsRequest,
 ) (*emitterproto.CheckpointResponse, error) {
 	s.logger.Warn().Any("GetLatestPreviousCheckpointBlockNumber", req.GetLatestPreviousCheckpointBlockNumber()).Msg("!!!!!!!!!!!!!!!-1")
-	s.logger.Debug().
+	s.logger.Info().
 		Str("method", "GetCheckpoints").
 		Uint64("latest_previous_checkpoint_block_number", req.GetLatestPreviousCheckpointBlockNumber()).
 		Uint32("limit", func() uint32 {
