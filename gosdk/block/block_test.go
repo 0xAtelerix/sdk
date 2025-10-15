@@ -81,6 +81,7 @@ func TestBlockConvertToFieldsValues(t *testing.T) {
 	require.Equal(t, fmt.Sprint(want), fmt.Sprint(got.Values))
 
 	zeroTemplate := buildBlock(0, [32]byte{}, 0, nil)
+	zeroTemplate.Hash()
 
 	var zero *Block[testTx, testReceiptError]
 
