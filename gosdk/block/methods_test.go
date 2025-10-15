@@ -18,7 +18,7 @@ func TestGetBlock(t *testing.T) {
 
 	t.Run("store and retrieve single block", func(tr *testing.T) {
 		block := buildBlock(42, filled(0x42), 1_700_000_000, nil)
-		hash := block.Hash()
+		hash := block.BlockHash
 		payload := encodeBlock(block)
 		require.NotNil(tr, payload)
 
@@ -49,8 +49,6 @@ func TestGetBlock(t *testing.T) {
 
 		require.NoError(tr, db.Update(tr.Context(), func(tx kv.RwTx) error {
 			for _, blk := range blocks {
-				blk.Hash()
-
 				payload := encodeBlock(blk)
 				require.NotNil(tr, payload)
 
@@ -160,8 +158,6 @@ func TestGetBlocks(t *testing.T) {
 
 		require.NoError(tr, db.Update(context.Background(), func(tx kv.RwTx) error {
 			for _, blk := range blocks {
-				blk.Hash()
-
 				payload := encodeBlock(blk)
 				require.NotNil(tr, payload)
 
@@ -198,7 +194,6 @@ func TestGetTransactionsByBlockNumber(t *testing.T) {
 	defer db.Close()
 
 	block := buildBlock(77, filled(0x77), 1111, []testTx{newTestTx(0x01), newTestTx(0x02)})
-	block.Hash()
 	payload := encodeBlock(block)
 	require.NotNil(t, payload)
 
@@ -220,7 +215,7 @@ func TestGetTransactionsByBlockNumber(t *testing.T) {
 
 	t.Run("non-existent block", func(tr *testing.T) {
 		require.NoError(tr, db.View(context.Background(), func(tx kv.Tx) error {
-			_, err := GetTransactionsByBlockNumber[testTx](tx, 999, testTx{})
+			_, err := GetTransactionsByBlockNumber(tx, 999,  testTx{})
 			require.ErrorIs(tr, err, ErrNoBlocks)
 
 			return nil
@@ -229,7 +224,6 @@ func TestGetTransactionsByBlockNumber(t *testing.T) {
 
 	t.Run("empty transactions slice", func(tr *testing.T) {
 		empty := buildBlock(88, filled(0x88), 2222, nil)
-		empty.Hash()
 		payloadEmpty := encodeBlock(empty)
 		require.NotNil(tr, payloadEmpty)
 
@@ -248,7 +242,6 @@ func TestGetTransactionsByBlockNumber(t *testing.T) {
 
 	t.Run("block with corrupted transactions returns error", func(tr *testing.T) {
 		block := buildBlock(909, filled(0x90), 9090, []testTx{newTestTx(0x0a)})
-		block.Hash()
 
 		payload := encodeBlockWithCorruptedTransactions(block)
 		require.NotNil(tr, payload)
@@ -274,7 +267,7 @@ func TestGetTransactionsByBlockHash(t *testing.T) {
 	defer db.Close()
 
 	block := buildBlock(91, filled(0x91), 3333, []testTx{newTestTx(0x09)})
-	hash := block.Hash()
+	hash := block.BlockHash
 	payload := encodeBlock(block)
 	require.NotNil(t, payload)
 
@@ -283,7 +276,7 @@ func TestGetTransactionsByBlockHash(t *testing.T) {
 	}))
 
 	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
-		res, err := GetTransactionsByBlockHash[testTx](tx, hash, testTx{})
+		res, err := GetTransactionsByBlockHash(tx, hash, testTx{})
 		require.NoError(t, err)
 		require.Len(t, res, len(block.Transactions))
 
@@ -305,7 +298,7 @@ func TestGetTransactionsByBlockHash(t *testing.T) {
 
 	t.Run("empty transactions slice", func(tr *testing.T) {
 		empty := buildBlock(92, filled(0x92), 4444, nil)
-		emptyHash := empty.Hash()
+		emptyHash := empty.BlockHash
 		payloadEmpty := encodeBlock(empty)
 		require.NotNil(t, payloadEmpty)
 
@@ -324,7 +317,7 @@ func TestGetTransactionsByBlockHash(t *testing.T) {
 
 	t.Run("block with corrupted transactions returns error", func(tr *testing.T) {
 		block := buildBlock(93, filled(0x93), 4445, []testTx{newTestTx(0x03)})
-		hash := block.Hash()
+		hash := block.BlockHash
 
 		payload := encodeBlockWithCorruptedTransactions(block)
 		require.NotNil(tr, payload)

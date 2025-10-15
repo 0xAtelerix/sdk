@@ -92,4 +92,3 @@ message HealthCheckResponse {
   }
   ServingStatus status = 1;
 }
-

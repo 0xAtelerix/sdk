@@ -50,12 +50,16 @@ func buildBlock(
 	timestamp uint64,
 	txs []testTx,
 ) *Block[testTx, testReceiptError] {
-	return &Block[testTx, testReceiptError]{
+	block := &Block[testTx, testReceiptError]{
 		BlockNumber:  number,
 		BlockRoot:    root,
 		Timestamp:    timestamp,
 		Transactions: txs,
 	}
+
+	block.Hash()
+
+	return block
 }
 
 func encodeBlock(b *Block[testTx, testReceiptError]) []byte {
