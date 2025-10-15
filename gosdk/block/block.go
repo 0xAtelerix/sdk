@@ -148,6 +148,7 @@ func (b *Block[appTx, R]) convertToFieldsValues() FieldsValues {
 	return FieldsValues{Fields: fields, Values: values}
 }
 
+// FieldsValues represents a set of fields of Block and their corresponding values.
 type FieldsValues struct {
 	Fields []string
 	Values []string
