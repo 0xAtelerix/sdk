@@ -47,7 +47,6 @@ func TestBlockStateRoot(t *testing.T) {
 	require.Equal(t, [32]byte{}, zero.StateRoot())
 
 	b := sampleBlock()
-	b.Hash()
 
 	require.Equal(t, expectedStateRoot(b), b.StateRoot())
 }
@@ -59,7 +58,6 @@ func TestBlockBytes(t *testing.T) {
 	require.Nil(t, zero.Bytes())
 
 	b := sampleBlock()
-	b.Hash()
 	want := encodeBlock(b)
 	require.Equal(t, string(want), string(b.Bytes()))
 }
@@ -68,7 +66,6 @@ func TestBlockConvertToFieldsValues(t *testing.T) {
 	t.Parallel()
 
 	b := sampleBlock()
-	b.Hash()
 
 	got := b.convertToFieldsValues()
 	wantFields := []string{"number", "hash", "stateroot", "timestamp", "transactions"}
@@ -84,7 +81,6 @@ func TestBlockConvertToFieldsValues(t *testing.T) {
 	require.Equal(t, fmt.Sprint(want), fmt.Sprint(got.Values))
 
 	zeroTemplate := buildBlock(0, [32]byte{}, 0, nil)
-	zeroTemplate.Hash()
 
 	var zero *Block[testTx, testReceiptError]
 
