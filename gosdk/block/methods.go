@@ -35,6 +35,7 @@ func GetBlock(
 // GetBlocks returns up to `count` most recent blocks from the BlockNumberBucket (newest first)
 // and formats each block as FieldsValues (same shape as GetBlock).
 // If count <= 0, it returns an empty slice. If the bucket is empty, returns ErrNoBlocks.
+// TODO consider to pass third argument of type apptypes.AppchainBlock to decode into concrete type using cbor.Unmarshal
 func GetBlocks(tx kv.Tx, count uint64) ([]FieldsValues, error) {
 	if count == 0 {
 		return []FieldsValues{}, nil

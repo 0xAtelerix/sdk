@@ -8,7 +8,6 @@ import (
 	"strconv"
 
 	"github.com/fxamacker/cbor/v2"
-	"github.com/ledgerwatch/erigon-lib/kv"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
@@ -113,7 +112,7 @@ func (b *Block[appTx, R]) Bytes() []byte {
 	return data
 }
 
-// TODO convertToFieldsValues converts Block to FieldsValues.
+// convertToFieldsValues converts Block to FieldsValues.
 func (b *Block[appTx, R]) convertToFieldsValues() FieldsValues {
 	if b == nil {
 		b = &Block[appTx, R]{}
@@ -149,116 +148,10 @@ func (b *Block[appTx, R]) convertToFieldsValues() FieldsValues {
 	return FieldsValues{Fields: fields, Values: values}
 }
 
-func StoreBlockbyHash(tx kv.RwTx, block apptypes.AppchainBlock) error {
-	key := block.Hash()
-
-	value, err := cbor.Marshal(block)
-	if err != nil {
-		return err
-	}
-
-	return tx.Put(BlockHashBucket, key[:], value)
-}
-
-func StoreBlockbyNumber(tx kv.RwTx, bucket string, block apptypes.AppchainBlock) error {
-	key := NumberToBytes(block.Number())
-
-	value, err := cbor.Marshal(block)
-	if err != nil {
-		return err
-	}
-
-	return tx.Put(bucket, key, value)
-}
-
 type FieldsValues struct {
 	Fields []string
 	Values []string
 }
-
-// // Mirror of txpool_test.go CustomTransaction shape (same JSON and CBOR tags).
-// // We cannot import the test type, but we guarantee identical (un)marshal shape.
-// // TODO consider replace it with apptypes.AppTransaction
-// type blockCustomTx struct {
-// 	From  string `json:"from"  cbor:"1,keyasint"`
-// 	To    string `json:"to"    cbor:"2,keyasint"`
-// 	Value int    `json:"value" cbor:"3,keyasint"`
-// }
-
-// // getBlockbyNumber loads and decodes a Block by its number from BlockNumberBucket.
-// func getBlockbyNumber(tx kv.Tx, number uint64) (Block, error) {
-// 	key := NumberToBytes(number)
-
-// 	value, err := tx.GetOne(BlockNumberBucket, key)
-// 	if err != nil {
-// 		return Block{}, err
-// 	}
-// 	if len(value) == 0 {
-// 		return Block{}, ErrNoBlocks
-// 	}
-
-// 	var b Block
-// 	if err := cbor.Unmarshal(value, &b); err != nil {
-// 		return Block{}, err
-// 	}
-// 	return b, nil
-// }
-
-// // getTransactionforBlock retrieves transactions for the given concrete Block.
-// // It supports two encodings under BlockTransactionsBucket:
-// //  1. CBOR of []blockCustomTx
-// //  2. CBOR of [][]byte, where each element is CBOR(blockCustomTx)
-// //
-// // If nothing is stored, it returns an empty slice instead of an error.
-// func getTransactionsForBlock(tx kv.Tx, blockNum uint64) ([]blockCustomTx, error) {
-// 	val, err := tx.GetOne(BlockTransactionsBucket, NumberToBytes(blockNum))
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	if len(val) == 0 {
-// 		return nil, nil
-// 	}
-
-// 	// Try direct CBOR([]blockCustomTx)
-// 	var direct []blockCustomTx
-// 	if e := cbor.Unmarshal(val, &direct); e == nil {
-// 		return direct, nil
-// 	}
-
-// 	// Try CBOR([][]byte) with nested CBOR(blockCustomTx)
-// 	var raw [][]byte
-// 	if e := cbor.Unmarshal(val, &raw); e == nil {
-// 		out := make([]blockCustomTx, 0, len(raw))
-// 		for _, r := range raw {
-// 			var t blockCustomTx
-// 			if ue := cbor.Unmarshal(r, &t); ue != nil {
-// 				return nil, ErrDecodeTransactionPayloadFailed
-// 			}
-// 			out = append(out, t)
-// 		}
-// 		return out, nil
-// 	}
-
-// 	return nil, ErrUnsupportedTransactionPayload
-// }
-
-// // GetTransactionsByBlockNumber is a convenience that chains getBlockbyNumber
-// // and getTransactionforBlock, returning the tx list as `any`.
-
-// func GetTransactionsByBlockNumber(tx kv.Tx, number uint64) (any, error) {
-// 	// TODO consider to replace it with GetBlock implementation to return FieldsValues
-// 	// b, err := getBlockbyNumber(tx, number)
-// 	// if err != nil {
-// 	// 	return nil, err
-// 	// }
-// 	// TODO consider to implement storeTransactionForBlock
-// 	txs, err := getTransactionsForBlock(tx, number)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return txs, nil
-// }
 
 func NumberToBytes(input uint64) []byte {
 	// Create a byte slice of length 8, as uint64 occupies 8 bytes

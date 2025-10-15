@@ -94,3 +94,28 @@ func expectedStateRoot(b *Block[testTx, testReceiptError]) [32]byte {
 
 	return sha256.Sum256(raw)
 }
+
+func encodeBlockWithCorruptedTransactions(b *Block[testTx, testReceiptError]) []byte {
+	type corruptedBlock struct {
+		BlockNumber  uint64   `cbor:"1,keyasint"`
+		BlockHash    [32]byte `cbor:"2,keyasint"`
+		BlockRoot    [32]byte `cbor:"3,keyasint"`
+		Timestamp    uint64   `cbor:"4,keyasint"`
+		Transactions []string `cbor:"5,keyasint"`
+	}
+
+	payload := corruptedBlock{
+		BlockNumber:  b.BlockNumber,
+		BlockHash:    b.BlockHash,
+		BlockRoot:    b.BlockRoot,
+		Timestamp:    b.Timestamp,
+		Transactions: []string{"corrupted"},
+	}
+
+	raw, err := cbor.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+
+	return raw
+}
