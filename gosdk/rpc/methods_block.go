@@ -190,7 +190,7 @@ func AddBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	server *StandardRPCServer,
 	appchainDB kv.RwDB,
 ) {
-	methods := NewBlockMethods[appTx, R](appchainDB)
+	methods := NewBlockMethods[appTx](appchainDB)
 
 	server.AddMethod("getBlockByNumber", methods.GetBlockByNumber)
 	server.AddMethod("getBlockByHash", methods.GetBlockByHash)

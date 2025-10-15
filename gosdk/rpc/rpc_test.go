@@ -119,7 +119,6 @@ func setupTestEnvironment(
 
 	// Add standard methods to maintain compatibility with existing tests
 	AddStandardMethods(server, appchainDB, txPool)
-	AddBlockMethods[TestTransaction[TestReceipt], TestReceipt](server, appchainDB)
 
 	cleanup = func() {
 		localDB.Close()
@@ -127,6 +126,44 @@ func setupTestEnvironment(
 	}
 
 	return server, appchainDB, cleanup
+}
+
+func storeTestBlock(
+	t *testing.T,
+	db kv.RwDB,
+	number uint64,
+	timestamp uint64,
+	txs []TestTransaction[TestReceipt],
+) *block.Block[TestTransaction[TestReceipt], TestReceipt] {
+	t.Helper()
+
+	clonedTxs := append([]TestTransaction[TestReceipt](nil), txs...)
+
+	var root [32]byte
+
+	root[0] = byte(number)
+
+	testBlock := &block.Block[TestTransaction[TestReceipt], TestReceipt]{
+		BlockNumber:  number,
+		BlockRoot:    root,
+		Timestamp:    timestamp,
+		Transactions: clonedTxs,
+	}
+
+	testBlock.Hash()
+
+	payload, err := cbor.Marshal(*testBlock)
+	require.NoError(t, err)
+
+	require.NoError(t, db.Update(context.Background(), func(tx kv.RwTx) error {
+		if err := tx.Put(block.BlockNumberBucket, block.NumberToBytes(number), payload); err != nil {
+			return err
+		}
+
+		return tx.Put(block.BlockHashBucket, testBlock.BlockHash[:], payload)
+	}))
+
+	return testBlock
 }
 
 // makeJSONRPCRequest creates a JSON-RPC request and returns the response
@@ -1110,494 +1147,171 @@ func TestStandardRPCServer_corsHealthEndpoint(t *testing.T) {
 
 // ============= BLOCK METHODS TESTS =============
 
-// func TestStandardRPCServer_getBlockByNumber(t *testing.T) {
-// 	server, _, cleanup := setupTestEnvironment(t)
-// 	defer cleanup()
-
-// 	t.Run("requires 1 param", func(t *testing.T) {
-// 		rr := makeJSONRPCRequest(t, server, "getBlockByNumber", []any{})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 	})
-
-// 	t.Run("invalid param type", func(t *testing.T) {
-// 		rr := makeJSONRPCRequest(t, server, "getBlockByNumber", []any{true})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 		assert.Contains(t, resp.Error.Message, "invalid block number")
-// 	})
-
-// 	t.Run("invalid hex string", func(t *testing.T) {
-// 		rr := makeJSONRPCRequest(t, server, "getBlockByNumber", []any{"0xZZ"})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 		assert.Contains(t, resp.Error.Message, "invalid hex block number")
-// 	})
-
-// 	t.Run("negative numeric", func(t *testing.T) {
-// 		rr := makeJSONRPCRequest(t, server, "getBlockByNumber", []any{-1})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 		assert.Contains(t, resp.Error.Message, "invalid block number: negative")
-// 	})
-
-// 	t.Run("valid decimal but not found", func(t *testing.T) {
-// 		rr := makeJSONRPCRequest(t, server, "getBlockByNumber", []any{"123"})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 		assert.Contains(t, resp.Error.Message, "failed to get block by number 123")
-// 	})
-
-// 	t.Run("valid hex but not found", func(t *testing.T) {
-// 		rr := makeJSONRPCRequest(t, server, "getBlockByNumber", []any{"0x7b"})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 		// Parsed as decimal internally
-// 		assert.Contains(t, resp.Error.Message, "failed to get block by number 123")
-// 	})
-// }
-
-// func TestStandardRPCServer_getBlockByHash(t *testing.T) {
-// 	server, _, cleanup := setupTestEnvironment(t)
-// 	defer cleanup()
-
-// 	t.Run("requires 1 param", func(t *testing.T) {
-// 		rr := makeJSONRPCRequest(t, server, "getBlockByHash", []any{})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 	})
-
-// 	t.Run("param must be string", func(t *testing.T) {
-// 		rr := makeJSONRPCRequest(t, server, "getBlockByHash", []any{123})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 		// matches ErrHashParameterMustBeString message
-// 		assert.Contains(t, resp.Error.Message, "hash parameter must be a string")
-// 	})
-
-// 	t.Run("invalid hash format", func(t *testing.T) {
-// 		rr := makeJSONRPCRequest(t, server, "getBlockByHash", []any{"0x123"})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 		assert.Contains(t, resp.Error.Message, "invalid hash format")
-// 	})
-
-// 	t.Run("valid hash but not found", func(t *testing.T) {
-// 		h := sha256.Sum256([]byte("non-existent-block"))
-// 		hashStr := "0x" + hex.EncodeToString(h[:])
-
-// 		rr := makeJSONRPCRequest(t, server, "getBlockByHash", []any{hashStr})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 		assert.Contains(t, resp.Error.Message, "failed to get block by hash")
-// 		assert.Contains(t, resp.Error.Message, hashStr)
-// 	})
-// }
-
-// func TestStandardRPCServer_getBlocks(t *testing.T) {
-// 	server, appchainDB, cleanup := setupTestEnvironment(t)
-// 	defer cleanup()
-
-// 	// Ensure the RPC method is registered for these tests even if
-// 	// AddBlockMethods doesn't register it yet.
-// 	bm := NewBlockMethods(appchainDB)
-// 	server.AddMethod("getBlocks", bm.GetBlocks) // uses methods in methods_block.go
-
-// 	t.Run("requires 1 param", func(t *testing.T) {
-// 		rr := makeJSONRPCRequest(t, server, "getBlocks", []any{})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 	})
-
-// 	t.Run("invalid param type", func(t *testing.T) {
-// 		rr := makeJSONRPCRequest(t, server, "getBlocks", []any{true})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 		assert.Contains(t, resp.Error.Message, "invalid block number")
-// 	})
-
-// 	t.Run("invalid hex string", func(t *testing.T) {
-// 		rr := makeJSONRPCRequest(t, server, "getBlocks", []any{"0xZZ"})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 		assert.Contains(t, resp.Error.Message, "invalid hex block number")
-// 	})
-
-// 	t.Run("zero count returns empty array", func(t *testing.T) {
-// 		rr := makeJSONRPCRequest(t, server, "getBlocks", []any{0})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.Nil(t, resp.Error)
-
-// 		blocks, ok := resp.Result.([]any)
-// 		require.True(t, ok, "result should be array, got: %T (%v)", resp.Result, resp.Result)
-// 		assert.Len(t, blocks, 0)
-// 	})
-
-// 	t.Run("empty DB returns error", func(t *testing.T) {
-// 		rr := makeJSONRPCRequest(t, server, "getBlocks", []any{5})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 		assert.Contains(t, resp.Error.Message, "failed to get latest 5 blocks")
-// 	})
-
-// 	t.Run("order & shape: newest-first fields/values", func(t *testing.T) {
-// 		// Seed 10 blocks numbered 0..9 into BlockNumberBucket.
-// 		// Each value is CBOR-encoded block.Block with fields:
-// 		// number, hash, stateroot, timestamp. The state root is computed via method.
-// 		err := appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
-// 			for i := 0; i < 10; i++ {
-// 				// Prepare a realistic block.Block
-// 				h := sha256.Sum256([]byte(fmt.Sprintf("block-%d", i)))
-// 				b := block.Block{
-// 					BlockNumber:    uint64(i),
-// 					BlockHash:      h,
-// 					Timestamp: uint64(1630000000 + i*10),
-// 				}
-// 				b.BlockRoot = b.StateRoot()
-
-// 				enc, e := cbor.Marshal(b)
-// 				if e != nil {
-// 					return e
-// 				}
-// 				if e := tx.Put(block.BlockNumberBucket, block.NumberToBytes(b.Number()), enc); e != nil {
-// 					return e
-// 				}
-// 			}
-// 			return nil
-// 		})
-// 		require.NoError(t, err)
-
-// 		// Ask for the latest 5 → expect 9,8,7,6,5 (newest first)
-// 		rr := makeJSONRPCRequest(t, server, "getBlocks", []any{5})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.Nil(t, resp.Error)
-
-// 		result, ok := resp.Result.([]any)
-// 		require.True(t, ok, "result should be array, got: %T", resp.Result)
-// 		require.Len(t, result, 5)
-
-// 		wantNums := []uint64{9, 8, 7, 6, 5}
-// 		expectedFields := []string{"number", "hash", "stateroot", "timestamp"}
-
-// 		for i, entryAny := range result {
-// 			entry, ok := entryAny.(map[string]any)
-// 			require.True(t, ok, "entry should be object with Fields/Values, got: %T", entryAny)
-
-// 			fieldsAny, ok := entry["Fields"].([]any)
-// 			require.True(t, ok, "Fields should be array, got: %T", entry["Fields"])
-
-// 			valuesAny, ok := entry["Values"].([]any)
-// 			require.True(t, ok, "Values should be array, got: %T", entry["Values"])
-
-// 			// Convert []any -> []string
-// 			toStrings := func(a []any) []string {
-// 				out := make([]string, len(a))
-// 				for i := range a {
-// 					out[i], _ = a[i].(string)
-// 				}
-// 				return out
-// 			}
-// 			fields := toStrings(fieldsAny)
-// 			values := toStrings(valuesAny)
-
-// 			// Shape checks
-// 			assert.Equal(t, expectedFields, fields)
-// 			require.Len(t, values, 4)
-
-// 			// number
-// 			assert.Equal(t, fmt.Sprintf("%d", wantNums[i]), values[0])
-// 			// hash, stateroot must be 0x-prefixed hex
-// 			assert.True(t, strings.HasPrefix(values[1], "0x"))
-// 			assert.True(t, strings.HasPrefix(values[2], "0x"))
-// 			// timestamp follows deterministic pattern used in seeding
-// 			wantTs := 1630000000 + wantNums[i]*10
-// 			assert.Equal(t, fmt.Sprintf("%d", wantTs), values[3])
-// 		}
-// 	})
-// }
-
-// // ============= BLOCK TRANSACTIONS BY NUMBER (RPC) =============
-
-// // TODO replace it with TestTransaction
-// type rpcTx struct {
-// 	From  string `json:"from"  cbor:"1,keyasint"`
-// 	To    string `json:"to"    cbor:"2,keyasint"`
-// 	Value int    `json:"value" cbor:"3,keyasint"`
-// }
-
-// func normalizeRPCTxs(t *testing.T, v any) []rpcTx {
-// 	t.Helper()
-// 	b, err := json.Marshal(v)
-// 	require.NoError(t, err)
-// 	var out []rpcTx
-// 	require.NoError(t, json.Unmarshal(b, &out))
-// 	return out
-// }
-
-// func TestStandardRPCServer_getTransactionsByBlockNumber_Params(t *testing.T) {
-// 	server, appchainDB, cleanup := setupTestEnvironment(t)
-// 	defer cleanup()
-
-// 	// Ensure the method is registered even if AddBlockMethods changes.
-// 	bm := NewBlockMethods(appchainDB)
-// 	server.AddMethod("getTransactionsByBlockNumber", bm.GetTransactionsByBlockNumber)
-
-// 	t.Run("requires 1 param", func(t *testing.T) {
-// 		rr := makeJSONRPCRequest(t, server, "getTransactionsByBlockNumber", []any{})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 	})
-
-// 	t.Run("invalid param type", func(t *testing.T) {
-// 		rr := makeJSONRPCRequest(t, server, "getTransactionsByBlockNumber", []any{true})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 		assert.Contains(t, resp.Error.Message, "invalid block number")
-// 	})
-
-// 	t.Run("invalid hex string", func(t *testing.T) {
-// 		rr := makeJSONRPCRequest(t, server, "getTransactionsByBlockNumber", []any{"0xZZ"})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 		assert.Contains(t, resp.Error.Message, "invalid hex block number")
-// 	})
-
-// 	t.Run("negative numeric", func(t *testing.T) {
-// 		rr := makeJSONRPCRequest(t, server, "getTransactionsByBlockNumber", []any{-1})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 		assert.Contains(t, resp.Error.Message, "invalid block number: negative")
-// 	})
-
-// 	t.Run("valid but block not found (decimal & hex)", func(t *testing.T) {
-// 		// decimal
-// 		rr := makeJSONRPCRequest(t, server, "getTransactionsByBlockNumber", []any{"123"})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-// 		var resp JSONRPCResponse
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 		assert.Contains(t, resp.Error.Message, "failed to get transactions for block 123")
-
-// 		// hex 0x7b → 123
-// 		rr = makeJSONRPCRequest(t, server, "getTransactionsByBlockNumber", []any{"0x7b"})
-// 		require.Equal(t, http.StatusOK, rr.Code)
-// 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 		require.NotNil(t, resp.Error)
-// 		assert.Equal(t, -32603, resp.Error.Code)
-// 		assert.Contains(t, resp.Error.Message, "failed to get transactions for block 123")
-// 	})
-// }
-
-// func TestStandardRPCServer_getTransactionsByBlockNumber_DirectEncoding(t *testing.T) {
-// 	server, appchainDB, cleanup := setupTestEnvironment(t)
-// 	defer cleanup()
-
-// 	// Ensure the method is registered.
-// 	bm := NewBlockMethods(appchainDB)
-// 	server.AddMethod("getTransactionsByBlockNumber", bm.GetTransactionsByBlockNumber)
-
-// 	// 1) Seed a block in BlockNumberBucket
-// 	const num = uint64(77)
-// 	h := sha256.Sum256([]byte(fmt.Sprintf("block-%d-direct", num)))
-// 	blk := block.Block{BlockNumber: num, BlockHash: h, Timestamp: 1630000000 + num*10}
-// 	blk.BlockRoot = blk.StateRoot()
-
-// 	blkEnc, err := cbor.Marshal(blk)
-// 	require.NoError(t, err)
-
-// 	require.NoError(t, appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
-// 		return tx.Put(block.BlockNumberBucket, block.NumberToBytes(num), blkEnc)
-// 	}))
-
-// 	// 2) Seed transactions (direct CBOR slice)
-// 	want := []rpcTx{
-// 		{From: "isaac", To: "judy", Value: 10},
-// 		{From: "kate", To: "liam", Value: 11},
-// 	}
-// 	txsEnc, err := cbor.Marshal(want)
-// 	require.NoError(t, err)
-
-// 	require.NoError(t, appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
-// 		return tx.Put(block.BlockTransactionsBucket, block.NumberToBytes(num), txsEnc)
-// 	}))
-
-// 	// 3) Call RPC with decimal param
-// 	rr := makeJSONRPCRequest(t, server, "getTransactionsByBlockNumber", []any{int(num)})
-// 	require.Equal(t, http.StatusOK, rr.Code)
-
-// 	var resp JSONRPCResponse
-// 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 	require.Nil(t, resp.Error)
-
-// 	got := normalizeRPCTxs(t, resp.Result)
-// 	assert.Equal(t, want, got)
-
-// 	// 4) Call RPC with hex param ("0x4d" == 77)
-// 	rr = makeJSONRPCRequest(t, server, "getTransactionsByBlockNumber", []any{"0x4d"})
-// 	require.Equal(t, http.StatusOK, rr.Code)
-
-// 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 	require.Nil(t, resp.Error)
-
-// 	got = normalizeRPCTxs(t, resp.Result)
-// 	assert.Equal(t, want, got)
-// }
-
-// func TestStandardRPCServer_getTransactionsByBlockNumber_NestedEncoding(t *testing.T) {
-// 	server, appchainDB, cleanup := setupTestEnvironment(t)
-// 	defer cleanup()
-
-// 	bm := NewBlockMethods(appchainDB)
-// 	server.AddMethod("getTransactionsByBlockNumber", bm.GetTransactionsByBlockNumber)
-
-// 	// 1) Seed a block
-// 	const num = uint64(78)
-// 	h := sha256.Sum256([]byte(fmt.Sprintf("block-%d-nested", num)))
-// 	blk := block.Block{BlockNumber: num, BlockHash: h, Timestamp: 1630000000 + num*10}
-// 	blk.BlockRoot = blk.StateRoot()
-// 	blkEnc, err := cbor.Marshal(blk)
-// 	require.NoError(t, err)
-
-// 	require.NoError(t, appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
-// 		return tx.Put(block.BlockNumberBucket, block.NumberToBytes(num), blkEnc)
-// 	}))
-
-// 	// 2) Seed transactions as CBOR([][]byte{ CBOR(tx), ... })
-// 	want := []rpcTx{
-// 		{From: "eve", To: "frank", Value: 7},
-// 		{From: "grace", To: "heidi", Value: 8},
-// 	}
-// 	var nested [][]byte
-// 	for _, txv := range want {
-// 		b, e := cbor.Marshal(txv)
-// 		require.NoError(t, e)
-// 		nested = append(nested, b)
-// 	}
-// 	nestedEnc, err := cbor.Marshal(nested)
-// 	require.NoError(t, err)
-
-// 	require.NoError(t, appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
-// 		return tx.Put(block.BlockTransactionsBucket, block.NumberToBytes(num), nestedEnc)
-// 	}))
-
-// 	// 3) Call RPC
-// 	rr := makeJSONRPCRequest(t, server, "getTransactionsByBlockNumber", []any{num})
-// 	require.Equal(t, http.StatusOK, rr.Code)
-
-// 	var resp JSONRPCResponse
-// 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 	require.Nil(t, resp.Error)
-
-// 	got := normalizeRPCTxs(t, resp.Result)
-// 	assert.Equal(t, want, got)
-// }
-
-// func TestStandardRPCServer_getTransactionsByBlockNumber_EmptyTxs(t *testing.T) {
-// 	server, appchainDB, cleanup := setupTestEnvironment(t)
-// 	defer cleanup()
-
-// 	bm := NewBlockMethods(appchainDB)
-// 	server.AddMethod("getTransactionsByBlockNumber", bm.GetTransactionsByBlockNumber)
-
-// 	// Seed a block but DO NOT write any txs entry
-// 	const num = uint64(79)
-// 	h := sha256.Sum256([]byte(fmt.Sprintf("block-%d-empty", num)))
-// 	blk := block.Block{BlockNumber: num, BlockHash: h, Timestamp: 1630000000 + num*10}
-// 	blk.BlockRoot = blk.StateRoot()
-// 	blkEnc, err := cbor.Marshal(blk)
-// 	require.NoError(t, err)
-// 	require.NoError(t, appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
-// 		return tx.Put(block.BlockNumberBucket, block.NumberToBytes(num), blkEnc)
-// 	}))
-
-// 	rr := makeJSONRPCRequest(t, server, "getTransactionsByBlockNumber", []any{num})
-// 	require.Equal(t, http.StatusOK, rr.Code)
-
-// 	var resp JSONRPCResponse
-// 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-// 	require.Nil(t, resp.Error)
-
-// 	// Should be an empty array
-// 	arr, ok := resp.Result.([]any)
-// 	require.True(t, ok, "result should be array, got %T (%v)", resp.Result, resp.Result)
-// 	assert.Len(t, arr, 0)
-// }
+func TestStandardRPCServer_getBlockByNumber(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	storedBlock := storeTestBlock(t, appchainDB, 42, 1_700_000_000, nil)
+
+	rr := makeJSONRPCRequest(
+		t,
+		server,
+		"getBlockByNumber",
+		[]any{strconv.FormatUint(storedBlock.BlockNumber, 10)},
+	)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.Nil(t, resp.Error)
+
+	payload, err := json.Marshal(resp.Result)
+	require.NoError(t, err)
+
+	var fv block.FieldsValues
+	require.NoError(t, json.Unmarshal(payload, &fv))
+
+	require.Equal(
+		t,
+		[]string{"number", "hash", "stateroot", "timestamp", "transactions"},
+		fv.Fields,
+	)
+	require.Equal(t, []string{
+		strconv.FormatUint(storedBlock.BlockNumber, 10),
+		fmt.Sprintf("0x%x", storedBlock.BlockHash),
+		fmt.Sprintf("0x%x", storedBlock.StateRoot()),
+		strconv.FormatUint(storedBlock.Timestamp, 10),
+		"0",
+	}, fv.Values)
+}
+
+func TestStandardRPCServer_getBlockByHash(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	storedBlock := storeTestBlock(t, appchainDB, 21, 1_700_000_050, nil)
+
+	hashParam := "0x" + hex.EncodeToString(storedBlock.BlockHash[:])
+	rr := makeJSONRPCRequest(t, server, "getBlockByHash", []any{hashParam})
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.Nil(t, resp.Error)
+
+	payload, err := json.Marshal(resp.Result)
+	require.NoError(t, err)
+
+	var fv block.FieldsValues
+	require.NoError(t, json.Unmarshal(payload, &fv))
+
+	require.Equal(
+		t,
+		[]string{"number", "hash", "stateroot", "timestamp", "transactions"},
+		fv.Fields,
+	)
+	require.Equal(t, []string{
+		strconv.FormatUint(storedBlock.BlockNumber, 10),
+		fmt.Sprintf("0x%x", storedBlock.BlockHash),
+		fmt.Sprintf("0x%x", storedBlock.StateRoot()),
+		strconv.FormatUint(storedBlock.Timestamp, 10),
+		"0",
+	}, fv.Values)
+}
+
+func TestStandardRPCServer_getBlocks(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	older := storeTestBlock(t, appchainDB, 10, 1_700_000_000, nil)
+	newer := storeTestBlock(t, appchainDB, 20, 1_700_000_100, nil)
+
+	rr := makeJSONRPCRequest(t, server, "getBlocks", []any{"2"})
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.Nil(t, resp.Error)
+
+	payload, err := json.Marshal(resp.Result)
+	require.NoError(t, err)
+
+	var list []block.FieldsValues
+	require.NoError(t, json.Unmarshal(payload, &list))
+
+	require.Len(t, list, 2)
+	require.Equal(t, strconv.FormatUint(newer.BlockNumber, 10), list[0].Values[0])
+	require.Equal(t, strconv.FormatUint(older.BlockNumber, 10), list[1].Values[0])
+}
+
+func TestStandardRPCServer_getTransactionsByBlockNumber(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	storedBlock := storeTestBlock(
+		t,
+		appchainDB,
+		77,
+		1_700_000_200,
+		[]TestTransaction[TestReceipt]{
+			{From: "0xaaaa", To: "0xbbbb", Value: 5},
+			{From: "0xcccc", To: "0xdddd", Value: 6},
+		},
+	)
+
+	rr := makeJSONRPCRequest(
+		t,
+		server,
+		"getTransactionsByBlockNumber",
+		[]any{strconv.FormatUint(storedBlock.BlockNumber, 10)},
+	)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.Nil(t, resp.Error)
+
+	payload, err := json.Marshal(resp.Result)
+	require.NoError(t, err)
+
+	var txs []TestTransaction[TestReceipt]
+	require.NoError(t, json.Unmarshal(payload, &txs))
+
+	require.Len(t, txs, len(storedBlock.Transactions))
+	require.Equal(t, storedBlock.Transactions[0].From, txs[0].From)
+	require.Equal(t, storedBlock.Transactions[1].To, txs[1].To)
+}
+
+func TestStandardRPCServer_getTransactionsByBlockHash(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	storedBlock := storeTestBlock(
+		t,
+		appchainDB,
+		88,
+		1_700_000_300,
+		[]TestTransaction[TestReceipt]{
+			{From: "0x1111", To: "0x2222", Value: 7},
+			{From: "0x3333", To: "0x4444", Value: 8},
+		},
+	)
+
+	hashParam := "0x" + hex.EncodeToString(storedBlock.BlockHash[:])
+	rr := makeJSONRPCRequest(t, server, "getTransactionsByBlockHash", []any{hashParam})
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.Nil(t, resp.Error)
+
+	payload, err := json.Marshal(resp.Result)
+	require.NoError(t, err)
+
+	var txs []TestTransaction[TestReceipt]
+	require.NoError(t, json.Unmarshal(payload, &txs))
+
+	require.Len(t, txs, len(storedBlock.Transactions))
+	require.Equal(t, storedBlock.Transactions[0].Hash(), txs[0].Hash())
+	require.Equal(t, storedBlock.Transactions[1].Value, txs[1].Value)
+}

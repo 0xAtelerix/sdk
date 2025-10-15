@@ -68,16 +68,16 @@ func (m *TransactionMethods[appTx, R]) GetTransactionStatus(
 	})
 	if err == nil {
 		// Receipt found - return status based on receipt
-		switch receiptResp.Status() {
-		case apptypes.ReceiptConfirmed:
+		status := receiptResp.Status()
+		if status == apptypes.ReceiptConfirmed {
 			return apptypes.Processed.String(), nil
-		case apptypes.ReceiptFailed:
-			return apptypes.Failed.String(), nil
-		case apptypes.ReceiptUnknown:
-			return apptypes.Unknown.String(), nil
-		default:
-			return apptypes.Unknown.String(), nil
 		}
+
+		if status == apptypes.ReceiptFailed {
+			return apptypes.Failed.String(), nil
+		}
+
+		return apptypes.Unknown.String(), nil
 	}
 
 	// Step 2: No receipt found, check txpool for pending status
