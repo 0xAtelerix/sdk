@@ -191,7 +191,7 @@ func TestGetBlocks(t *testing.T) {
 	})
 }
 
-func TestGetTransactionsForBlockNumber(t *testing.T) {
+func TestGetTransactionsByBlockNumber(t *testing.T) {
 	t.Parallel()
 
 	db := createDB(t, BlockNumberBucket)
@@ -207,7 +207,7 @@ func TestGetTransactionsForBlockNumber(t *testing.T) {
 	}))
 
 	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
-		res, err := GetTransactionsForBlockNumber[testTx](tx, block.BlockNumber, testTx{})
+		res, err := GetTransactionsByBlockNumber[testTx](tx, block.BlockNumber, testTx{})
 		require.NoError(t, err)
 		require.Len(t, res, len(block.Transactions))
 
@@ -220,7 +220,7 @@ func TestGetTransactionsForBlockNumber(t *testing.T) {
 
 	t.Run("non-existent block", func(tr *testing.T) {
 		require.NoError(tr, db.View(context.Background(), func(tx kv.Tx) error {
-			_, err := GetTransactionsForBlockNumber[testTx](tx, 999, testTx{})
+			_, err := GetTransactionsByBlockNumber[testTx](tx, 999, testTx{})
 			require.ErrorIs(tr, err, ErrNoBlocks)
 
 			return nil
@@ -238,7 +238,7 @@ func TestGetTransactionsForBlockNumber(t *testing.T) {
 		}))
 
 		require.NoError(tr, db.View(context.Background(), func(tx kv.Tx) error {
-			res, err := GetTransactionsForBlockNumber[testTx](tx, empty.BlockNumber, testTx{})
+			res, err := GetTransactionsByBlockNumber[testTx](tx, empty.BlockNumber, testTx{})
 			require.NoError(tr, err)
 			require.Empty(tr, res)
 
@@ -258,7 +258,7 @@ func TestGetTransactionsForBlockNumber(t *testing.T) {
 		}))
 
 		require.NoError(tr, db.View(context.Background(), func(tx kv.Tx) error {
-			_, err := GetTransactionsForBlockNumber[testTx](tx, block.BlockNumber, testTx{})
+			_, err := GetTransactionsByBlockNumber[testTx](tx, block.BlockNumber, testTx{})
 			require.Error(tr, err)
 			require.NotErrorIs(tr, err, ErrNoBlocks)
 
@@ -267,7 +267,7 @@ func TestGetTransactionsForBlockNumber(t *testing.T) {
 	})
 }
 
-func TestGetTransactionsForBlockHash(t *testing.T) {
+func TestGetTransactionsByBlockHash(t *testing.T) {
 	t.Parallel()
 
 	db := createDB(t, BlockHashBucket)
@@ -283,7 +283,7 @@ func TestGetTransactionsForBlockHash(t *testing.T) {
 	}))
 
 	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
-		res, err := GetTransactionsForBlockHash[testTx](tx, hash, testTx{})
+		res, err := GetTransactionsByBlockHash[testTx](tx, hash, testTx{})
 		require.NoError(t, err)
 		require.Len(t, res, len(block.Transactions))
 
@@ -296,7 +296,7 @@ func TestGetTransactionsForBlockHash(t *testing.T) {
 
 	t.Run("non-existent block hash", func(tr *testing.T) {
 		require.NoError(tr, db.View(context.Background(), func(tx kv.Tx) error {
-			_, err := GetTransactionsForBlockHash[testTx](tx, filled(0x00), testTx{})
+			_, err := GetTransactionsByBlockHash[testTx](tx, filled(0x00), testTx{})
 			require.ErrorIs(tr, err, ErrNoBlocks)
 
 			return nil
@@ -314,7 +314,7 @@ func TestGetTransactionsForBlockHash(t *testing.T) {
 		}))
 
 		require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
-			res, err := GetTransactionsForBlockHash[testTx](tx, emptyHash, testTx{})
+			res, err := GetTransactionsByBlockHash[testTx](tx, emptyHash, testTx{})
 			require.NoError(tr, err)
 			require.Empty(tr, res)
 
@@ -334,7 +334,7 @@ func TestGetTransactionsForBlockHash(t *testing.T) {
 		}))
 
 		require.NoError(tr, db.View(context.Background(), func(tx kv.Tx) error {
-			_, err := GetTransactionsForBlockHash[testTx](tx, hash, testTx{})
+			_, err := GetTransactionsByBlockHash[testTx](tx, hash, testTx{})
 			require.Error(tr, err)
 			require.NotErrorIs(tr, err, ErrNoBlocks)
 

@@ -38,4 +38,7 @@ var (
 	ErrFailedToGetTransactionsByBlockNumber = errors.New(
 		"failed to get transactions by block number",
 	)
+	ErrFailedToGetTransactionsByBlockHash = errors.New(
+		"failed to get transactions by block hash",
+	)
 )

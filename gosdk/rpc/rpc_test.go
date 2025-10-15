@@ -119,7 +119,7 @@ func setupTestEnvironment(
 
 	// Add standard methods to maintain compatibility with existing tests
 	AddStandardMethods(server, appchainDB, txPool)
-	AddBlockMethods(server, appchainDB)
+	AddBlockMethods[TestTransaction[TestReceipt], TestReceipt](server, appchainDB)
 
 	cleanup = func() {
 		localDB.Close()

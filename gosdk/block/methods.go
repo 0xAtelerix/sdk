@@ -75,7 +75,7 @@ func GetBlocks(tx kv.Tx, count uint64) ([]FieldsValues, error) {
 	return out, nil
 }
 
-func GetTransactionsForBlockNumber[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
+func GetTransactionsByBlockNumber[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	tx kv.Tx,
 	number uint64,
 	_ appTx,
@@ -93,8 +93,8 @@ func GetTransactionsForBlockNumber[appTx apptypes.AppTransaction[R], R apptypes.
 }
 
 // TODO add bucket argument to make it more generic
-// TODO remove one from GetTransactionsForBlockNumber and GetTransactionsForBlockHash to make API more generic
-func GetTransactionsForBlockHash[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
+// TODO remove one from GetTransactionsByBlockNumber and GetTransactionsByBlockHash to make API more generic
+func GetTransactionsByBlockHash[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	tx kv.Tx,
 	hash [32]byte,
 	_ appTx,
