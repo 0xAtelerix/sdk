@@ -353,7 +353,7 @@ func TestExtractTransactions(t *testing.T) {
 		payload := encodeBlock(block)
 		require.NotNil(tr, payload)
 
-		res, err := extractTransactions[testTx, testReceiptError](payload)
+		res, err := extractTransactions[testTx](payload)
 		require.NoError(tr, err)
 		require.Len(tr, res, len(txs))
 
@@ -367,13 +367,13 @@ func TestExtractTransactions(t *testing.T) {
 		payload := encodeBlock(block)
 		require.NotNil(tr, payload)
 
-		res, err := extractTransactions[testTx, testReceiptError](payload)
+		res, err := extractTransactions[testTx](payload)
 		require.NoError(tr, err)
 		require.Empty(tr, res)
 	})
 
 	t.Run("corrupted value returns error", func(tr *testing.T) {
-		_, err := extractTransactions[testTx, testReceiptError]([]byte("invalid cbor"))
+		_, err := extractTransactions[testTx]([]byte("invalid cbor"))
 		require.Error(tr, err)
 	})
 }

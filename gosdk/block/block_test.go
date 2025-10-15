@@ -101,6 +101,39 @@ func TestBlockConvertToFieldsValues(t *testing.T) {
 	require.Equal(t, fmt.Sprint(wantZero), fmt.Sprint(gotZero.Values))
 }
 
+func TestBlockComputeTransactionsHash(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil block returns zero hash", func(t *testing.T) {
+		var zero *Block[testTx, testReceiptError]
+
+		require.Equal(t, [32]byte{}, zero.computeTransactionsHash())
+	})
+
+	t.Run("matches expected hash", func(t *testing.T) {
+		b := sampleBlock()
+
+		require.Equal(t, expectedHash(b), b.computeTransactionsHash())
+	})
+
+	t.Run("changes when block content changes", func(t *testing.T) {
+		base := sampleBlock()
+		withExtraTx := sampleBlock()
+		withExtraTx.Transactions = append(withExtraTx.Transactions, newTestTx(3))
+
+		require.NotEqual(t, base.computeTransactionsHash(), withExtraTx.computeTransactionsHash())
+
+		withDifferentRoot := sampleBlock()
+		withDifferentRoot.BlockRoot = filled(0x42)
+
+		require.NotEqual(
+			t,
+			base.computeTransactionsHash(),
+			withDifferentRoot.computeTransactionsHash(),
+		)
+	})
+}
+
 func createDB(tb testing.TB, buckets ...string) kv.RwDB {
 	tb.Helper()
 	db := memdb.NewTestDB(tb)

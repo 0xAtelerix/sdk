@@ -7,8 +7,7 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-// GetBlock loads a block
-// TODO consider to pass third argument of type apptypes.AppchainBlock to decode into concrete type
+// GetBlock retrieves a block by key from the specified bucket and decodes it into FieldsValues.
 func GetBlock(
 	tx kv.Tx,
 	bucket string,
@@ -35,7 +34,6 @@ func GetBlock(
 // GetBlocks returns up to `count` most recent blocks from the BlockNumberBucket (newest first)
 // and formats each block as FieldsValues (same shape as GetBlock).
 // If count <= 0, it returns an empty slice. If the bucket is empty, returns ErrNoBlocks.
-// TODO consider to pass third argument of type apptypes.AppchainBlock to decode into concrete type using cbor.Unmarshal
 func GetBlocks(tx kv.Tx, count uint64) ([]FieldsValues, error) {
 	if count == 0 {
 		return []FieldsValues{}, nil
@@ -75,6 +73,9 @@ func GetBlocks(tx kv.Tx, count uint64) ([]FieldsValues, error) {
 	return out, nil
 }
 
+// GetTransactionsByBlockNumber loads the block stored in BlockNumberBucket and returns
+// a copy of its transactions decoded into the provided appTx type. When the block does
+// not exist it returns ErrNoBlocks.
 func GetTransactionsByBlockNumber[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	tx kv.Tx,
 	number uint64,
@@ -89,11 +90,12 @@ func GetTransactionsByBlockNumber[appTx apptypes.AppTransaction[R], R apptypes.R
 		return nil, ErrNoBlocks
 	}
 
-	return extractTransactions[appTx, R](value)
+	return extractTransactions[appTx](value)
 }
 
-// TODO add bucket argument to make it more generic
-// TODO remove one from GetTransactionsByBlockNumber and GetTransactionsByBlockHash to make API more generic
+// GetTransactionsByBlockHash retrieves the block stored in BlockHashBucket and returns a copy
+// of its transactions decoded into the provided appTx type. When the block does not exist
+// it returns ErrNoBlocks.
 func GetTransactionsByBlockHash[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	tx kv.Tx,
 	hash [32]byte,
@@ -108,9 +110,12 @@ func GetTransactionsByBlockHash[appTx apptypes.AppTransaction[R], R apptypes.Rec
 		return nil, ErrNoBlocks
 	}
 
-	return extractTransactions[appTx, R](value)
+	return extractTransactions[appTx](value)
 }
 
+// extractTransactions decodes the CBOR-encoded block payload and returns a defensive copy
+// of its transactions so callers can safely mutate the slice. The helper is shared by the
+// public getters and surfaces unmarshalling failures to the caller.
 func extractTransactions[
 	appTx apptypes.AppTransaction[R],
 	R apptypes.Receipt,
