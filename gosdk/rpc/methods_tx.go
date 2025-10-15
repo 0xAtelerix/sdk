@@ -105,5 +105,3 @@ func AddTransactionMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt]
 
 	server.AddMethod("getTransactionStatus", methods.GetTransactionStatus)
 }
-
-// TODO GetTransactionByHash
