@@ -26,7 +26,6 @@ func NewBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 // GetBlockByNumber retrieves a block by number (accepts decimal like "123", hex "0x7b", or a numeric JSON value).
 func (m *BlockMethods[appTx, R]) GetBlockByNumber(ctx context.Context, params []any) (any, error) {
 	if len(params) != 1 {
-		// Keep consistency with project-wide errors (mirrors existing style).
 		return nil, ErrGetBlockByNumberRequires1Param
 	}
 
@@ -201,27 +200,8 @@ func AddBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 
 // parseNumber converts a JSON-RPC parameter into a uint64 block number.
 // Supports numeric values and strings in either decimal (e.g. "123") or hex ("0x7b").
-// TODO consider to remove certain cases if they are not needed
 func parseNumber(v any) (uint64, error) {
 	switch n := v.(type) {
-	case float64:
-		if n < 0 {
-			return 0, ErrNegativeBlockNumber
-		}
-
-		return uint64(n), nil
-	case int:
-		if n < 0 {
-			return 0, ErrNegativeBlockNumber
-		}
-
-		return uint64(n), nil
-	case int64:
-		if n < 0 {
-			return 0, ErrNegativeBlockNumber
-		}
-
-		return uint64(n), nil
 	case uint64:
 		return n, nil
 	case string:
