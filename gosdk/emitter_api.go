@@ -112,16 +112,12 @@ func (s *AppchainEmitterServer[appTx, R]) GetCheckpoints(
 	}
 
 	if len(checkpoints) > 0 {
-		s.logger.Debug().
-			Str("method", "GetCheckpoints").
-			Uint64("last checkpoint", checkpoints[len(checkpoints)-1].GetLatestBlockNumber()).
-			Msg("New checkpoints")
-		s.logger.Warn().
+		s.logger.Info().
 			Str("method", "GetCheckpoints").
 			Uint64("last checkpoint", checkpoints[len(checkpoints)-1].GetLatestBlockNumber()).
 			Msg("New checkpoints")
 	} else {
-		s.logger.Debug().
+		s.logger.Info().
 			Str("method", "GetCheckpoints").
 			Msg("No new checkpoints")
 	}
