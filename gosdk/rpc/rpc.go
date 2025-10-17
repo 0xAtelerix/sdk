@@ -289,5 +289,6 @@ func AddStandardMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	AddTxPoolMethods(server, txpool)
 	AddReceiptMethods[R](server, appchainDB)
 	AddTransactionMethods(server, txpool, appchainDB)
+	AddBlockMethods[appTx](server, appchainDB)
 	AddChainBlockMethods(server, appchainDB)
 }
