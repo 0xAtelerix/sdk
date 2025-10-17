@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strconv"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestBlockConvertToFieldsValues_HappyPath(t *testing.T) {
@@ -18,11 +20,12 @@ func TestBlockConvertToFieldsValues_HappyPath(t *testing.T) {
 		Transactions: []testTx{{HashValue: filled(0x33)}, {HashValue: filled(0x44)}},
 	}
 
-	if got, want := b.Hash(), expectedHash(b); got != want {
-		t.Fatalf("hash mismatch: got %x want %x", got, want)
-	}
+	hash := b.Hash()
+	require.Equal(t, expectedHash(b), hash)
+	require.Equal(t, expectedHash(b), b.BlockHash)
 
-	got := b.convertToFieldsValues()
+	got, err := b.convertToFieldsValues()
+	require.NoError(t, err)
 
 	wantFields := []string{"number", "hash", "stateroot", "timestamp", "transactions"}
 	if !reflect.DeepEqual(got.Fields, wantFields) {
@@ -31,7 +34,7 @@ func TestBlockConvertToFieldsValues_HappyPath(t *testing.T) {
 
 	wantValues := []string{
 		strconv.FormatUint(b.BlockNumber, 10),
-		fmt.Sprintf("0x%x", b.Hash()),
+		fmt.Sprintf("0x%x", hash),
 		fmt.Sprintf("0x%x", b.StateRoot()),
 		strconv.FormatUint(b.Timestamp, 10),
 		strconv.FormatUint(uint64(len(b.Transactions)), 10),
@@ -46,11 +49,11 @@ func TestBlockConvertToFieldsValues_ZeroBlock(t *testing.T) {
 
 	b := &Block[testTx, testReceiptError]{} // zero-value block
 
-	if got, want := b.Hash(), expectedHash(b); got != want {
-		t.Fatalf("hash mismatch on zero block: got %x want %x", got, want)
-	}
+	zeroHash := b.Hash()
+	require.Equal(t, expectedHash(b), zeroHash)
 
-	got := b.convertToFieldsValues()
+	got, err := b.convertToFieldsValues()
+	require.NoError(t, err)
 
 	wantFields := []string{"number", "hash", "stateroot", "timestamp", "transactions"}
 	if !reflect.DeepEqual(got.Fields, wantFields) {
@@ -59,7 +62,7 @@ func TestBlockConvertToFieldsValues_ZeroBlock(t *testing.T) {
 
 	wantValues := []string{
 		"0",
-		fmt.Sprintf("0x%x", b.Hash()),
+		fmt.Sprintf("0x%x", zeroHash),
 		fmt.Sprintf("0x%x", b.StateRoot()),
 		"0",
 		"0",

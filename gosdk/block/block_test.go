@@ -34,10 +34,8 @@ func TestBlockHashIncludesTransactions(t *testing.T) {
 	b := sampleBlock()
 	want := expectedHash(b)
 
-	got := b.Hash()
-	require.Equal(t, want, got)
-	require.Equal(t, want, b.BlockHash)
 	require.Equal(t, want, b.Hash())
+	require.Equal(t, want, b.BlockHash)
 }
 
 func TestBlockStateRoot(t *testing.T) {
@@ -67,7 +65,9 @@ func TestBlockConvertToFieldsValues(t *testing.T) {
 
 	b := sampleBlock()
 
-	got := b.convertToFieldsValues()
+	got, err := b.convertToFieldsValues()
+	require.NoError(t, err)
+
 	wantFields := []string{"number", "hash", "stateroot", "timestamp", "transactions"}
 	require.Equal(t, fmt.Sprint(wantFields), fmt.Sprint(got.Fields))
 
@@ -85,7 +85,8 @@ func TestBlockConvertToFieldsValues(t *testing.T) {
 
 	var zero *Block[testTx, testReceiptError]
 
-	gotZero := zero.convertToFieldsValues()
+	gotZero, err := zero.convertToFieldsValues()
+	require.NoError(t, err)
 	require.Equal(t, fmt.Sprint(wantFields), fmt.Sprint(gotZero.Fields))
 
 	wantZero := []string{
@@ -96,39 +97,6 @@ func TestBlockConvertToFieldsValues(t *testing.T) {
 		"0",
 	}
 	require.Equal(t, fmt.Sprint(wantZero), fmt.Sprint(gotZero.Values))
-}
-
-func TestBlockComputeTransactionsHash(t *testing.T) {
-	t.Parallel()
-
-	t.Run("nil block returns zero hash", func(t *testing.T) {
-		var zero *Block[testTx, testReceiptError]
-
-		require.Equal(t, [32]byte{}, zero.computeTransactionsHash())
-	})
-
-	t.Run("matches expected hash", func(t *testing.T) {
-		b := sampleBlock()
-
-		require.Equal(t, expectedHash(b), b.computeTransactionsHash())
-	})
-
-	t.Run("changes when block content changes", func(t *testing.T) {
-		base := sampleBlock()
-		withExtraTx := sampleBlock()
-		withExtraTx.Transactions = append(withExtraTx.Transactions, newTestTx(3))
-
-		require.NotEqual(t, base.computeTransactionsHash(), withExtraTx.computeTransactionsHash())
-
-		withDifferentRoot := sampleBlock()
-		withDifferentRoot.BlockRoot = filled(0x42)
-
-		require.NotEqual(
-			t,
-			base.computeTransactionsHash(),
-			withDifferentRoot.computeTransactionsHash(),
-		)
-	})
 }
 
 func TestNumberToBytes(t *testing.T) {

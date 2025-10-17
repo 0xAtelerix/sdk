@@ -191,6 +191,7 @@ func AddBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 ) {
 	methods := NewBlockMethods[appTx](appchainDB)
 
+	// server.AddMethod("sendBlock", methods.SendBlock)
 	server.AddMethod("getBlockByNumber", methods.GetBlockByNumber)
 	server.AddMethod("getBlockByHash", methods.GetBlockByHash)
 	server.AddMethod("getBlocks", methods.GetBlocks)

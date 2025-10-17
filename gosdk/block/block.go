@@ -39,7 +39,8 @@ func (b *Block[appTx, R]) Number() uint64 {
 	return b.BlockNumber
 }
 
-func (b *Block[appTx, R]) computeTransactionsHash() [32]byte {
+// Hash implements apptypes.AppchainBlock.
+func (b *Block[appTx, R]) Hash() [32]byte {
 	if b == nil {
 		return [32]byte{}
 	}
@@ -72,17 +73,6 @@ func (b *Block[appTx, R]) computeTransactionsHash() [32]byte {
 
 	var out [32]byte
 	copy(out[:], hasher.Sum(nil))
-
-	return out
-}
-
-// Hash implements apptypes.AppchainBlock.
-func (b *Block[appTx, R]) Hash() [32]byte {
-	if b == nil {
-		return [32]byte{}
-	}
-
-	out := b.computeTransactionsHash()
 	b.BlockHash = out
 
 	return out
@@ -113,7 +103,7 @@ func (b *Block[appTx, R]) Bytes() []byte {
 }
 
 // convertToFieldsValues converts Block to FieldsValues.
-func (b *Block[appTx, R]) convertToFieldsValues() FieldsValues {
+func (b *Block[appTx, R]) convertToFieldsValues() (FieldsValues, error) {
 	if b == nil {
 		b = &Block[appTx, R]{}
 	}
@@ -137,15 +127,17 @@ func (b *Block[appTx, R]) convertToFieldsValues() FieldsValues {
 		fields = append(fields, name)
 	}
 	// Values aligned with fields order
+	hash := b.Hash()
+
 	values := []string{
 		strconv.FormatUint(b.Number(), 10),
-		fmt.Sprintf("0x%x", b.Hash()),
+		fmt.Sprintf("0x%x", hash),
 		fmt.Sprintf("0x%x", b.StateRoot()),
 		strconv.FormatUint(b.Timestamp, 10),
 		strconv.FormatUint(uint64(len(b.Transactions)), 10),
 	}
 
-	return FieldsValues{Fields: fields, Values: values}
+	return FieldsValues{Fields: fields, Values: values}, nil
 }
 
 // FieldsValues represents a set of fields of Block and their corresponding values.

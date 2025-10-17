@@ -24,11 +24,16 @@ func GetBlock(
 	}
 
 	var b Block[apptypes.AppTransaction[apptypes.Receipt], apptypes.Receipt]
-	if err := cbor.Unmarshal(value, &b); err != nil {
+	if unmarshalErr := cbor.Unmarshal(value, &b); unmarshalErr != nil {
+		return FieldsValues{}, unmarshalErr
+	}
+
+	fv, err := b.convertToFieldsValues()
+	if err != nil {
 		return FieldsValues{}, err
 	}
 
-	return b.convertToFieldsValues(), nil
+	return fv, nil
 }
 
 // GetBlocks returns up to `count` most recent blocks from the BlockNumberBucket (newest first)
@@ -62,7 +67,12 @@ func GetBlocks(tx kv.Tx, count uint64) ([]FieldsValues, error) {
 			return nil, unmarshalErr
 		}
 
-		out = append(out, b.convertToFieldsValues())
+		fv, err := b.convertToFieldsValues()
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, fv)
 
 		k, v, err = cur.Prev()
 		if err != nil {
