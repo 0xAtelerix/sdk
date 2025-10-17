@@ -7,11 +7,16 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
 
+	"github.com/blocto/solana-go-sdk/client"
+	"github.com/ethereum/go-ethereum/common"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/goccy/go-json"
 	"github.com/ledgerwatch/erigon-lib/kv"
@@ -20,8 +25,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/block"
+	"github.com/0xAtelerix/sdk/gosdk/chainblock"
 	"github.com/0xAtelerix/sdk/gosdk/receipt"
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
@@ -32,8 +39,8 @@ const (
 )
 
 var (
-	errInvalidParameterType = errors.New("invalid parameter type")
 	errMiddlewareFailed     = errors.New("middleware failed")
+	errInvalidParameterType = errors.New("invalid parameter type")
 )
 
 // TestTransaction - test transaction implementation
@@ -105,6 +112,7 @@ func setupTestEnvironment(
 				block.BlockNumberBucket:       {},
 				block.BlockHashBucket:         {},
 				block.BlockTransactionsBucket: {},
+				chainblock.Bucket:             {},
 			}
 		}).
 		Open()
@@ -163,6 +171,94 @@ func storeTestBlock(
 	}))
 
 	return testBlock
+}
+
+func storeChainBlock(
+	t *testing.T,
+	db kv.RwDB,
+	chainType apptypes.ChainType,
+	number uint64,
+	timestamp uint64,
+) any {
+	t.Helper()
+
+	var (
+		payload []byte
+		err     error
+		result  any
+	)
+
+	switch {
+	case gosdk.IsEvmChain(chainType):
+		header := &gethtypes.Header{
+			Number:     big.NewInt(int64(number)),
+			ParentHash: common.BigToHash(big.NewInt(int64(number + 1))),
+			Nonce:      gethtypes.BlockNonce{0xaa, byte(number)},
+			Time:       timestamp,
+			Coinbase:   common.HexToAddress("0x000000000000000000000000000000000000c0de"),
+			GasLimit:   30_000_000,
+			GasUsed:    1_500_000,
+			Difficulty: big.NewInt(123456),
+			Extra:      []byte{0xde, 0xad, byte(number)},
+		}
+
+		ethBlock := gethtypes.NewBlock(header, nil, nil, nil)
+		ethBlock.Hash()
+
+		payload, err = cbor.Marshal(gosdk.NewEthereumBlock(ethBlock))
+		require.NoError(t, err)
+
+		result = ethBlock
+
+	case gosdk.IsSolanaChain(chainType):
+		blockTime := time.Unix(int64(timestamp), 0)
+
+		parent := uint64(0)
+		if number > 0 {
+			parent = number - 1
+		}
+
+		solBlock := &client.Block{
+			Blockhash:         fmt.Sprintf("sol-hash-%d", number),
+			PreviousBlockhash: fmt.Sprintf("sol-prev-%d", number),
+			ParentSlot:        parent,
+			BlockTime:         &blockTime,
+			Transactions:      make([]client.BlockTransaction, 2),
+			Rewards:           make([]client.Reward, 1),
+		}
+
+		payload, err = cbor.Marshal(solBlock)
+		require.NoError(t, err)
+
+		result = solBlock
+
+	default:
+		t.Fatalf("unsupported chain type %d", chainType)
+	}
+
+	raw, err := cbor.Marshal(struct {
+		ChainType apptypes.ChainType `cbor:"1,keyasint"`
+		Block     []byte             `cbor:"2,keyasint"`
+	}{
+		ChainType: chainType,
+		Block:     payload,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, db.Update(context.Background(), func(tx kv.RwTx) error {
+		return tx.Put(chainblock.Bucket, chainblock.Key(chainType, number), raw)
+	}))
+
+	return result
+}
+
+func fieldsValuesToMap(fv chainblock.FieldsValues) map[string]string {
+	out := make(map[string]string, len(fv.Fields))
+	for i := range fv.Fields {
+		out[fv.Fields[i]] = fv.Values[i]
+	}
+
+	return out
 }
 
 // makeJSONRPCRequest creates a JSON-RPC request and returns the response
@@ -1313,4 +1409,112 @@ func TestStandardRPCServer_getTransactionsByBlockHash(t *testing.T) {
 	require.Len(t, txs, len(storedBlock.Transactions))
 	require.Equal(t, storedBlock.Transactions[0].Hash(), txs[0].Hash())
 	require.Equal(t, storedBlock.Transactions[1].Value, txs[1].Value)
+}
+
+func TestStandardRPCServer_getChainBlockByNumber(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	blkAny := storeChainBlock(t, appchainDB, gosdk.EthereumChainID, 77, 1_700_000_777)
+	blk, ok := blkAny.(*gethtypes.Block)
+	require.True(t, ok)
+
+	rr := makeJSONRPCRequest(
+		t,
+		server,
+		"getChainBlockByNumber",
+		[]any{
+			strconv.FormatUint(uint64(gosdk.EthereumChainID), 10),
+			strconv.FormatUint(blk.NumberU64(), 10),
+		},
+	)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.Nil(t, resp.Error)
+
+	payload, err := json.Marshal(resp.Result)
+	require.NoError(t, err)
+
+	var fv chainblock.FieldsValues
+	require.NoError(t, json.Unmarshal(payload, &fv))
+
+	fieldMap := fieldsValuesToMap(fv)
+
+	require.Equal(t, blk.Number().String(), fieldMap["number"])
+	require.Equal(t, blk.Hash().Hex(), fieldMap["hash"])
+	require.Equal(t, strconv.FormatUint(blk.Time(), 10), fieldMap["timestamp"])
+	require.Equal(t, strconv.FormatUint(blk.GasLimit(), 10), fieldMap["gasLimit"])
+}
+
+func TestStandardRPCServer_getChainBlocks(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	storeChainBlock(t, appchainDB, gosdk.EthereumChainID, 10, 1_700_000_010)
+	storeChainBlock(t, appchainDB, gosdk.EthereumChainID, 15, 1_700_000_015)
+	storeChainBlock(t, appchainDB, gosdk.EthereumChainID, 20, 1_700_000_020)
+
+	rr := makeJSONRPCRequest(
+		t,
+		server,
+		"getChainBlocks",
+		[]any{strconv.FormatUint(uint64(gosdk.EthereumChainID), 10), "5"},
+	)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.Nil(t, resp.Error)
+
+	payload, err := json.Marshal(resp.Result)
+	require.NoError(t, err)
+
+	var fvs []chainblock.FieldsValues
+	require.NoError(t, json.Unmarshal(payload, &fvs))
+	require.Len(t, fvs, 3)
+
+	expectedNumbers := []string{"20", "15", "10"}
+
+	for i, fv := range fvs {
+		fieldMap := fieldsValuesToMap(fv)
+		require.Equal(t, expectedNumbers[i], fieldMap["number"])
+	}
+}
+
+func TestStandardRPCServer_getChainBlockByNumber_Solana(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	blkAny := storeChainBlock(t, appchainDB, gosdk.SolanaChainID, 55, 1_700_000_555)
+	solBlock, ok := blkAny.(*client.Block)
+	require.True(t, ok)
+
+	rr := makeJSONRPCRequest(
+		t,
+		server,
+		"getChainBlockByNumber",
+		[]any{strconv.FormatUint(uint64(gosdk.SolanaChainID), 10), strconv.FormatUint(55, 10)},
+	)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.Nil(t, resp.Error)
+
+	payload, err := json.Marshal(resp.Result)
+	require.NoError(t, err)
+
+	var fv chainblock.FieldsValues
+	require.NoError(t, json.Unmarshal(payload, &fv))
+
+	fieldMap := fieldsValuesToMap(fv)
+
+	require.Equal(t, solBlock.Blockhash, fieldMap["blockhash"])
+	require.Equal(t, solBlock.PreviousBlockhash, fieldMap["previousBlockhash"])
+	require.Equal(t, strconv.FormatUint(solBlock.ParentSlot, 10), fieldMap["parentSlot"])
+	require.Equal(t, strconv.Itoa(len(solBlock.Transactions)), fieldMap["transactionsCount"])
+	require.Equal(t, strconv.Itoa(len(solBlock.Rewards)), fieldMap["rewardsCount"])
+	require.Equal(t, strconv.FormatInt(solBlock.BlockTime.Unix(), 10), fieldMap["blockTime"])
 }

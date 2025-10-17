@@ -41,4 +41,10 @@ var (
 	ErrFailedToGetTransactionsByBlockHash = errors.New(
 		"failed to get transactions by block hash",
 	)
+	ErrFailedToGetChainBlockByNumber = errors.New("failed to get chain block by number")
+	ErrFailedToGetChainBlocks        = errors.New("failed to get chain blocks")
+	ErrInvalidChainType              = errors.New("invalid chain type")
+	ErrGetChainBlockRequiresParams   = errors.New("getChainBlock requires chain type and number")
+	ErrGetChainBlocksRequiresParams  = errors.New("getChainBlocks requires chain type and count")
+	ErrWrongParamsCount              = errors.New("wrong number of parameters")
 )

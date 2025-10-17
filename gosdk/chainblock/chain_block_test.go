@@ -95,11 +95,8 @@ func TestNewChainBlock_Ethereum(t *testing.T) {
 	encoded, err := cbor.Marshal(blk)
 	require.NoError(t, err)
 
-	var cb *ChainBlock
-
-	require.NotPanics(t, func() {
-		cb = NewChainBlock(gosdk.EthereumChainID, encoded)
-	})
+	cb, err := NewChainBlock(gosdk.EthereumChainID, encoded)
+	require.NoError(t, err)
 
 	require.Equal(t, gosdk.EthereumChainID, cb.ChainType)
 	_, ok := cb.Block.(*gethtypes.Block)
@@ -118,11 +115,8 @@ func TestNewChainBlock_Solana(t *testing.T) {
 	encoded, err := cbor.Marshal(sol)
 	require.NoError(t, err)
 
-	var cb *ChainBlock
-
-	require.NotPanics(t, func() {
-		cb = NewChainBlock(gosdk.SolanaChainID, encoded)
-	})
+	cb, err := NewChainBlock(gosdk.SolanaChainID, encoded)
+	require.NoError(t, err)
 
 	require.Equal(t, gosdk.SolanaChainID, cb.ChainType)
 	solBlock, ok := cb.Block.(*client.Block)
@@ -133,7 +127,33 @@ func TestNewChainBlock_Solana(t *testing.T) {
 }
 
 func TestNewChainBlock_UnsupportedChainPanics(t *testing.T) {
-	require.Panics(t, func() {
-		NewChainBlock(apptypes.ChainType(999999), []byte{})
-	})
+	cb, err := NewChainBlock(apptypes.ChainType(999999), []byte{})
+	require.Error(t, err)
+	require.Nil(t, cb)
+}
+
+func TestDecodeSolanaBlock(t *testing.T) {
+	original := &client.Block{
+		Blockhash:         "test-hash",
+		PreviousBlockhash: "previous-hash",
+		ParentSlot:        123,
+		Transactions:      make([]client.BlockTransaction, 2),
+		Rewards:           make([]client.Reward, 1),
+	}
+
+	payload, err := cbor.Marshal(original)
+	require.NoError(t, err)
+
+	block, err := decodeSolanaBlock(payload)
+	require.NoError(t, err)
+	require.Equal(t, original.Blockhash, block.Blockhash)
+	require.Equal(t, original.PreviousBlockhash, block.PreviousBlockhash)
+	require.Equal(t, original.ParentSlot, block.ParentSlot)
+	require.Len(t, block.Transactions, len(original.Transactions))
+	require.Len(t, block.Rewards, len(original.Rewards))
+}
+
+func TestDecodeSolanaBlock_InvalidPayload(t *testing.T) {
+	_, err := decodeSolanaBlock([]byte("not cbor"))
+	require.Error(t, err)
 }
