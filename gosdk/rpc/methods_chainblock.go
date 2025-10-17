@@ -33,7 +33,7 @@ func (m *ChainBlockMethods) GetChainBlockByNumber(ctx context.Context, params []
 	var fv chainblock.FieldsValues
 
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
-		res, getErr := chainblock.GetBlock(
+		res, getErr := chainblock.GetChainBlock(
 			tx,
 			m.bucket,
 			chainType,
@@ -65,7 +65,7 @@ func (m *ChainBlockMethods) GetChainBlocks(ctx context.Context, params []any) (a
 	var out []chainblock.FieldsValues
 
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
-		fv, viewErr := chainblock.GetBlocks(tx, m.bucket, chainType, count)
+		fv, viewErr := chainblock.GetChainBlocks(tx, m.bucket, chainType, count)
 		if viewErr != nil {
 			return viewErr
 		}

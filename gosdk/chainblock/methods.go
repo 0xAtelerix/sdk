@@ -24,7 +24,7 @@ type storedChainBlock struct {
 
 // GetBlock retrieves a chain block encoded under `key` in the provided bucket and converts it
 // into a tabular FieldsValues representation. The shape mirrors GetBlock from the block package.
-func GetBlock(
+func GetChainBlock(
 	tx kv.Tx,
 	bucket string,
 	chainType apptypes.ChainType,
@@ -48,10 +48,10 @@ func GetBlock(
 	return cb.convertToFieldsValues(), nil
 }
 
-// GetBlocks walks the specified bucket from newest to oldest (based on key ordering) and returns
+// GetChainBlocks walks the specified bucket from newest to oldest (based on key ordering) and returns
 // up to `count` chain blocks formatted as FieldsValues for the requested chain type. When count is
 // zero it returns an empty slice.
-func GetBlocks(
+func GetChainBlocks(
 	tx kv.Tx,
 	bucket string,
 	chainType apptypes.ChainType,

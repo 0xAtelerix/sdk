@@ -46,7 +46,7 @@ func TestGetBlock_Ethereum(t *testing.T) {
 	}))
 
 	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
-		fv, err := GetBlock(tx, testBucket, gosdk.EthereumChainID, key, nil)
+		fv, err := GetChainBlock(tx, testBucket, gosdk.EthereumChainID, key, nil)
 		require.NoError(t, err)
 
 		require.Equal(t, block.Number().String(), fv.Values[0])
@@ -81,7 +81,7 @@ func TestGetBlock_Solana(t *testing.T) {
 	}))
 
 	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
-		fv, err := GetBlock(tx, testBucket, gosdk.SolanaChainID, key, nil)
+		fv, err := GetChainBlock(tx, testBucket, gosdk.SolanaChainID, key, nil)
 		require.NoError(t, err)
 
 		require.Equal(t, sol.Blockhash, fv.Values[0])
@@ -99,7 +99,7 @@ func TestGetBlock_NoValue(t *testing.T) {
 	defer db.Close()
 
 	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
-		_, err := GetBlock(
+		_, err := GetChainBlock(
 			tx,
 			testBucket,
 			gosdk.EthereumChainID,
@@ -138,7 +138,7 @@ func TestGetBlocks_ReturnsNewestFirst(t *testing.T) {
 	}))
 
 	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
-		fv, err := GetBlocks(tx, testBucket, gosdk.EthereumChainID, 3)
+		fv, err := GetChainBlocks(tx, testBucket, gosdk.EthereumChainID, 3)
 		require.NoError(t, err)
 		require.Len(t, fv, 3)
 
@@ -157,7 +157,7 @@ func TestGetBlocks_EmptyBucket(t *testing.T) {
 	defer db.Close()
 
 	require.NoError(t, db.View(context.Background(), func(tx kv.Tx) error {
-		_, err := GetBlocks(tx, testBucket, gosdk.EthereumChainID, 1)
+		_, err := GetChainBlocks(tx, testBucket, gosdk.EthereumChainID, 1)
 		require.ErrorIs(t, err, ErrNoBlocks)
 
 		return nil
