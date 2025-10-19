@@ -30,45 +30,6 @@ type chainAdapter struct {
 	format   func(any) (FieldsValues, error)
 }
 
-var chainAdapters = []chainAdapter{
-	{
-		supports: gosdk.IsEvmChain,
-		decode: func(payload []byte) (any, error) {
-			return decodeEthereumBlock(payload)
-		},
-		format: func(block any) (FieldsValues, error) {
-			ethBlock, ok := block.(*gethtypes.Block)
-			if !ok {
-				return FieldsValues{}, fmt.Errorf(
-					"%w: expected *types.Block got %T",
-					errUnexpectedBlockType,
-					block,
-				)
-			}
-
-			return convertEthBlockToFieldsValues(ethBlock), nil
-		},
-	},
-	{
-		supports: gosdk.IsSolanaChain,
-		decode: func(payload []byte) (any, error) {
-			return decodeSolanaBlock(payload)
-		},
-		format: func(block any) (FieldsValues, error) {
-			solBlock, ok := block.(*client.Block)
-			if !ok {
-				return FieldsValues{}, fmt.Errorf(
-					"%w: expected *client.Block got %T",
-					errUnexpectedBlockType,
-					block,
-				)
-			}
-
-			return convertSolanaBlockToFieldsValues(solBlock), nil
-		},
-	},
-}
-
 // ChainBlock augments a raw block payload with the originating chain type and a
 // formatter that can render it into tabular field/value pairs for RPC clients.
 type ChainBlock struct {
@@ -111,7 +72,46 @@ func newChainBlockFromBlock(
 }
 
 func resolveAdapter(chainType apptypes.ChainType) (chainAdapter, error) {
-	for _, adapter := range chainAdapters {
+	adapters := []chainAdapter{
+		{
+			supports: gosdk.IsEvmChain,
+			decode: func(payload []byte) (any, error) {
+				return decodeEthereumBlock(payload)
+			},
+			format: func(block any) (FieldsValues, error) {
+				ethBlock, ok := block.(*gethtypes.Block)
+				if !ok {
+					return FieldsValues{}, fmt.Errorf(
+						"%w: expected *types.Block got %T",
+						errUnexpectedBlockType,
+						block,
+					)
+				}
+
+				return convertEthBlockToFieldsValues(ethBlock), nil
+			},
+		},
+		{
+			supports: gosdk.IsSolanaChain,
+			decode: func(payload []byte) (any, error) {
+				return decodeSolanaBlock(payload)
+			},
+			format: func(block any) (FieldsValues, error) {
+				solBlock, ok := block.(*client.Block)
+				if !ok {
+					return FieldsValues{}, fmt.Errorf(
+						"%w: expected *client.Block got %T",
+						errUnexpectedBlockType,
+						block,
+					)
+				}
+
+				return convertSolanaBlockToFieldsValues(solBlock), nil
+			},
+		},
+	}
+
+	for _, adapter := range adapters {
 		if adapter.supports(chainType) {
 			return adapter, nil
 		}
