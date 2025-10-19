@@ -65,12 +65,14 @@ func TestChainBlockConvertToFieldsValues_Eth(t *testing.T) {
 		Number: big.NewInt(1),
 	}
 	block := gethtypes.NewBlock(header, nil, nil, nil)
-	cb := &ChainBlock{
-		ChainType: gosdk.EthereumChainID,
-		Block:     block,
-	}
+	adapter, err := resolveAdapter(gosdk.EthereumChainID)
+	require.NoError(t, err)
 
-	fv := cb.convertToFieldsValues()
+	cb, err := newChainBlockFromBlock(gosdk.EthereumChainID, block, adapter)
+	require.NoError(t, err)
+
+	fv, err := cb.convertToFieldsValues()
+	require.NoError(t, err)
 	require.Equal(t, block.Number().String(), fv.Values[0])
 }
 
@@ -78,12 +80,14 @@ func TestChainBlockConvertToFieldsValues_Solana(t *testing.T) {
 	sol := &client.Block{
 		Blockhash: "hash",
 	}
-	cb := &ChainBlock{
-		ChainType: gosdk.SolanaChainID,
-		Block:     sol,
-	}
+	adapter, err := resolveAdapter(gosdk.SolanaChainID)
+	require.NoError(t, err)
 
-	fv := cb.convertToFieldsValues()
+	cb, err := newChainBlockFromBlock(gosdk.SolanaChainID, sol, adapter)
+	require.NoError(t, err)
+
+	fv, err := cb.convertToFieldsValues()
+	require.NoError(t, err)
 	require.Equal(t, "hash", fv.Values[0])
 }
 

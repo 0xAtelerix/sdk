@@ -14,62 +14,131 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-var ErrUnsupportedChainType = errors.New("unsupported chain type")
+var (
+	// ErrUnsupportedChainType indicates that we do not have decode/format support
+	// for the provided chain identifier.
+	ErrUnsupportedChainType = errors.New("unsupported chain type")
 
-// ChainBlock augments an AppchainBlock with the ChainID it belongs to.
+	errMissingFormatter    = errors.New("missing chain block formatter")
+	errNilChainBlock       = errors.New("chain block is nil")
+	errUnexpectedBlockType = errors.New("unexpected block type")
+)
+
+type chainAdapter struct {
+	supports func(apptypes.ChainType) bool
+	decode   func([]byte) (any, error)
+	format   func(any) (FieldsValues, error)
+}
+
+var chainAdapters = []chainAdapter{
+	{
+		supports: gosdk.IsEvmChain,
+		decode: func(payload []byte) (any, error) {
+			return decodeEthereumBlock(payload)
+		},
+		format: func(block any) (FieldsValues, error) {
+			ethBlock, ok := block.(*gethtypes.Block)
+			if !ok {
+				return FieldsValues{}, fmt.Errorf(
+					"%w: expected *types.Block got %T",
+					errUnexpectedBlockType,
+					block,
+				)
+			}
+
+			return convertEthBlockToFieldsValues(ethBlock), nil
+		},
+	},
+	{
+		supports: gosdk.IsSolanaChain,
+		decode: func(payload []byte) (any, error) {
+			return decodeSolanaBlock(payload)
+		},
+		format: func(block any) (FieldsValues, error) {
+			solBlock, ok := block.(*client.Block)
+			if !ok {
+				return FieldsValues{}, fmt.Errorf(
+					"%w: expected *client.Block got %T",
+					errUnexpectedBlockType,
+					block,
+				)
+			}
+
+			return convertSolanaBlockToFieldsValues(solBlock), nil
+		},
+	},
+}
+
+// ChainBlock augments a raw block payload with the originating chain type and a
+// formatter that can render it into tabular field/value pairs for RPC clients.
 type ChainBlock struct {
 	ChainType apptypes.ChainType
 	Block     any
+
+	formatter func(any) (FieldsValues, error)
 }
 
+// NewChainBlock decodes the supplied payload into a chain-specific block and
+// returns a wrapper that knows how to render it as FieldsValues.
 func NewChainBlock(chainType apptypes.ChainType, payload []byte) (*ChainBlock, error) {
-	switch {
-	case gosdk.IsEvmChain(chainType):
-		ethBlock, err := decodeEthereumBlock(payload)
-		if err != nil {
-			return nil, fmt.Errorf("decode ethereum block: %w", err)
-		}
-
-		return &ChainBlock{ChainType: chainType, Block: ethBlock}, nil
-	case gosdk.IsSolanaChain(chainType):
-		solBlock, err := decodeSolanaBlock(payload)
-		if err != nil {
-			return nil, fmt.Errorf("decode solana block: %w", err)
-		}
-
-		return &ChainBlock{ChainType: chainType, Block: solBlock}, nil
-	default:
-		return nil, fmt.Errorf("%w: %d", ErrUnsupportedChainType, chainType)
+	adapter, err := resolveAdapter(chainType)
+	if err != nil {
+		return nil, err
 	}
+
+	block, err := adapter.decode(payload)
+	if err != nil {
+		return nil, fmt.Errorf("decode chain block: %w", err)
+	}
+
+	return newChainBlockFromBlock(chainType, block, adapter)
 }
 
-func (cb *ChainBlock) convertToFieldsValues() FieldsValues {
-	switch {
-	case gosdk.IsEvmChain(cb.ChainType):
-		ethBlock, ok := cb.Block.(*gethtypes.Block)
-		if !ok {
-			panic("invalid block type for EVM chain")
-		}
-
-		return convertEthBlockToFieldsValues(ethBlock)
-	case gosdk.IsSolanaChain(cb.ChainType):
-		solBlock, ok := cb.Block.(*client.Block)
-		if !ok {
-			panic("invalid block type for Solana chain")
-		}
-
-		return convertSolanaBlockToFieldsValues(solBlock)
-	default:
-		panic("unsupported chain type")
+func newChainBlockFromBlock(
+	chainType apptypes.ChainType,
+	block any,
+	adapter chainAdapter,
+) (*ChainBlock, error) {
+	if adapter.format == nil {
+		return nil, fmt.Errorf("%w: %d", errMissingFormatter, chainType)
 	}
+
+	return &ChainBlock{
+		ChainType: chainType,
+		Block:     block,
+		formatter: adapter.format,
+	}, nil
 }
 
+func resolveAdapter(chainType apptypes.ChainType) (chainAdapter, error) {
+	for _, adapter := range chainAdapters {
+		if adapter.supports(chainType) {
+			return adapter, nil
+		}
+	}
+
+	return chainAdapter{}, fmt.Errorf("%w: %d", ErrUnsupportedChainType, chainType)
+}
+
+func (cb *ChainBlock) convertToFieldsValues() (FieldsValues, error) {
+	if cb == nil {
+		return FieldsValues{}, errNilChainBlock
+	}
+
+	if cb.formatter == nil {
+		return FieldsValues{}, fmt.Errorf("%w: %d", errMissingFormatter, cb.ChainType)
+	}
+
+	return cb.formatter(cb.Block)
+}
+
+// FieldsValues lists the rendered field names and the corresponding string
+// values for a decoded chain block.
 type FieldsValues struct {
 	Fields []string
 	Values []string
 }
 
-// convertEthBlockToFieldsValues converts Ethereum block to its fields and values
 func convertEthBlockToFieldsValues(block *gethtypes.Block) FieldsValues {
 	fields := []string{
 		"number",
@@ -89,10 +158,6 @@ func convertEthBlockToFieldsValues(block *gethtypes.Block) FieldsValues {
 		"gasLimit",
 		"gasUsed",
 		"timestamp",
-	}
-
-	if block == nil {
-		return FieldsValues{Fields: fields, Values: nil}
 	}
 
 	values := []string{
@@ -118,7 +183,6 @@ func convertEthBlockToFieldsValues(block *gethtypes.Block) FieldsValues {
 	return FieldsValues{Fields: fields, Values: values}
 }
 
-// convertSolanaBlockToFieldsValues converts Solana block to its fields and values
 func convertSolanaBlockToFieldsValues(block *client.Block) FieldsValues {
 	fields := []string{
 		"blockhash",
@@ -127,10 +191,6 @@ func convertSolanaBlockToFieldsValues(block *client.Block) FieldsValues {
 		"transactionsCount",
 		"rewardsCount",
 		"blockTime",
-	}
-
-	if block == nil {
-		return FieldsValues{Fields: fields, Values: nil}
 	}
 
 	values := []string{
@@ -153,7 +213,6 @@ func formatBlockTime(t *time.Time) string {
 	return strconv.FormatInt(t.Unix(), 10)
 }
 
-// decodeEthereumBlock unmarshal payload to Ethereum block
 func decodeEthereumBlock(payload []byte) (*gethtypes.Block, error) {
 	var stored gosdk.EthereumBlock
 	if err := cbor.Unmarshal(payload, &stored); err == nil && stored.Header.Number != nil {
@@ -168,7 +227,6 @@ func decodeEthereumBlock(payload []byte) (*gethtypes.Block, error) {
 	return &ethBlock, nil
 }
 
-// decodeSolanaBlock unmarshal payload to Solana block
 func decodeSolanaBlock(payload []byte) (*client.Block, error) {
 	var solBlock client.Block
 	if err := cbor.Unmarshal(payload, &solBlock); err != nil {

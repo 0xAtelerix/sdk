@@ -45,7 +45,12 @@ func GetChainBlock(
 		return FieldsValues{}, err
 	}
 
-	return cb.convertToFieldsValues(), nil
+	fv, err := cb.convertToFieldsValues()
+	if err != nil {
+		return FieldsValues{}, err
+	}
+
+	return fv, nil
 }
 
 // GetChainBlocks walks the specified bucket from newest to oldest (based on key ordering) and returns
@@ -86,7 +91,12 @@ func GetChainBlocks(
 				return nil, decErr
 			}
 
-			out = append(out, cb.convertToFieldsValues())
+			fv, formatErr := cb.convertToFieldsValues()
+			if formatErr != nil {
+				return nil, formatErr
+			}
+
+			out = append(out, fv)
 			if uint64(len(out)) == count {
 				break
 			}
