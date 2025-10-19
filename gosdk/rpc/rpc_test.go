@@ -27,7 +27,6 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
-	"github.com/0xAtelerix/sdk/gosdk/block"
 	"github.com/0xAtelerix/sdk/gosdk/chainblock"
 	"github.com/0xAtelerix/sdk/gosdk/receipt"
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
@@ -108,11 +107,8 @@ func setupTestEnvironment(
 		Path(appchainDBPath).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return kv.TableCfg{
-				receipt.ReceiptBucket:         {},
-				block.BlockNumberBucket:       {},
-				block.BlockHashBucket:         {},
-				block.BlockTransactionsBucket: {},
-				chainblock.Bucket:             {},
+				receipt.ReceiptBucket: {},
+				chainblock.Bucket:     {},
 			}
 		}).
 		Open()
@@ -133,44 +129,6 @@ func setupTestEnvironment(
 	}
 
 	return server, appchainDB, cleanup
-}
-
-func storeTestBlock(
-	t *testing.T,
-	db kv.RwDB,
-	number uint64,
-	timestamp uint64,
-	txs []TestTransaction[TestReceipt],
-) *block.Block[TestTransaction[TestReceipt], TestReceipt] {
-	t.Helper()
-
-	clonedTxs := append([]TestTransaction[TestReceipt](nil), txs...)
-
-	var root [32]byte
-
-	root[0] = byte(number)
-
-	testBlock := &block.Block[TestTransaction[TestReceipt], TestReceipt]{
-		BlockNumber:  number,
-		BlockRoot:    root,
-		Timestamp:    timestamp,
-		Transactions: clonedTxs,
-	}
-
-	testBlock.Hash()
-
-	payload, err := cbor.Marshal(*testBlock)
-	require.NoError(t, err)
-
-	require.NoError(t, db.Update(context.Background(), func(tx kv.RwTx) error {
-		if err := tx.Put(block.BlockNumberBucket, block.NumberToBytes(number), payload); err != nil {
-			return err
-		}
-
-		return tx.Put(block.BlockHashBucket, testBlock.BlockHash[:], payload)
-	}))
-
-	return testBlock
 }
 
 func storeChainBlock(
@@ -1240,178 +1198,9 @@ func TestStandardRPCServer_corsHealthEndpoint(t *testing.T) {
 	assert.Equal(t, 200, w.Code)
 }
 
-// ============= BLOCK METHODS TESTS =============
+// ============= CHAIN BLOCK METHODS TESTS =============
 
-func TestStandardRPCServer_getBlockByNumber(t *testing.T) {
-	server, appchainDB, cleanup := setupTestEnvironment(t)
-	defer cleanup()
-
-	storedBlock := storeTestBlock(t, appchainDB, 42, 1_700_000_000, nil)
-
-	rr := makeJSONRPCRequest(
-		t,
-		server,
-		"getBlockByNumber",
-		[]any{strconv.FormatUint(storedBlock.BlockNumber, 10)},
-	)
-	require.Equal(t, http.StatusOK, rr.Code)
-
-	var resp JSONRPCResponse
-	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-	require.Nil(t, resp.Error)
-
-	payload, err := json.Marshal(resp.Result)
-	require.NoError(t, err)
-
-	var fv block.FieldsValues
-	require.NoError(t, json.Unmarshal(payload, &fv))
-
-	require.Equal(
-		t,
-		[]string{"number", "hash", "stateroot", "timestamp", "transactions"},
-		fv.Fields,
-	)
-	require.Equal(t, []string{
-		strconv.FormatUint(storedBlock.BlockNumber, 10),
-		fmt.Sprintf("0x%x", storedBlock.BlockHash),
-		fmt.Sprintf("0x%x", storedBlock.StateRoot()),
-		strconv.FormatUint(storedBlock.Timestamp, 10),
-		"0",
-	}, fv.Values)
-}
-
-func TestStandardRPCServer_getBlockByHash(t *testing.T) {
-	server, appchainDB, cleanup := setupTestEnvironment(t)
-	defer cleanup()
-
-	storedBlock := storeTestBlock(t, appchainDB, 21, 1_700_000_050, nil)
-
-	hashParam := "0x" + hex.EncodeToString(storedBlock.BlockHash[:])
-	rr := makeJSONRPCRequest(t, server, "getBlockByHash", []any{hashParam})
-	require.Equal(t, http.StatusOK, rr.Code)
-
-	var resp JSONRPCResponse
-	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-	require.Nil(t, resp.Error)
-
-	payload, err := json.Marshal(resp.Result)
-	require.NoError(t, err)
-
-	var fv block.FieldsValues
-	require.NoError(t, json.Unmarshal(payload, &fv))
-
-	require.Equal(
-		t,
-		[]string{"number", "hash", "stateroot", "timestamp", "transactions"},
-		fv.Fields,
-	)
-	require.Equal(t, []string{
-		strconv.FormatUint(storedBlock.BlockNumber, 10),
-		fmt.Sprintf("0x%x", storedBlock.BlockHash),
-		fmt.Sprintf("0x%x", storedBlock.StateRoot()),
-		strconv.FormatUint(storedBlock.Timestamp, 10),
-		"0",
-	}, fv.Values)
-}
-
-func TestStandardRPCServer_getBlocks(t *testing.T) {
-	server, appchainDB, cleanup := setupTestEnvironment(t)
-	defer cleanup()
-
-	older := storeTestBlock(t, appchainDB, 10, 1_700_000_000, nil)
-	newer := storeTestBlock(t, appchainDB, 20, 1_700_000_100, nil)
-
-	rr := makeJSONRPCRequest(t, server, "getBlocks", []any{"2"})
-	require.Equal(t, http.StatusOK, rr.Code)
-
-	var resp JSONRPCResponse
-	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-	require.Nil(t, resp.Error)
-
-	payload, err := json.Marshal(resp.Result)
-	require.NoError(t, err)
-
-	var list []block.FieldsValues
-	require.NoError(t, json.Unmarshal(payload, &list))
-
-	require.Len(t, list, 2)
-	require.Equal(t, strconv.FormatUint(newer.BlockNumber, 10), list[0].Values[0])
-	require.Equal(t, strconv.FormatUint(older.BlockNumber, 10), list[1].Values[0])
-}
-
-func TestStandardRPCServer_getTransactionsByBlockNumber(t *testing.T) {
-	server, appchainDB, cleanup := setupTestEnvironment(t)
-	defer cleanup()
-
-	storedBlock := storeTestBlock(
-		t,
-		appchainDB,
-		77,
-		1_700_000_200,
-		[]TestTransaction[TestReceipt]{
-			{From: "0xaaaa", To: "0xbbbb", Value: 5},
-			{From: "0xcccc", To: "0xdddd", Value: 6},
-		},
-	)
-
-	rr := makeJSONRPCRequest(
-		t,
-		server,
-		"getTransactionsByBlockNumber",
-		[]any{strconv.FormatUint(storedBlock.BlockNumber, 10)},
-	)
-	require.Equal(t, http.StatusOK, rr.Code)
-
-	var resp JSONRPCResponse
-	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-	require.Nil(t, resp.Error)
-
-	payload, err := json.Marshal(resp.Result)
-	require.NoError(t, err)
-
-	var txs []TestTransaction[TestReceipt]
-	require.NoError(t, json.Unmarshal(payload, &txs))
-
-	require.Len(t, txs, len(storedBlock.Transactions))
-	require.Equal(t, storedBlock.Transactions[0].From, txs[0].From)
-	require.Equal(t, storedBlock.Transactions[1].To, txs[1].To)
-}
-
-func TestStandardRPCServer_getTransactionsByBlockHash(t *testing.T) {
-	server, appchainDB, cleanup := setupTestEnvironment(t)
-	defer cleanup()
-
-	storedBlock := storeTestBlock(
-		t,
-		appchainDB,
-		88,
-		1_700_000_300,
-		[]TestTransaction[TestReceipt]{
-			{From: "0x1111", To: "0x2222", Value: 7},
-			{From: "0x3333", To: "0x4444", Value: 8},
-		},
-	)
-
-	hashParam := "0x" + hex.EncodeToString(storedBlock.BlockHash[:])
-	rr := makeJSONRPCRequest(t, server, "getTransactionsByBlockHash", []any{hashParam})
-	require.Equal(t, http.StatusOK, rr.Code)
-
-	var resp JSONRPCResponse
-	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-	require.Nil(t, resp.Error)
-
-	payload, err := json.Marshal(resp.Result)
-	require.NoError(t, err)
-
-	var txs []TestTransaction[TestReceipt]
-	require.NoError(t, json.Unmarshal(payload, &txs))
-
-	require.Len(t, txs, len(storedBlock.Transactions))
-	require.Equal(t, storedBlock.Transactions[0].Hash(), txs[0].Hash())
-	require.Equal(t, storedBlock.Transactions[1].Value, txs[1].Value)
-}
-
-func TestStandardRPCServer_getChainBlockByNumber(t *testing.T) {
+func TestStandardRPCServer_getChainBlockByNumber_Ethereum(t *testing.T) {
 	server, appchainDB, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -1448,41 +1237,6 @@ func TestStandardRPCServer_getChainBlockByNumber(t *testing.T) {
 	require.Equal(t, strconv.FormatUint(blk.GasLimit(), 10), fieldMap["gasLimit"])
 }
 
-func TestStandardRPCServer_getChainBlocks(t *testing.T) {
-	server, appchainDB, cleanup := setupTestEnvironment(t)
-	defer cleanup()
-
-	storeChainBlock(t, appchainDB, gosdk.EthereumChainID, 10, 1_700_000_010)
-	storeChainBlock(t, appchainDB, gosdk.EthereumChainID, 15, 1_700_000_015)
-	storeChainBlock(t, appchainDB, gosdk.EthereumChainID, 20, 1_700_000_020)
-
-	rr := makeJSONRPCRequest(
-		t,
-		server,
-		"getChainBlocks",
-		[]any{strconv.FormatUint(uint64(gosdk.EthereumChainID), 10), "5"},
-	)
-	require.Equal(t, http.StatusOK, rr.Code)
-
-	var resp JSONRPCResponse
-	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-	require.Nil(t, resp.Error)
-
-	payload, err := json.Marshal(resp.Result)
-	require.NoError(t, err)
-
-	var fvs []chainblock.FieldsValues
-	require.NoError(t, json.Unmarshal(payload, &fvs))
-	require.Len(t, fvs, 3)
-
-	expectedNumbers := []string{"20", "15", "10"}
-
-	for i, fv := range fvs {
-		fieldMap := fieldsValuesToMap(fv)
-		require.Equal(t, expectedNumbers[i], fieldMap["number"])
-	}
-}
-
 func TestStandardRPCServer_getChainBlockByNumber_Solana(t *testing.T) {
 	server, appchainDB, cleanup := setupTestEnvironment(t)
 	defer cleanup()
@@ -1517,4 +1271,39 @@ func TestStandardRPCServer_getChainBlockByNumber_Solana(t *testing.T) {
 	require.Equal(t, strconv.Itoa(len(solBlock.Transactions)), fieldMap["transactionsCount"])
 	require.Equal(t, strconv.Itoa(len(solBlock.Rewards)), fieldMap["rewardsCount"])
 	require.Equal(t, strconv.FormatInt(solBlock.BlockTime.Unix(), 10), fieldMap["blockTime"])
+}
+
+func TestStandardRPCServer_getChainBlocks(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	storeChainBlock(t, appchainDB, gosdk.EthereumChainID, 10, 1_700_000_010)
+	storeChainBlock(t, appchainDB, gosdk.EthereumChainID, 15, 1_700_000_015)
+	storeChainBlock(t, appchainDB, gosdk.EthereumChainID, 20, 1_700_000_020)
+
+	rr := makeJSONRPCRequest(
+		t,
+		server,
+		"getChainBlocks",
+		[]any{strconv.FormatUint(uint64(gosdk.EthereumChainID), 10), "5"},
+	)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.Nil(t, resp.Error)
+
+	payload, err := json.Marshal(resp.Result)
+	require.NoError(t, err)
+
+	var fvs []chainblock.FieldsValues
+	require.NoError(t, json.Unmarshal(payload, &fvs))
+	require.Len(t, fvs, 3)
+
+	expectedNumbers := []string{"20", "15", "10"}
+
+	for i, fv := range fvs {
+		fieldMap := fieldsValuesToMap(fv)
+		require.Equal(t, expectedNumbers[i], fieldMap["number"])
+	}
 }

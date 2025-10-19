@@ -27,20 +27,7 @@ var (
 	ErrReceiptNotFound                = errors.New("receipt not found")
 	ErrTransactionNotFound            = errors.New("transaction not found")
 
-	ErrGetBlockByNumberRequires1Param = errors.New(
-		"getBlockByNumber requires exactly 1 parameter",
-	)
-	ErrNegativeBlockNumber                  = errors.New("negative block number")
-	ErrInvalidBlockNumber                   = errors.New("invalid block number")
-	ErrFailedToGetBlockByNumber             = errors.New("failed to get block by number")
-	ErrFailedToGetBlockByHash               = errors.New("failed to get block by hash")
-	ErrFailedToGetLatestBlocks              = errors.New("failed to get latest blocks")
-	ErrFailedToGetTransactionsByBlockNumber = errors.New(
-		"failed to get transactions by block number",
-	)
-	ErrFailedToGetTransactionsByBlockHash = errors.New(
-		"failed to get transactions by block hash",
-	)
+	ErrInvalidBlockNumber            = errors.New("invalid block number")
 	ErrFailedToGetChainBlockByNumber = errors.New("failed to get chain block by number")
 	ErrFailedToGetChainBlocks        = errors.New("failed to get chain blocks")
 	ErrInvalidChainType              = errors.New("invalid chain type")

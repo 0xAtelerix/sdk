@@ -22,7 +22,7 @@ type storedChainBlock struct {
 	Block     []byte             `cbor:"2,keyasint"`
 }
 
-// GetBlock retrieves a chain block encoded under `key` in the provided bucket and converts it
+// GetChainBlock retrieves a chain block encoded under `key` in the provided bucket and converts it
 // into a tabular FieldsValues representation. The shape mirrors GetBlock from the block package.
 func GetChainBlock(
 	tx kv.Tx,
