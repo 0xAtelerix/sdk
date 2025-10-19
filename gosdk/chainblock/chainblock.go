@@ -69,6 +69,7 @@ type FieldsValues struct {
 	Values []string
 }
 
+// convertEthBlockToFieldsValues converts Ethereum block to its fields and values
 func convertEthBlockToFieldsValues(block *gethtypes.Block) FieldsValues {
 	fields := []string{
 		"number",
@@ -88,6 +89,10 @@ func convertEthBlockToFieldsValues(block *gethtypes.Block) FieldsValues {
 		"gasLimit",
 		"gasUsed",
 		"timestamp",
+	}
+
+	if block == nil {
+		return FieldsValues{Fields: fields, Values: nil}
 	}
 
 	values := []string{
@@ -113,6 +118,7 @@ func convertEthBlockToFieldsValues(block *gethtypes.Block) FieldsValues {
 	return FieldsValues{Fields: fields, Values: values}
 }
 
+// convertSolanaBlockToFieldsValues converts Solana block to its fields and values
 func convertSolanaBlockToFieldsValues(block *client.Block) FieldsValues {
 	fields := []string{
 		"blockhash",
@@ -121,6 +127,10 @@ func convertSolanaBlockToFieldsValues(block *client.Block) FieldsValues {
 		"transactionsCount",
 		"rewardsCount",
 		"blockTime",
+	}
+
+	if block == nil {
+		return FieldsValues{Fields: fields, Values: nil}
 	}
 
 	values := []string{
@@ -143,6 +153,7 @@ func formatBlockTime(t *time.Time) string {
 	return strconv.FormatInt(t.Unix(), 10)
 }
 
+// decodeEthereumBlock unmarshal payload to Ethereum block
 func decodeEthereumBlock(payload []byte) (*gethtypes.Block, error) {
 	var stored gosdk.EthereumBlock
 	if err := cbor.Unmarshal(payload, &stored); err == nil && stored.Header.Number != nil {
@@ -157,6 +168,7 @@ func decodeEthereumBlock(payload []byte) (*gethtypes.Block, error) {
 	return &ethBlock, nil
 }
 
+// decodeSolanaBlock unmarshal payload to Solana block
 func decodeSolanaBlock(payload []byte) (*client.Block, error) {
 	var solBlock client.Block
 	if err := cbor.Unmarshal(payload, &solBlock); err != nil {
