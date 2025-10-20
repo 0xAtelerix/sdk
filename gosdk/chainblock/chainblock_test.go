@@ -1,204 +1,188 @@
 package chainblock
 
 import (
-	"fmt"
 	"math/big"
-	"strconv"
+	"reflect"
+	"strings"
 	"testing"
-	"time"
 
 	"github.com/blocto/solana-go-sdk/client"
-	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
-	"github.com/fxamacker/cbor/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xAtelerix/sdk/gosdk"
-	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-func TestConvertEthBlockToFieldsValues(t *testing.T) {
-	header := &gethtypes.Header{
-		Number:      big.NewInt(42),
-		ParentHash:  common.HexToHash("0x01"),
-		Nonce:       gethtypes.BlockNonce{0xaa},
-		UncleHash:   gethtypes.EmptyUncleHash,
-		Bloom:       gethtypes.Bloom{0x01},
-		TxHash:      common.Hash{},
-		Root:        common.Hash{},
-		ReceiptHash: common.Hash{},
-		Coinbase:    common.HexToAddress("0x000000000000000000000000000000000000c0de"),
-		Difficulty:  big.NewInt(123456),
-		Extra:       []byte{0xde, 0xad},
-		GasLimit:    1000000,
-		GasUsed:     500000,
-		Time:        1700000000,
-	}
+func TestChainBlockToFields_EthereumBlock(t *testing.T) {
+	header := &gethtypes.Header{Number: big.NewInt(42)}
 	block := gethtypes.NewBlock(header, nil, nil, nil)
 
-	fv := convertEthBlockToFieldsValues(block)
-	require.Equal(t, "42", fv.Values[0])
-	require.Equal(t, block.Hash().Hex(), fv.Values[1])
-	require.Equal(t, fmt.Sprintf("0x%x", block.Nonce()), fv.Values[3])
-	require.Equal(t, strconv.FormatUint(block.GasLimit(), 10), fv.Values[14])
-}
-
-func TestConvertSolanaBlockToFieldsValues(t *testing.T) {
-	blockTime := time.Unix(1700000000, 0)
-	sol := &client.Block{
-		Blockhash:         "hash",
-		PreviousBlockhash: "prev",
-		ParentSlot:        77,
-		Transactions:      make([]client.BlockTransaction, 3),
-		Rewards:           make([]client.Reward, 2),
-		BlockTime:         &blockTime,
-	}
-
-	fv := convertSolanaBlockToFieldsValues(sol)
-	require.Equal(t, "hash", fv.Values[0])
-	require.Equal(t, "3", fv.Values[3])
-	require.Equal(t, strconv.FormatInt(blockTime.Unix(), 10), fv.Values[5])
-}
-
-func TestChainBlockConvertToFieldsValues_Eth(t *testing.T) {
-	header := &gethtypes.Header{
-		Number: big.NewInt(1),
-	}
-	block := gethtypes.NewBlock(header, nil, nil, nil)
-	adapter, err := resolveAdapter(gosdk.EthereumChainID)
-	require.NoError(t, err)
-
-	cb, err := newChainBlockFromBlock(gosdk.EthereumChainID, block, adapter)
-	require.NoError(t, err)
-
-	fv, err := cb.convertToFieldsValues()
-	require.NoError(t, err)
-	require.Equal(t, block.Number().String(), fv.Values[0])
-}
-
-func TestChainBlockConvertToFieldsValues_Solana(t *testing.T) {
-	sol := &client.Block{
-		Blockhash: "hash",
-	}
-	adapter, err := resolveAdapter(gosdk.SolanaChainID)
-	require.NoError(t, err)
-
-	cb, err := newChainBlockFromBlock(gosdk.SolanaChainID, sol, adapter)
-	require.NoError(t, err)
-
-	fv, err := cb.convertToFieldsValues()
-	require.NoError(t, err)
-	require.Equal(t, "hash", fv.Values[0])
-}
-
-func TestNewChainBlock_Ethereum(t *testing.T) {
-	header := &gethtypes.Header{
-		Number: big.NewInt(100),
-	}
-	blk := gethtypes.NewBlock(header, nil, nil, nil)
-	encoded, err := cbor.Marshal(blk)
-	require.NoError(t, err)
-
-	cb, err := NewChainBlock(gosdk.EthereumChainID, encoded)
-	require.NoError(t, err)
-
-	require.Equal(t, gosdk.EthereumChainID, cb.ChainType)
-	_, ok := cb.Block.(*gethtypes.Block)
-	require.True(t, ok)
-}
-
-func TestNewChainBlock_Solana(t *testing.T) {
-	blockHeight := int64(55)
-	blockTime := time.Unix(1700000000, 0)
-	sol := client.Block{
-		Blockhash:         "sol-hash",
-		BlockHeight:       &blockHeight,
-		BlockTime:         &blockTime,
-		PreviousBlockhash: "prev",
-	}
-	encoded, err := cbor.Marshal(sol)
-	require.NoError(t, err)
-
-	cb, err := NewChainBlock(gosdk.SolanaChainID, encoded)
-	require.NoError(t, err)
-
-	require.Equal(t, gosdk.SolanaChainID, cb.ChainType)
-	solBlock, ok := cb.Block.(*client.Block)
-	require.True(t, ok)
-	require.Equal(t, sol.Blockhash, solBlock.Blockhash)
-	require.NotNil(t, solBlock.BlockTime)
-	require.Equal(t, blockTime.Unix(), solBlock.BlockTime.Unix())
-}
-
-func TestNewChainBlock_UnsupportedChainPanics(t *testing.T) {
-	cb, err := NewChainBlock(apptypes.ChainType(999999), []byte{})
-	require.Error(t, err)
-	require.Nil(t, cb)
-}
-
-func TestNewChainBlock_EthereumDecodeError(t *testing.T) {
-	cb, err := NewChainBlock(gosdk.EthereumChainID, []byte("not-cbor"))
-	require.Error(t, err)
-	require.Nil(t, cb)
-}
-
-func TestNewChainBlockFromBlock_MissingFormatter(t *testing.T) {
-	_, err := newChainBlockFromBlock(gosdk.EthereumChainID, nil, chainAdapter{})
-	require.ErrorIs(t, err, errMissingFormatter)
-}
-
-func TestChainBlockConvertToFieldsValues_WrongType(t *testing.T) {
-	adapter, err := resolveAdapter(gosdk.EthereumChainID)
-	require.NoError(t, err)
-
-	cb := &ChainBlock{
+	cb := &ChainBlock[gethtypes.Block]{
 		ChainType: gosdk.EthereumChainID,
-		Block:     &client.Block{},
-		formatter: adapter.format,
+		Target:    block,
 	}
 
-	_, err = cb.convertToFieldsValues()
-	require.ErrorIs(t, err, errUnexpectedBlockType)
+	fv := cb.ToFieldsAndValues()
+	require.Equalf(
+		t,
+		expectedFieldMap(t, block),
+		pairMap(fv),
+		"expected fields/values %v but got fields %v values %v",
+		expectedFieldMap(t, block),
+		fv.Fields,
+		fv.Values,
+	)
 }
 
-func TestChainBlockConvertToFieldsValues_NilReceiver(t *testing.T) {
-	var cb *ChainBlock
+func TestChainBlockToFields_SolanaBlock(t *testing.T) {
+	sol := &client.Block{Blockhash: "hash", PreviousBlockhash: "prev"}
 
-	_, err := cb.convertToFieldsValues()
-	require.ErrorIs(t, err, errNilChainBlock)
-}
-
-func TestResolveAdapter_UnsupportedChain(t *testing.T) {
-	_, err := resolveAdapter(apptypes.ChainType(999))
-	require.ErrorIs(t, err, ErrUnsupportedChainType)
-}
-
-func TestFormatBlockTimeNil(t *testing.T) {
-	require.Equal(t, "0", formatBlockTime(nil))
-}
-
-func TestDecodeSolanaBlock(t *testing.T) {
-	original := &client.Block{
-		Blockhash:         "test-hash",
-		PreviousBlockhash: "previous-hash",
-		ParentSlot:        123,
-		Transactions:      make([]client.BlockTransaction, 2),
-		Rewards:           make([]client.Reward, 1),
+	cb := &ChainBlock[client.Block]{
+		ChainType: gosdk.SolanaChainID,
+		Target:    sol,
 	}
 
-	payload, err := cbor.Marshal(original)
-	require.NoError(t, err)
-
-	block, err := decodeSolanaBlock(payload)
-	require.NoError(t, err)
-	require.Equal(t, original.Blockhash, block.Blockhash)
-	require.Equal(t, original.PreviousBlockhash, block.PreviousBlockhash)
-	require.Equal(t, original.ParentSlot, block.ParentSlot)
-	require.Len(t, block.Transactions, len(original.Transactions))
-	require.Len(t, block.Rewards, len(original.Rewards))
+	fv := cb.ToFieldsAndValues()
+	require.Equalf(
+		t,
+		expectedFieldMap(t, sol),
+		pairMap(fv),
+		"expected fields/values %v but got fields %v values %v",
+		expectedFieldMap(t, sol),
+		fv.Fields,
+		fv.Values,
+	)
 }
 
-func TestDecodeSolanaBlock_InvalidPayload(t *testing.T) {
-	_, err := decodeSolanaBlock([]byte("not cbor"))
+func TestChainBlockToFields_CustomStruct(t *testing.T) {
+	type custom struct {
+		ID     string `json:"id"`
+		Height int
+		note   string
+	}
+
+	payload := &custom{ID: "abc", Height: 5}
+
+	cb := &ChainBlock[custom]{
+		ChainType: gosdk.EthereumChainID,
+		Target:    payload,
+	}
+
+	fv := cb.ToFieldsAndValues()
+	require.Equalf(
+		t,
+		expectedFieldMap(t, payload),
+		pairMap(fv),
+		"expected fields/values %v but got fields %v values %v",
+		expectedFieldMap(t, payload),
+		fv.Fields,
+		fv.Values,
+	)
+}
+
+func TestNewChainBlock_Success(t *testing.T) {
+	payload := &struct{ Name string }{Name: "Alice"}
+
+	cb, err := NewChainBlock(gosdk.EthereumChainID, payload)
+	require.NoError(t, err)
+	require.NotNil(t, cb)
+	require.Equal(t, gosdk.EthereumChainID, cb.ChainType)
+	require.Same(t, payload, cb.Target)
+}
+
+func TestNewChainBlock_NilTarget(t *testing.T) {
+	cb, err := NewChainBlock[string](gosdk.EthereumChainID, nil)
 	require.Error(t, err)
+	require.Nil(t, cb)
+}
+
+func TestChainBlockToFields_NilTarget(t *testing.T) {
+	cb := &ChainBlock[struct{}]{ChainType: gosdk.EthereumChainID, Target: nil}
+
+	fv := cb.ToFieldsAndValues()
+	require.Nil(t, fv.Fields)
+	require.Nil(t, fv.Values)
+}
+
+func TestChainBlockToFields_NonStructPointer(t *testing.T) {
+	value := "hello"
+	cb := &ChainBlock[string]{ChainType: gosdk.EthereumChainID, Target: &value}
+
+	fv := cb.ToFieldsAndValues()
+	require.Nil(t, fv.Fields)
+	require.Nil(t, fv.Values)
+}
+
+func TestChainBlockToFields_PointerFields(t *testing.T) {
+	type sample struct {
+		Name  *string
+		Count *int
+	}
+
+	name := "bob"
+	count := 7
+	payload := &sample{Name: &name, Count: &count}
+
+	cb := &ChainBlock[sample]{ChainType: gosdk.EthereumChainID, Target: payload}
+
+	fv := cb.ToFieldsAndValues()
+	require.Equal(
+		t,
+		map[string]string{"Name": name, "Count": "7"},
+		pairMap(fv),
+	)
+}
+
+func expectedFieldMap(t *testing.T, target any) map[string]string {
+	t.Helper()
+
+	if target == nil {
+		return nil
+	}
+
+	v := reflect.ValueOf(target)
+	if v.Kind() != reflect.Pointer || v.IsNil() {
+		t.Fatal("expected non-nil pointer target")
+	}
+
+	elem := v.Elem()
+	if elem.Kind() != reflect.Struct {
+		t.Fatal("expected pointer to struct")
+	}
+
+	typ := elem.Type()
+	out := make(map[string]string, typ.NumField())
+
+	for i := range typ.NumField() {
+		field := typ.Field(i)
+		if field.PkgPath != "" {
+			continue
+		}
+
+		name := field.Tag.Get("json")
+		if name != "" && name != "-" {
+			name = strings.Split(name, ",")[0]
+		}
+
+		if name == "" {
+			name = field.Name
+		}
+
+		out[name] = stringify(elem.Field(i))
+	}
+
+	return out
+}
+
+func pairMap(fv FieldsValues) map[string]string {
+	if len(fv.Fields) != len(fv.Values) {
+		return nil
+	}
+
+	out := make(map[string]string, len(fv.Fields))
+	for i, field := range fv.Fields {
+		out[field] = fv.Values[i]
+	}
+
+	return out
 }

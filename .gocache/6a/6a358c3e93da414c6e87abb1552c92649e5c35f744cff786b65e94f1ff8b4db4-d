@@ -1,0 +1,12 @@
+./counter.go
+./floatcounter.go
+./gauge.go
+./go_metrics.go
+./histogram.go
+./metrics.go
+./process_metrics_other.go
+./prometheus_histogram.go
+./push.go
+./set.go
+./summary.go
+./validator.go

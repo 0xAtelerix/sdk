@@ -1,0 +1,13 @@
+./config.go
+./config_ipa.go
+./conversion.go
+./debug.go
+./doc.go
+./empty.go
+./encoding.go
+./hashednode.go
+./ipa.go
+./proof_ipa.go
+./proof_json.go
+./tree.go
+./unknown.go

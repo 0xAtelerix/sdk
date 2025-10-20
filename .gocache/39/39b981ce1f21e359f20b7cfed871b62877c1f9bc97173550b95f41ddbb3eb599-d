@@ -1,0 +1,10 @@
+./bls12-381.go
+./g1.go
+./g2.go
+./hash_to_g1.go
+./hash_to_g2.go
+./marshal.go
+./multiexp.go
+./multiexp_affine.go
+./multiexp_jacobian.go
+./pairing.go

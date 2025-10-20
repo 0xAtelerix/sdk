@@ -1,0 +1,6 @@
+./errors.go
+./kzg.go
+./kzg_prove.go
+./kzg_verify.go
+./srs.go
+./srs_insecure.go

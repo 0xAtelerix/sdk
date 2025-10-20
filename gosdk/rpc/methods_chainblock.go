@@ -2,106 +2,134 @@ package rpc
 
 import (
 	"context"
-
-	"github.com/ledgerwatch/erigon-lib/kv"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"strconv"
+	"strings"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/chainblock"
 )
 
-const defaultChainBlockBucket = chainblock.Bucket
-
-type ChainBlockMethods struct {
-	appchainDB kv.RwDB
-	bucket     string
+type ChainBlockMethods[T any] struct {
+	cb *chainblock.ChainBlock[T]
 }
 
-func NewChainBlockMethods(appchainDB kv.RwDB) *ChainBlockMethods {
-	return &ChainBlockMethods{
-		appchainDB: appchainDB,
-		bucket:     defaultChainBlockBucket,
-	}
-}
+var (
+	errChainBlockMethodsNotInitialized = errors.New("chain block methods not initialized")
+	errUnsupportedPayload              = errors.New("unsupported block payload type")
+)
 
-// GetChainBlockByNumber retrieves a chain block by its block number.
-func (m *ChainBlockMethods) GetChainBlockByNumber(ctx context.Context, params []any) (any, error) {
-	chainType, number, err := parseChainParams(params)
+func NewChainBlockMethods[T any](
+	chainType apptypes.ChainType,
+	target *T,
+) (*ChainBlockMethods[T], error) {
+	cb, err := chainblock.NewChainBlock(chainType, target)
 	if err != nil {
 		return nil, err
 	}
 
-	var fv chainblock.FieldsValues
+	return &ChainBlockMethods[T]{cb: cb}, nil
+}
 
-	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
-		res, getErr := chainblock.GetChainBlock(
-			tx,
-			m.bucket,
-			chainType,
-			chainblock.Key(chainType, number),
-			nil,
-		)
-		if getErr != nil {
-			return getErr
-		}
+func (m *ChainBlockMethods[T]) GetChainBlock(
+	_ context.Context,
+	params []any,
+) (any, error) {
+	if m == nil {
+		return nil, errChainBlockMethodsNotInitialized
+	}
 
-		fv = res
+	if len(params) != 2 {
+		return nil, ErrWrongParamsCount
+	}
 
-		return nil
-	})
+	chainType, err := parseChainType(params[0])
 	if err != nil {
-		return nil, ErrFailedToGetChainBlockByNumber
+		return nil, err
+	}
+
+	target, err := decodeTarget[T](params[1])
+	if err != nil {
+		return nil, err
+	}
+
+	fv, err := chainblock.GetFieldsValues(chainType, target)
+	if err != nil {
+		return nil, err
 	}
 
 	return fv, nil
 }
 
-// GetChainBlocks returns up to `count` most recent chain blocks (newest first).
-func (m *ChainBlockMethods) GetChainBlocks(ctx context.Context, params []any) (any, error) {
-	chainType, count, err := parseChainParams(params)
+func AddChainBlockMethods[T any](
+	server *StandardRPCServer,
+	chainType apptypes.ChainType,
+	target *T,
+) {
+	methods, err := NewChainBlockMethods(chainType, target)
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	var out []chainblock.FieldsValues
+	server.AddMethod("getChainBlock", methods.GetChainBlock)
+}
 
-	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
-		fv, viewErr := chainblock.GetChainBlocks(tx, m.bucket, chainType, count)
-		if viewErr != nil {
-			return viewErr
+func parseChainType(v any) (apptypes.ChainType, error) {
+	switch value := v.(type) {
+	case apptypes.ChainType:
+		return value, nil
+	case uint64:
+		return apptypes.ChainType(value), nil
+	case float64:
+		if value < 0 || math.Trunc(value) != value {
+			return 0, ErrInvalidChainType
 		}
 
-		out = fv
+		return apptypes.ChainType(uint64(value)), nil
+	case string:
+		s := strings.TrimSpace(value)
 
-		return nil
-	})
-	if err != nil {
-		return nil, ErrFailedToGetChainBlocks
+		var (
+			parsed uint64
+			err    error
+		)
+
+		if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
+			parsed, err = strconv.ParseUint(s[2:], 16, 64)
+		} else {
+			parsed, err = strconv.ParseUint(s, 10, 64)
+		}
+
+		if err != nil {
+			return 0, ErrInvalidChainType
+		}
+
+		return apptypes.ChainType(parsed), nil
+	default:
+		return 0, ErrInvalidChainType
 	}
-
-	return out, nil
 }
 
-func AddChainBlockMethods(server *StandardRPCServer, appchainDB kv.RwDB) {
-	methods := NewChainBlockMethods(appchainDB)
+func decodeTarget[T any](param any) (*T, error) {
+	switch value := param.(type) {
+	case *T:
+		return value, nil
+	case map[string]any:
+		data, err := json.Marshal(value)
+		if err != nil {
+			return nil, err
+		}
 
-	server.AddMethod("getChainBlockByNumber", methods.GetChainBlockByNumber)
-	server.AddMethod("getChainBlocks", methods.GetChainBlocks)
-}
+		var target T
+		if err := json.Unmarshal(data, &target); err != nil {
+			return nil, err
+		}
 
-func parseChainParams(params []any) (apptypes.ChainType, uint64, error) {
-	if len(params) != 2 {
-		return 0, 0, ErrWrongParamsCount
+		return &target, nil
+	default:
+		return nil, fmt.Errorf("%w: %T", errUnsupportedPayload, param)
 	}
-
-	chainID, err := parseNumber(params[0])
-	if err != nil {
-		return 0, 0, ErrInvalidChainType
-	}
-
-	value, err := parseNumber(params[1])
-	if err != nil {
-		return 0, 0, err
-	}
-
-	return apptypes.ChainType(chainID), value, nil
 }
