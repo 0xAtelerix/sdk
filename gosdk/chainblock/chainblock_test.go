@@ -136,6 +136,47 @@ func TestNewChainBlock_UnsupportedChainPanics(t *testing.T) {
 	require.Nil(t, cb)
 }
 
+func TestNewChainBlock_EthereumDecodeError(t *testing.T) {
+	cb, err := NewChainBlock(gosdk.EthereumChainID, []byte("not-cbor"))
+	require.Error(t, err)
+	require.Nil(t, cb)
+}
+
+func TestNewChainBlockFromBlock_MissingFormatter(t *testing.T) {
+	_, err := newChainBlockFromBlock(gosdk.EthereumChainID, nil, chainAdapter{})
+	require.ErrorIs(t, err, errMissingFormatter)
+}
+
+func TestChainBlockConvertToFieldsValues_WrongType(t *testing.T) {
+	adapter, err := resolveAdapter(gosdk.EthereumChainID)
+	require.NoError(t, err)
+
+	cb := &ChainBlock{
+		ChainType: gosdk.EthereumChainID,
+		Block:     &client.Block{},
+		formatter: adapter.format,
+	}
+
+	_, err = cb.convertToFieldsValues()
+	require.ErrorIs(t, err, errUnexpectedBlockType)
+}
+
+func TestChainBlockConvertToFieldsValues_NilReceiver(t *testing.T) {
+	var cb *ChainBlock
+
+	_, err := cb.convertToFieldsValues()
+	require.ErrorIs(t, err, errNilChainBlock)
+}
+
+func TestResolveAdapter_UnsupportedChain(t *testing.T) {
+	_, err := resolveAdapter(apptypes.ChainType(999))
+	require.ErrorIs(t, err, ErrUnsupportedChainType)
+}
+
+func TestFormatBlockTimeNil(t *testing.T) {
+	require.Equal(t, "0", formatBlockTime(nil))
+}
+
 func TestDecodeSolanaBlock(t *testing.T) {
 	original := &client.Block{
 		Blockhash:         "test-hash",
