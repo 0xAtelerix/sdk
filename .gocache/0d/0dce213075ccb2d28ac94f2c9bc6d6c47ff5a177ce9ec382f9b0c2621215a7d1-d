@@ -1,8 +1,0 @@
-./arith.go
-./doc.go
-./element.go
-./element_amd64.go
-./element_exp.go
-./vector.go
-./vector_purego.go
-./element_amd64.s

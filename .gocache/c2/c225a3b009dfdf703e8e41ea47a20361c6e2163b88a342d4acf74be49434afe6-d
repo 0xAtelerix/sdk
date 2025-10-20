@@ -1,6 +1,0 @@
-./doc.go
-./format.go
-./handler.go
-./logger.go
-./root.go
-./syslog.go

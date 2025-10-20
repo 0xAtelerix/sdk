@@ -1,7 +1,0 @@
-./arith.go
-./asm.go
-./doc.go
-./element.go
-./element_ops_amd64.go
-./element_mul_amd64.s
-./element_ops_amd64.s

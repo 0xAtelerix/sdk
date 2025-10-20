@@ -1,5 +1,0 @@
-./format.go
-./handler.go
-./handler_glog.go
-./logger.go
-./root.go

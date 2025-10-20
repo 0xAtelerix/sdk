@@ -1,4 +1,0 @@
-./errors.go
-./kzg_prove.go
-./kzg_verify.go
-./srs.go
