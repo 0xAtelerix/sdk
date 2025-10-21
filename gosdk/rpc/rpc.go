@@ -284,10 +284,11 @@ func (s *StandardRPCServer) setCORSHeaders(w http.ResponseWriter, defaultMethods
 func AddStandardMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt, T any](
 	server *StandardRPCServer,
 	appchainDB kv.RwDB,
-	txpool apptypes.TxPoolInterface[appTx, R], chainType apptypes.ChainType, target *T,
+	txpool apptypes.TxPoolInterface[appTx, R],
+	target T,
 ) {
 	AddTxPoolMethods(server, txpool)
 	AddReceiptMethods[R](server, appchainDB)
 	AddTransactionMethods(server, txpool, appchainDB)
-	AddChainBlockMethods[T](server, chainType, target)
+	AddAppBlockMethods[T](server, appchainDB, target)
 }

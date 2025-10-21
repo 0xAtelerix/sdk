@@ -20,8 +20,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/0xAtelerix/sdk/gosdk"
+	"github.com/0xAtelerix/sdk/gosdk/appblock"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
-	"github.com/0xAtelerix/sdk/gosdk/chainblock"
 	"github.com/0xAtelerix/sdk/gosdk/receipt"
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
@@ -108,6 +109,7 @@ func setupTestEnvironment(
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return kv.TableCfg{
 				receipt.ReceiptBucket: {},
+				gosdk.BlocksBucket:    {},
 			}
 		}).
 		Open()
@@ -120,7 +122,7 @@ func setupTestEnvironment(
 	server = NewStandardRPCServer(nil)
 
 	// Add standard methods to maintain compatibility with existing tests
-	AddStandardMethods(server, appchainDB, txPool, apptypes.ChainType(1), &rpcTestBlock{})
+	AddStandardMethods(server, appchainDB, txPool, &rpcTestBlock{})
 
 	cleanup = func() {
 		localDB.Close()
@@ -1109,18 +1111,36 @@ func TestStandardRPCServer_corsHealthEndpoint(t *testing.T) {
 	assert.Equal(t, 200, w.Code)
 }
 
-// GETCHAINBLOCKS TETSTS
+// GETAPPBLOCKS TETSTS
 
-func TestStandardRPCServer_getChainBlock(t *testing.T) {
-	server, _, cleanup := setupTestEnvironment(t)
+/*
+
+// add  rpcTestBlock{Number: "21", Timestamp: 100, Miner: "alice"}} instead of &
+	// add memoizaton to reflection (add map)
+
+	// consider pointer or no pointer
+	// 	if value.Kind() != reflect.Pointer || value.IsNil() {
+	// 	return FieldsValues{}
+	// }
+	// params := []any{uint64(1), &rpcTestBlock{Number: "21", Timestamp: 100, Miner: "alice"}}
+
+	// add fmt.Sprintf for func stringify(v reflect.Value) string
+
+
+
+
+*/
+
+func TestStandardRPCServer_getAppBlock(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
-	params := []any{
-		apptypes.ChainType(1),
-		&rpcTestBlock{Number: "21", Timestamp: 100, Miner: "alice"},
-	}
+	block := &rpcTestBlock{Number: "21", Timestamp: 100, Miner: "alice"}
+	require.NoError(t, appblock.StoreAppBlock(context.Background(), appchainDB, 1, block))
 
-	rr := makeJSONRPCRequest(t, server, "getChainBlock", params)
+	params := []any{uint64(1), &rpcTestBlock{Number: "21", Timestamp: 100, Miner: "alice"}}
+
+	rr := makeJSONRPCRequest(t, server, "getAppBlock", params)
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var resp JSONRPCResponse
@@ -1130,39 +1150,56 @@ func TestStandardRPCServer_getChainBlock(t *testing.T) {
 	payload, err := json.Marshal(resp.Result)
 	require.NoError(t, err)
 
-	var fv chainblock.FieldsValues
+	var fv appblock.FieldsValues
 	require.NoError(t, json.Unmarshal(payload, &fv))
 
 	require.Equal(t, []string{"number", "timestamp", "miner"}, fv.Fields)
 	require.Equal(t, []string{"21", "100", "alice"}, fv.Values)
 }
 
-func TestStandardRPCServer_getChainBlock_InvalidTarget(t *testing.T) {
-	server, _, cleanup := setupTestEnvironment(t)
+func TestStandardRPCServer_getAppBlock_InvalidTarget(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
-	params := []any{apptypes.ChainType(1), 42}
+	type invalidRPCBlock struct {
+		invalidNum uint64
+	}
 
-	rr := makeJSONRPCRequest(t, server, "getChainBlock", params)
+	require.NoError(
+		t,
+		appblock.StoreAppBlock(
+			context.Background(),
+			appchainDB,
+			1,
+			&rpcTestBlock{Number: "21", Timestamp: 100, Miner: "alice"},
+		),
+	)
+
+	params := []any{uint64(1), invalidRPCBlock{invalidNum: 55}}
+
+	rr := makeJSONRPCRequest(t, server, "getAppBlock", params)
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var resp JSONRPCResponse
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
 	require.NotNil(t, resp.Error)
-	require.Equal(t, "unsupported block payload type: float64", resp.Error.Message)
+	require.Equal(t, "unsupported block payload type: map[string]interface {}", resp.Error.Message)
 }
 
-func TestStandardRPCServer_getChainBlock_MapPayload(t *testing.T) {
-	server, _, cleanup := setupTestEnvironment(t)
+func TestStandardRPCServer_getAppBlock_MapPayload(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
-	params := []any{apptypes.ChainType(1), map[string]any{
+	block := &rpcTestBlock{Number: "33", Timestamp: 55, Miner: "bob"}
+	require.NoError(t, appblock.StoreAppBlock(context.Background(), appchainDB, 1, block))
+
+	params := []any{uint64(1), map[string]any{
 		"number":    "33",
 		"timestamp": float64(55),
 		"miner":     "bob",
 	}}
 
-	rr := makeJSONRPCRequest(t, server, "getChainBlock", params)
+	rr := makeJSONRPCRequest(t, server, "getAppBlock", params)
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var resp JSONRPCResponse
@@ -1172,18 +1209,18 @@ func TestStandardRPCServer_getChainBlock_MapPayload(t *testing.T) {
 	payload, err := json.Marshal(resp.Result)
 	require.NoError(t, err)
 
-	var fv chainblock.FieldsValues
+	var fv appblock.FieldsValues
 	require.NoError(t, json.Unmarshal(payload, &fv))
 
 	require.Equal(t, []string{"number", "timestamp", "miner"}, fv.Fields)
 	require.Equal(t, []string{"33", "55", "bob"}, fv.Values)
 }
 
-func TestStandardRPCServer_getChainBlock_InvalidParams(t *testing.T) {
+func TestStandardRPCServer_getAppBlock_InvalidParams(t *testing.T) {
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
-	rr := makeJSONRPCRequest(t, server, "getChainBlock", []any{})
+	rr := makeJSONRPCRequest(t, server, "getAppBlock", []any{})
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	var resp JSONRPCResponse

@@ -27,6 +27,7 @@ var (
 	ErrReceiptNotFound                = errors.New("receipt not found")
 	ErrTransactionNotFound            = errors.New("transaction not found")
 
+	ErrBlockNotFound      = errors.New("block not found")
 	ErrInvalidBlockNumber = errors.New("invalid block number")
 	ErrInvalidChainType   = errors.New("invalid chain type")
 	ErrWrongParamsCount   = errors.New("wrong number of parameters")
