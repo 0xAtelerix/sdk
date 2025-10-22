@@ -27,9 +27,9 @@ import (
 )
 
 func WithRootCalculator[STI StateTransitionInterface[AppTx, R],
-AppTx apptypes.AppTransaction[R],
-R apptypes.Receipt,
-AppBlock apptypes.AppchainBlock](rc apptypes.RootCalculator) func(a *Appchain[STI, AppTx, R, AppBlock]) {
+	AppTx apptypes.AppTransaction[R],
+	R apptypes.Receipt,
+	AppBlock apptypes.AppchainBlock](rc apptypes.RootCalculator) func(a *Appchain[STI, AppTx, R, AppBlock]) {
 	return func(a *Appchain[STI, AppTx, R, AppBlock]) {
 		a.rootCalculator = rc
 	}
@@ -64,9 +64,9 @@ func MakeAppchainConfig(
 }
 
 func NewAppchain[STI StateTransitionInterface[AppTx, R],
-AppTx apptypes.AppTransaction[R],
-R apptypes.Receipt,
-AppBlock apptypes.AppchainBlock](
+	AppTx apptypes.AppTransaction[R],
+	R apptypes.Receipt,
+	AppBlock apptypes.AppchainBlock](
 	sti STI,
 	blockBuilder apptypes.AppchainBlockConstructor[AppTx, R, AppBlock],
 	txpool apptypes.TxPoolInterface[AppTx, R],
@@ -122,7 +122,6 @@ type Appchain[STI StateTransitionInterface[appTx, R], appTx apptypes.AppTransact
 
 func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 	ctx context.Context,
-	streamConstructor EventStreamWrapperConstructor[appTx, R],
 ) error {
 	logger := log.Ctx(ctx)
 	logger.Warn().Msg("Appchain run started")
@@ -167,7 +166,7 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 	}
 
 	if a.TxBatchDB == nil {
-		return errors.New("tx batch db is nil")
+		return ErrEmptyTxBatchDB
 	}
 
 	var (
@@ -246,7 +245,7 @@ runFor:
 		default:
 		}
 
-		logger.Info().Msg("getting batches")
+		logger.Debug().Msg("getting batches")
 
 		timer := time.Now()
 		batches, err := eventStream.GetNewBatchesBlocking(ctx, 10)
@@ -455,6 +454,7 @@ func WaitFile(ctx context.Context, filePath string, logger *zerolog.Logger) erro
 
 		break
 	}
+
 	return nil
 }
 
@@ -705,18 +705,24 @@ func GetLastStreamPositions(
 		if err != nil {
 			return err
 		}
+
 		k, v, err := c.Last()
 		if err != nil {
 			return err
 		}
+
 		if len(k) != 4 {
 			return nil
 		}
+
 		epoch = binary.BigEndian.Uint32(k)
+
 		if len(v) != 8 {
 			return nil
 		}
+
 		startEventPos = int64(binary.BigEndian.Uint64(v))
+
 		return nil
 	})
 	if err != nil {

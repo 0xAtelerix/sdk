@@ -1,5 +1,7 @@
 package gosdk
 
+import "bytes"
+
 type SDKError string
 
 func (e SDKError) Error() string {
@@ -14,7 +16,15 @@ const (
 
 	ErrWrongBlock = SDKError("wrong block hash")
 
+	ErrEmptyTxBatchDB = SDKError("tx batch db is nil")
+
 	ErrUnsupportedEntityType = SDKError("unsupported entity type")
 	ErrMalformedKey          = SDKError("malformed key")
 	ErrUnsupportedFixture    = SDKError("unsupported type in FixtureWriter")
+)
+
+//nolint:gochecknoglobals // read only
+var EndOfEpochSuffix = bytes.Repeat(
+	[]byte{0xFF},
+	28,
 )

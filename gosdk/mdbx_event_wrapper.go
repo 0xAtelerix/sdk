@@ -64,10 +64,12 @@ func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Rece
 		votingBlocks:      votingBlocks,
 		votingCheckpoints: votingCheckpoints,
 	}
+
 	err := wrapper.InitReader(context.TODO())
 	if err != nil {
 		return nil, err
 	}
+
 	return wrapper, nil
 }
 
@@ -76,8 +78,10 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) InitReader(ctx context.Context) err
 	if err != nil {
 		return err
 	}
+
 	ews.currentEpoch = epoch
 	newPath := filepath.Join(ews.streamPath, fmt.Sprintf("epoch_%d.data", epoch))
+
 	err = WaitFile(ctx, newPath, log.Ctx(ctx))
 	if err != nil {
 		return err
@@ -87,6 +91,16 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) InitReader(ctx context.Context) err
 	if err != nil {
 		return fmt.Errorf("failed to create event reader: %w", err)
 	}
+
+	if ews.eventReader != nil {
+		err = ews.eventReader.Close()
+		if err != nil {
+			ews.logger.Error().Err(err).Msg("failed to close event reader")
+
+			return err
+		}
+	}
+
 	ews.eventReader = eventReader
 
 	return nil
@@ -96,8 +110,6 @@ type Streamer[appTx apptypes.AppTransaction[R], R apptypes.Receipt] interface {
 	GetNewBatchesBlocking(ctx context.Context, limit int) ([]apptypes.Batch[appTx, R], error)
 	Close() error
 }
-
-var EndOfEpoch = bytes.Repeat([]byte{0xFF}, 28)
 
 func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 	ctx context.Context,
@@ -121,12 +133,18 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 	var valset *ValidatorSet
 
 	newEpoch := uint32(0)
+
 	var newValset []byte
+
 	for _, eventBatch := range eventBatches {
-		ews.logger.Info().Str("atropos", hex.EncodeToString(eventBatch.Atropos[4:])).Msg("Compare atropos hash")
-		if bytes.Equal(eventBatch.Atropos[4:], EndOfEpoch) {
+		ews.logger.Debug().
+			Str("atropos", hex.EncodeToString(eventBatch.Atropos[4:])).
+			Msg("Compare atropos hash")
+
+		if bytes.Equal(eventBatch.Atropos[4:], EndOfEpochSuffix) {
 			newEpoch = binary.BigEndian.Uint32(eventBatch.Atropos[:4])
 			newValset = eventBatch.Events[0]
+
 			continue
 		}
 
@@ -298,12 +316,12 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 				}
 			}
 
-			err := func(ctx context.Context) error {
+			processErr := func(ctx context.Context) error {
 				tLookup := time.Now()
 
-				tx, err := ews.txReader.BeginRo(ctx)
-				if err != nil {
-					return err
+				tx, innerErr := ews.txReader.BeginRo(ctx)
+				if innerErr != nil {
+					return innerErr
 				}
 				defer tx.Rollback()
 
@@ -312,18 +330,18 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 						continue
 					}
 
-					val, err := tx.GetOne(TxBuckets, hsh[:])
-					if err != nil {
-						return err
+					val, innerErr := tx.GetOne(TxBuckets, hsh[:])
+					if innerErr != nil {
+						return innerErr
 					}
 
 					if len(val) == 0 {
 						continue
 					}
 
-					txs, err := utility.Unflatten(val)
-					if err != nil {
-						return err
+					txs, innerErr := utility.Unflatten(val)
+					if innerErr != nil {
+						return innerErr
 					}
 
 					txBatches[hsh] = txs
@@ -337,10 +355,10 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 				return nil
 			}(ctx)
-			if err != nil {
-				ews.logger.Error().Err(err).Msg("got tx batches from mdbx")
+			if processErr != nil {
+				ews.logger.Error().Err(processErr).Msg("got tx batches from mdbx")
 
-				return nil, err
+				return nil, processErr
 			}
 		}
 
@@ -365,13 +383,13 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 			for _, rawTx := range txsRaw {
 				var tx appTx
-				if err := cbor.Unmarshal(rawTx, &tx); err != nil {
+				if unmarshalError := cbor.Unmarshal(rawTx, &tx); unmarshalError != nil {
 					ews.logger.Error().
-						Err(err).
+						Err(unmarshalError).
 						Str("json", string(rawTx)).
 						Msg("failed to unmarshal tx")
 
-					return nil, fmt.Errorf("failed to unmarshal tx: %w", err)
+					return nil, fmt.Errorf("failed to unmarshal tx: %w", unmarshalError)
 				}
 
 				allParsedTxs = append(allParsedTxs, tx)
@@ -386,6 +404,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 			EndOffset:      eventBatch.EndOffset,
 		})
 	}
+
 	if newEpoch > 0 {
 		err = ews.appchainDB.Update(ctx, func(tx kv.RwTx) error {
 			epochkey := make([]byte, 4)
@@ -394,13 +413,14 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 			ews.logger.Warn().
 				Uint32("epoch", newEpoch).
 				Int("valset len", len(newValset)).
-				Msg("new epoch set")
+				Msg("new epoch")
 
 			return WriteSnapshotPosition(tx, newEpoch, 8)
 		})
 		if err != nil {
 			return nil, err
 		}
+
 		err = ews.InitReader(ctx)
 		if err != nil {
 			return nil, err
