@@ -1113,7 +1113,6 @@ func TestStandardRPCServer_corsHealthEndpoint(t *testing.T) {
 
 // GETAPPBLOCKS TETSTS
 
-
 func TestStandardRPCServer_getAppBlock(t *testing.T) {
 	server, appchainDB, cleanup := setupTestEnvironment(t)
 	defer cleanup()
