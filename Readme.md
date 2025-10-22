@@ -13,6 +13,7 @@ This README concentrates on that Go-centric workflow. It assumes you will start 
 - [Quickstart](#quickstart)
 - [State management and batch processing](#state-management-and-batch-processing)
 - [Multichain data access and synchronization](#multichain-data-access-and-synchronization)
+- [Subscription on a custom EVM event](#subscription-on-a-custom-evm-event)
 - [External transactions](#external-transactions)
 - [Designing custom transaction formats](#designing-custom-transaction-formats)
 - [Extending JSON-RPC APIs](#extending-json-rpc-apis)
@@ -180,6 +181,98 @@ The same example test also shows how to bootstrap multichain reads: it creates a
    Because the fetchers gate `ProcessBlock` until the referenced block is present, your logic can concentrate on decoding events and updating state within the same MDBX transaction the batch processor opened.
 
 Following this pattern you can enrich the example appchain with multichain guardrails: subscribe to the precise contracts you care about, process external blocks deterministically, and surface their effects through your own transaction handlers or emitted external payloads.
+
+## Subscription on a custom EVM event
+This guide explains how to connect the `gosdk` subscriber to custom EVM events so your appchain can react to logs emitted by external contracts. The snippets recap the flow exercised in `gosdk/library/tokens/evm_test.go` and `gosdk/library/subscriber/subscriber_test.go` on the `custom_events` branch.
+
+### 1. Model the Event
+
+Create a Go struct that matches the ABI of the event you want to capture. Annotate each field with `abi:"<name>"`.
+
+```go
+type Deposit struct {
+    Dst common.Address `abi:"dst"`
+    Wad *big.Int       `abi:"wad"`
+}
+```
+
+Parse the contract ABI (for example, with `abi.JSON`) and bundle it into an `*library.EVMEvent` so the subscriber knows which chain, contract, and event name to watch.
+
+```go
+spec := library.NewEVMEvent(
+    chainID,
+    library.EthereumAddress(wethAddr),
+    "Deposit",
+    wethABI,
+)
+```
+
+### 2. Register & Subscribe
+
+Call `subscriber.AddEVMEvent` during initialisation. It registers the decoder, subscribes to the contract address, persists the event spec, and binds your handler.
+
+```go
+_, err := subscriber.AddEVMEvent(ctx, sub, spec,
+    func(ev tokens.Event[Deposit], tx kv.RwTx) {
+        // ev.SubscribedEvent contains the typed payload.
+        // ev.Contract / ev.TxHash / ev.LogIndex provide provenance.
+        handleDeposit(tx, ev)
+    },
+    db, // kv.RwDB backing scheme.SubscriptionEventLibraryBucket
+)
+```
+
+`AddEVMEvent` stores the handler under `ev.EventName`. You can register multiple event kinds; each gets its own entry in `sub.EVMHandlers`.
+
+### 3. Persist Address Sets
+
+`AddEVMEvent` calls `SubscribeEthContract` for you. To keep the subscription list durable between restarts, invoke `sub.Store(rwTx)` whenever you change subscriptions. Later, when processing blocks, gate dispatch with:
+
+```go
+if !sub.IsEthSubscription(chainID, library.EthereumAddress(log.Address)) {
+    return // emitter not tracked for this chain
+}
+```
+
+### 4. Decode & Dispatch Logs
+
+Feed every log through the registry. Group decoded results by `Event.Name()` so each handler sees only the events it expects.
+
+```go
+evts, matched, err := sub.EVMEventRegistry.HandleLog(log, receipt.TxHash)
+if err != nil || !matched {
+    return
+}
+
+groups := map[string][]tokens.AppEvent{}
+for _, ev := range evts {
+    groups[ev.Name()] = append(groups[ev.Name()], ev)
+}
+
+for name, list := range groups {
+    if h, ok := sub.EVMHandlers[name]; ok {
+        h.Handle(list, rwTx)
+    }
+}
+```
+
+`subscriber.NewEVMHandler` (used internally by `AddEVMEvent`) narrows `[]tokens.AppEvent` back to your typed `tokens.Event[T]` values before invoking the callback.
+
+### 5. Restore After Restart
+
+Event metadata is saved in `scheme.SubscriptionEventLibraryBucket`, so you can rebuild handlers on startup without repeating ABI wiring.
+
+```go
+sub, _ := subscriber.NewSubscriber(ctx, db)
+err := subscriber.LoadEVMEvent(ctx, sub, chainID, contract, "Deposit", db, handler)
+```
+
+This reloads the ABI, re-registers the decoder, and reattaches the handler, letting your app resume processing custom events seamlessly.
+
+### Further Reading
+
+- `library/tokens/evm_test.go` – custom decoder examples.
+- `library/subscriber/subscriber_test.go` – subscription gating, persistence, and restart coverage.
 
 ## External transactions
 

@@ -34,7 +34,6 @@ linters:
     #- gomoddirectives # doesn't support nolint directives, replace directive is needed for erigon-lib
     - varnamelen # too many `ignore-name` cases have appeared
     # deprecated linters below
-    - paralleltest
     - tparallel
     - tagalign
   settings:
@@ -263,7 +262,7 @@ issues:
   whole-files: true
   # Fix found issues (if it's supported by the linter).
   # Default: false
-  fix: false
+  fix: true
 # Output configuration options.
 output:
   # The formats used to render issues.

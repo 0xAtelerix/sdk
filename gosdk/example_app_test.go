@@ -18,9 +18,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	subscriber2 "github.com/0xAtelerix/sdk/gosdk/library/subscriber"
+	"github.com/0xAtelerix/sdk/gosdk/scheme"
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
 
+//nolint:paralleltest //uses full application
 func TestExampleAppchain(t *testing.T) {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
@@ -46,7 +49,7 @@ func TestExampleAppchain(t *testing.T) {
 	appchainDB, err := mdbx.NewMDBX(mdbxlog.New()).
 		Path(appchainDBPath).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
-			return DefaultTables()
+			return scheme.DefaultTables()
 		}).
 		Open()
 	require.NoError(t, err)
@@ -56,14 +59,14 @@ func TestExampleAppchain(t *testing.T) {
 	txBatchDB, err := mdbx.NewMDBX(mdbxlog.New()).
 		Path(txStreamDirPath).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
-			return TxBucketsTables()
+			return scheme.TxBucketsTables()
 		}).
 		Open()
 	if err != nil {
 		log.Panic().Err(err).Msg("Failed to tx batch mdbx database")
 	}
 
-	subscriber, err := NewSubscriber(t.Context(), appchainDB)
+	subscriber, err := subscriber2.NewSubscriber(t.Context(), appchainDB)
 	require.NoError(t, err)
 
 	chainDBs, err := NewMultichainStateAccessDB(config.MultichainStateDB)

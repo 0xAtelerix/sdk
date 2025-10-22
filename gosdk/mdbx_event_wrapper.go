@@ -13,6 +13,9 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/library"
+	subscriber2 "github.com/0xAtelerix/sdk/gosdk/library/subscriber"
+	"github.com/0xAtelerix/sdk/gosdk/scheme"
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
@@ -21,7 +24,7 @@ type MdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 	txReader          kv.RoDB
 	chainID           uint32
 	logger            *zerolog.Logger
-	subscriber        *Subscriber
+	subscriber        *subscriber2.Subscriber
 	appchainDB        kv.RoDB
 	votingBlocks      *Voting[apptypes.ExternalBlock]
 	votingCheckpoints *Voting[apptypes.Checkpoint]
@@ -34,7 +37,7 @@ type EventStreamWrapperConstructor[appTx apptypes.AppTransaction[R], R apptypes.
 	txBatchDB kv.RoDB,
 	logger *zerolog.Logger,
 	appchainTx kv.RoDB,
-	subscriber *Subscriber,
+	subscriber *subscriber2.Subscriber,
 	votingBlocks *Voting[apptypes.ExternalBlock],
 	votingCheckpoints *Voting[apptypes.Checkpoint],
 ) (Streamer[appTx, R], error)
@@ -46,7 +49,7 @@ func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Rece
 	txBatchDB kv.RoDB,
 	logger *zerolog.Logger,
 	appchainDB kv.RoDB,
-	subscriber *Subscriber,
+	subscriber *subscriber2.Subscriber,
 	votingBlocks *Voting[apptypes.ExternalBlock],
 	votingCheckpoints *Voting[apptypes.Checkpoint],
 ) (*MdbxEventStreamWrapper[appTx, R], error) {
@@ -151,7 +154,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 				err = ews.appchainDB.View(ctx, func(tx kv.Tx) error {
 					var valsetData []byte
 
-					valsetData, err = tx.GetOne(ValsetBucket, key[:])
+					valsetData, err = tx.GetOne(scheme.ValsetBucket, key[:])
 					if err != nil {
 						ews.logger.Err(err).
 							Uint32("Epoch", evt.Base.Epoch)
@@ -160,7 +163,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 					}
 
 					if len(valsetData) == 0 {
-						return ErrNoValidatorSet
+						return library.ErrNoValidatorSet
 					}
 
 					valset = &ValidatorSet{}
@@ -276,7 +279,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 						continue
 					}
 
-					val, err := tx.GetOne(TxBuckets, hsh[:])
+					val, err := tx.GetOne(scheme.TxBuckets, hsh[:])
 					if err != nil {
 						return err
 					}
@@ -324,7 +327,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 		for _, ref := range expectedTxBatches {
 			txsRaw, ok := txBatches[ref.batchHash]
 			if !ok {
-				return nil, fmt.Errorf("%w: %x", ErrMissingTxBatch, ref.batchHash[:4])
+				return nil, fmt.Errorf("%w: %x", library.ErrMissingTxBatch, ref.batchHash[:4])
 			}
 
 			for _, rawTx := range txsRaw {

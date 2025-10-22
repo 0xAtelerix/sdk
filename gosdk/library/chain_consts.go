@@ -1,4 +1,4 @@
-package gosdk
+package library
 
 import (
 	"slices"
@@ -86,8 +86,8 @@ func IsSolanaChain(chainID apptypes.ChainType) bool {
 }
 
 type ChainAddresses[T Address] struct {
-	chainID   apptypes.ChainType
-	addresses []T
+	ChainID   apptypes.ChainType
+	Addresses []T
 }
 
 func CmpAddr[T Address](a, b T) int {
@@ -107,9 +107,9 @@ func CmpAddr[T Address](a, b T) int {
 func SortChainAddresses[T Address](items []ChainAddresses[T]) {
 	slices.SortFunc(items, func(a, b ChainAddresses[T]) int {
 		switch {
-		case a.chainID < b.chainID:
+		case a.ChainID < b.ChainID:
 			return -1
-		case a.chainID > b.chainID:
+		case a.ChainID > b.ChainID:
 			return 1
 		default:
 			return 0
@@ -117,7 +117,7 @@ func SortChainAddresses[T Address](items []ChainAddresses[T]) {
 	})
 
 	for i := range items {
-		slices.SortFunc(items[i].addresses, CmpAddr[T])
+		slices.SortFunc(items[i].Addresses, CmpAddr[T])
 	}
 }
 
@@ -126,12 +126,12 @@ func CollectChainAddresses[T Address](m map[apptypes.ChainType]map[T]struct{}) [
 
 	for chainID, set := range m {
 		ca := ChainAddresses[T]{
-			chainID:   chainID,
-			addresses: make([]T, 0, len(set)),
+			ChainID:   chainID,
+			Addresses: make([]T, 0, len(set)),
 		}
 
 		for addr := range set {
-			ca.addresses = append(ca.addresses, addr)
+			ca.Addresses = append(ca.Addresses, addr)
 		}
 
 		out = append(out, ca)

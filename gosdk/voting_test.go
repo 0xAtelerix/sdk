@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/scheme"
 )
 
 func block(c, n uint64, h0 byte) apptypes.ExternalBlock {
@@ -374,12 +375,13 @@ func TestPopFinalized_NoThreshold_NoOp(t *testing.T) {
 
 func openVotingDB(t *testing.T) kv.RwDB {
 	t.Helper()
+
 	db, err := mdbx.NewMDBX(mdbxlog.New()).
 		Path(t.TempDir()).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return kv.TableCfg{
-				ExternalBlockVotingBucket: {},
-				CheckpointVotingBucket:    {},
+				scheme.ExternalBlockVotingBucket: {},
+				scheme.CheckpointVotingBucket:    {},
 			}
 		}).Open()
 	require.NoError(t, err)
@@ -404,6 +406,8 @@ func mkCP(chain, num uint64, b0 byte) apptypes.Checkpoint {
 }
 
 func TestStoreNewVotingFromStorage_ExternalBlock_RoundTrip(t *testing.T) {
+	t.Parallel()
+
 	db := openVotingDB(t)
 	defer db.Close()
 
@@ -487,6 +491,8 @@ func TestStoreNewVotingFromStorage_ExternalBlock_RoundTrip(t *testing.T) {
 }
 
 func TestStoreNewVotingFromStorage_Checkpoint_RoundTrip(t *testing.T) {
+	t.Parallel()
+
 	db := openVotingDB(t)
 	defer db.Close()
 
@@ -523,7 +529,7 @@ func TestStoreNewVotingFromStorage_Checkpoint_RoundTrip(t *testing.T) {
 
 	defer rro.Rollback()
 
-	cur, err := rro.Cursor(CheckpointVotingBucket)
+	cur, err := rro.Cursor(scheme.CheckpointVotingBucket)
 	require.NoError(t, err)
 
 	defer cur.Close()
@@ -551,6 +557,8 @@ func TestStoreNewVotingFromStorage_Checkpoint_RoundTrip(t *testing.T) {
 }
 
 func TestStoreNewVotingFromStorage_PopFinalized_PrunesState(t *testing.T) {
+	t.Parallel()
+
 	db := openVotingDB(t)
 	defer db.Close()
 
@@ -590,6 +598,8 @@ func TestStoreNewVotingFromStorage_PopFinalized_PrunesState(t *testing.T) {
 }
 
 func TestStoreNewVotingFromStorage_DoubleVoteProtectionPersists(t *testing.T) {
+	t.Parallel()
+
 	db := openVotingDB(t)
 	defer db.Close()
 

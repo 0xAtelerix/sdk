@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/library"
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
@@ -242,7 +243,7 @@ func (er *EventReader) readNewBatches(ctx context.Context, limit int) ([]ReadBat
 				&valueSize,
 			)
 			if err != nil {
-				return nil, ErrCorruptedFile
+				return nil, library.ErrCorruptedFile
 			}
 
 			offset += 4
