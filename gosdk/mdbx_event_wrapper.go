@@ -363,9 +363,5 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) Close() error {
 		return err
 	}
 
-	ews.txReader.Close()
-
-	ews.appchainDB.Close()
-
 	return nil
 }

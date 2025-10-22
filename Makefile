@@ -11,7 +11,7 @@ tidy:
 	go mod tidy
 
 tests:
-	go test -short -timeout 20m -failfast -shuffle=on -v ./... $(params)
+	go test -short -count=1 -timeout 20m -failfast -shuffle=on -v ./... $(params)
 
 race-tests:
 	go test -race -short -timeout 30m -failfast -shuffle=on -v ./... $(params)
