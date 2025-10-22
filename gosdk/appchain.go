@@ -27,6 +27,24 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
+type ExampleBlock struct{}
+
+func (*ExampleBlock) Number() uint64 {
+	return 0
+}
+
+func (*ExampleBlock) Hash() [32]byte {
+	return [32]byte{}
+}
+
+func (*ExampleBlock) StateRoot() [32]byte {
+	return [32]byte{}
+}
+
+func (*ExampleBlock) Bytes() []byte {
+	return []byte{}
+}
+
 func WithRootCalculator[STI StateTransitionInterface[AppTx, R],
 	AppTx apptypes.AppTransaction[R],
 	R apptypes.Receipt,

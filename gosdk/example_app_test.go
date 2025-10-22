@@ -155,24 +155,6 @@ func (ExampleBatchProcesser[appTx, R]) ProcessBatch(
 	return nil, nil, nil
 }
 
-type ExampleBlock struct{}
-
-func (*ExampleBlock) Number() uint64 {
-	return 0
-}
-
-func (*ExampleBlock) Hash() [32]byte {
-	return [32]byte{}
-}
-
-func (*ExampleBlock) StateRoot() [32]byte {
-	return [32]byte{}
-}
-
-func (*ExampleBlock) Bytes() []byte {
-	return []byte{}
-}
-
 type StateTransition struct {
 	MultiChain *MultichainStateAccess
 }
