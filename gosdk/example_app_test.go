@@ -115,6 +115,25 @@ func TestExampleAppchain(t *testing.T) {
 	log.Info().Err(err).Msg("Appchain exited")
 }
 
+type ExampleBlock struct {
+}
+
+func (*ExampleBlock) Number() uint64 {
+	return 0
+}
+
+func (*ExampleBlock) Hash() [32]byte {
+	return [32]byte{}
+}
+
+func (*ExampleBlock) StateRoot() [32]byte {
+	return [32]byte{}
+}
+
+func (*ExampleBlock) Bytes() []byte {
+	return []byte{}
+}
+
 type ExampleTransaction[R ExampleReceipt] struct {
 	Sender string
 	Value  int

@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,6 +39,7 @@ func (m *AppBlockMethods[T]) GetAppBlock(
 	ctx context.Context,
 	params []any,
 ) (any, error) {
+	fmt.Println("AppBlockMethods[T), GetAppBlock")
 	if m == nil {
 		return nil, errAppBlockMethodsNotInitialized
 	}
@@ -62,16 +64,20 @@ func (m *AppBlockMethods[T]) GetAppBlock(
 		key := make([]byte, 8)
 		binary.BigEndian.PutUint64(key, blockNumber)
 
+		fmt.Printf("retrieve block data from gosdk.BlocksBucket by key, blocknumber: %d\n", blockNumber)
 		data, getErr := tx.GetOne(gosdk.BlocksBucket, key)
 		if getErr != nil {
 			return getErr
 		}
+		fmt.Println("retrieval successful, block data:", hex.EncodeToString(data))
 
 		if len(data) == 0 {
 			return ErrBlockNotFound
 		}
 
 		payload = append([]byte(nil), data...)
+
+		fmt.Println("payload:", hex.EncodeToString(payload))
 
 		return nil
 	})

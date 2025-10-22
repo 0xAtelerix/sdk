@@ -27,23 +27,6 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
-type ExampleBlock struct{}
-
-func (*ExampleBlock) Number() uint64 {
-	return 0
-}
-
-func (*ExampleBlock) Hash() [32]byte {
-	return [32]byte{}
-}
-
-func (*ExampleBlock) StateRoot() [32]byte {
-	return [32]byte{}
-}
-
-func (*ExampleBlock) Bytes() []byte {
-	return []byte{}
-}
 
 func WithRootCalculator[STI StateTransitionInterface[AppTx, R],
 	AppTx apptypes.AppTransaction[R],
@@ -563,8 +546,13 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Shutdown() {
 }
 
 func WriteBlock(rwtx kv.RwTx, blockNumber uint64, blockBytes []byte) error {
+	fmt.Println("WriteBlock blockNumber:", blockNumber)
+	fmt.Println("WriteBlock blockBytes:", hex.EncodeToString(blockBytes))
+
 	number := make([]byte, 8)
 	binary.BigEndian.PutUint64(number, blockNumber)
+
+	
 
 	return rwtx.Put(BlocksBucket, number, blockBytes)
 }
