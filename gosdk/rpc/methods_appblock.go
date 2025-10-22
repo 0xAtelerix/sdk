@@ -3,8 +3,6 @@ package rpc
 import (
 	"context"
 	"encoding/binary"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -26,6 +24,7 @@ type AppBlockMethods[T any] struct {
 var (
 	errAppBlockMethodsNotInitialized = errors.New("chain block methods not initialized")
 	errUnsupportedPayload            = errors.New("unsupported block payload type")
+	errMissingBlockTemplate          = errors.New("block template not configured")
 )
 
 func NewAppBlockMethods[T any](appchainDB kv.RwDB, target T) *AppBlockMethods[T] {
@@ -39,12 +38,11 @@ func (m *AppBlockMethods[T]) GetAppBlock(
 	ctx context.Context,
 	params []any,
 ) (any, error) {
-	fmt.Println("AppBlockMethods[T), GetAppBlock")
 	if m == nil {
 		return nil, errAppBlockMethodsNotInitialized
 	}
 
-	if len(params) != 2 {
+	if len(params) != 1 {
 		return nil, ErrWrongParamsCount
 	}
 
@@ -53,7 +51,9 @@ func (m *AppBlockMethods[T]) GetAppBlock(
 		return nil, err
 	}
 
-	target, err := parseTarget[T](params[1])
+	var target T
+
+	target, err = cloneTemplate(m.template)
 	if err != nil {
 		return nil, err
 	}
@@ -64,20 +64,16 @@ func (m *AppBlockMethods[T]) GetAppBlock(
 		key := make([]byte, 8)
 		binary.BigEndian.PutUint64(key, blockNumber)
 
-		fmt.Printf("retrieve block data from gosdk.BlocksBucket by key, blocknumber: %d\n", blockNumber)
 		data, getErr := tx.GetOne(gosdk.BlocksBucket, key)
 		if getErr != nil {
 			return getErr
 		}
-		fmt.Println("retrieval successful, block data:", hex.EncodeToString(data))
 
 		if len(data) == 0 {
 			return ErrBlockNotFound
 		}
 
 		payload = append([]byte(nil), data...)
-
-		fmt.Println("payload:", hex.EncodeToString(payload))
 
 		return nil
 	})
@@ -91,6 +87,29 @@ func (m *AppBlockMethods[T]) GetAppBlock(
 	}
 
 	return fv, nil
+}
+
+func cloneTemplate[T any](tpl T) (T, error) {
+	var zero T
+
+	val := reflect.ValueOf(tpl)
+	if !val.IsValid() {
+		return zero, errMissingBlockTemplate
+	}
+
+	typ := val.Type()
+	if typ.Kind() != reflect.Pointer {
+		return zero, fmt.Errorf("%w: %T", errUnsupportedPayload, tpl)
+	}
+
+	newVal := reflect.New(typ.Elem())
+
+	result, ok := newVal.Interface().(T)
+	if !ok {
+		return zero, fmt.Errorf("%w: %T", errUnsupportedPayload, tpl)
+	}
+
+	return result, nil
 }
 
 func AddAppBlockMethods[T any](
@@ -159,76 +178,4 @@ func parseBlockNumber(v any) (uint64, error) {
 	default:
 		return 0, ErrInvalidBlockNumber
 	}
-}
-
-func parseTarget[T any](param any) (T, error) {
-	var zero T
-
-	switch value := param.(type) {
-	case T:
-		return value, nil
-	case map[string]any:
-		if err := validateBlockPayloadKeys[T](value); err != nil {
-			return zero, err
-		}
-
-		data, err := json.Marshal(value)
-		if err != nil {
-			return zero, fmt.Errorf("encode block payload: %w", err)
-		}
-
-		var target T
-		if err := json.Unmarshal(data, &target); err != nil {
-			return zero, fmt.Errorf("decode block payload: %w", err)
-		}
-
-		return target, nil
-	default:
-		return zero, fmt.Errorf("%w: %T", errUnsupportedPayload, param)
-	}
-}
-
-func validateBlockPayloadKeys[T any](payload map[string]any) error {
-	if len(payload) == 0 {
-		return fmt.Errorf("%w: %T", errUnsupportedPayload, payload)
-	}
-
-	typ := reflect.TypeOf((*T)(nil)).Elem()
-	for typ.Kind() == reflect.Pointer {
-		typ = typ.Elem()
-	}
-
-	if typ.Kind() != reflect.Struct {
-		return fmt.Errorf("%w: %T", errUnsupportedPayload, payload)
-	}
-
-	allowed := make(map[string]struct{})
-
-	for i := range typ.NumField() {
-		field := typ.Field(i)
-		if field.PkgPath != "" {
-			continue
-		}
-
-		name := field.Name
-		if tag := field.Tag.Get("json"); tag != "" && tag != "-" {
-			if idx := strings.Index(tag, ","); idx != -1 {
-				tag = tag[:idx]
-			}
-
-			if tag != "" {
-				name = tag
-			}
-		}
-
-		allowed[name] = struct{}{}
-	}
-
-	for key := range payload {
-		if _, ok := allowed[key]; !ok {
-			return fmt.Errorf("%w: %T", errUnsupportedPayload, payload)
-		}
-	}
-
-	return nil
 }

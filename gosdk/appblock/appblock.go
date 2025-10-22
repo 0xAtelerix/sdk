@@ -7,7 +7,6 @@ import (
 	"strings"
 )
 
-
 // AppBlock is a generic wrapper that associates a decoded payload with the block
 // number it belongs to. Target holds the payload value used when exporting
 // metadata.

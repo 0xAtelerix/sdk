@@ -1120,7 +1120,7 @@ func TestStandardRPCServer_getAppBlock(t *testing.T) {
 	block := &rpcTestBlock{Number: "21", Timestamp: 100, Miner: "alice"}
 	require.NoError(t, appblock.StoreAppBlock(context.Background(), appchainDB, 1, block))
 
-	params := []any{uint64(1), &rpcTestBlock{Number: "21", Timestamp: 100, Miner: "alice"}}
+	params := []any{uint64(1)}
 
 	rr := makeJSONRPCRequest(t, server, "getAppBlock", params)
 	require.Equal(t, http.StatusOK, rr.Code)
@@ -1165,7 +1165,7 @@ func TestStandardRPCServer_getAppBlock_InvalidTarget(t *testing.T) {
 	var resp JSONRPCResponse
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
 	require.NotNil(t, resp.Error)
-	require.Equal(t, "unsupported block payload type: map[string]interface {}", resp.Error.Message)
+	require.Equal(t, ErrWrongParamsCount.Error(), resp.Error.Message)
 }
 
 func TestStandardRPCServer_getAppBlock_MapPayload(t *testing.T) {
@@ -1186,16 +1186,8 @@ func TestStandardRPCServer_getAppBlock_MapPayload(t *testing.T) {
 
 	var resp JSONRPCResponse
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-	require.Nil(t, resp.Error)
-
-	payload, err := json.Marshal(resp.Result)
-	require.NoError(t, err)
-
-	var fv appblock.FieldsValues
-	require.NoError(t, json.Unmarshal(payload, &fv))
-
-	require.Equal(t, []string{"number", "timestamp", "miner"}, fv.Fields)
-	require.Equal(t, []string{"33", "55", "bob"}, fv.Values)
+	require.NotNil(t, resp.Error)
+	require.Equal(t, ErrWrongParamsCount.Error(), resp.Error.Message)
 }
 
 func TestStandardRPCServer_getAppBlock_InvalidParams(t *testing.T) {

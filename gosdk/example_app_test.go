@@ -115,8 +115,7 @@ func TestExampleAppchain(t *testing.T) {
 	log.Info().Err(err).Msg("Appchain exited")
 }
 
-type ExampleBlock struct {
-}
+type ExampleBlock struct{}
 
 func (*ExampleBlock) Number() uint64 {
 	return 0
