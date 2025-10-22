@@ -1113,23 +1113,6 @@ func TestStandardRPCServer_corsHealthEndpoint(t *testing.T) {
 
 // GETAPPBLOCKS TETSTS
 
-/*
-
-// add  rpcTestBlock{Number: "21", Timestamp: 100, Miner: "alice"}} instead of &
-	// add memoizaton to reflection (add map)
-
-	// consider pointer or no pointer
-	// 	if value.Kind() != reflect.Pointer || value.IsNil() {
-	// 	return FieldsValues{}
-	// }
-	// params := []any{uint64(1), &rpcTestBlock{Number: "21", Timestamp: 100, Miner: "alice"}}
-
-	// add fmt.Sprintf for func stringify(v reflect.Value) string
-
-
-
-
-*/
 
 func TestStandardRPCServer_getAppBlock(t *testing.T) {
 	server, appchainDB, cleanup := setupTestEnvironment(t)
