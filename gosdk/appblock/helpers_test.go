@@ -1,44 +1,50 @@
 package appblock
 
 import (
+	"context"
 	"crypto/sha256"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"testing"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
+	mdbxlog "github.com/ledgerwatch/log/v3"
 	"github.com/stretchr/testify/require"
 
+	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-type testReceipt struct{}
+type helperTestReceipt struct{}
 
-func (testReceipt) TxHash() [32]byte                 { return [32]byte{} }
-func (testReceipt) Status() apptypes.TxReceiptStatus { return apptypes.ReceiptConfirmed }
-func (testReceipt) Error() string                    { return "" }
+func (helperTestReceipt) TxHash() [32]byte                 { return [32]byte{} }
+func (helperTestReceipt) Status() apptypes.TxReceiptStatus { return apptypes.ReceiptConfirmed }
+func (helperTestReceipt) Error() string                    { return "" }
 
-type testInjectTx[R testReceipt] struct {
+type helperTestTx[R helperTestReceipt] struct {
 	From  string
 	Value int
 }
 
-func (t testInjectTx[R]) Hash() [32]byte {
+func (t helperTestTx[R]) Hash() [32]byte {
 	return sha256.Sum256([]byte(t.From + strconv.Itoa(t.Value)))
 }
 
-func (testInjectTx[R]) Process(kv.RwTx) (R, []apptypes.ExternalTransaction, error) {
+func (helperTestTx[R]) Process(kv.RwTx) (R, []apptypes.ExternalTransaction, error) {
 	var r R
 
 	return r, nil, nil
 }
 
 type templateWithTxs struct {
-	Txs []testInjectTx[testReceipt]
+	Txs []helperTestTx[helperTestReceipt]
 }
 
 type templateWithPointerTxs struct {
-	Txs *[]testInjectTx[testReceipt]
+	Txs *[]helperTestTx[helperTestReceipt]
 }
 
 type templateWithoutTxs struct {
@@ -53,90 +59,59 @@ type interfaceBlock struct {
 	value string
 }
 
-func (b *interfaceBlock) Number() string {
-	return b.value
-}
+func (b *interfaceBlock) Number() string { return b.value }
 
 func TestCloneTarget(t *testing.T) {
-	template := templateWithTxs{}
+	pl := templateWithTxs{}
 
-	cloned, err := CloneTarget(&template)
+	clone, err := CloneTarget(&pl)
 	require.NoError(t, err)
-	require.NotNil(t, cloned)
-	require.NotSame(t, &template, cloned)
+	require.NotNil(t, clone)
+	require.NotSame(t, &pl, clone)
 }
 
 func TestCloneTarget_InvalidTemplate(t *testing.T) {
-	cloned, err := CloneTarget(templateWithTxs{})
+	clone, err := CloneTarget(templateWithTxs{})
 	require.Error(t, err)
-	require.Equal(t, templateWithTxs{}, cloned)
+	require.Equal(t, templateWithTxs{}, clone)
 }
 
 func TestCloneTarget_NilPointerTemplate(t *testing.T) {
-	var template *templateWithTxs
+	var tpl *templateWithTxs
 
-	cloned, err := CloneTarget(template)
+	clone, err := CloneTarget(tpl)
 	require.NoError(t, err)
-	require.NotNil(t, cloned)
+	require.NotNil(t, clone)
 }
 
 func TestCloneTarget_InterfacePointerTemplate(t *testing.T) {
-	var template numberProvider = &interfaceBlock{value: "42"}
+	var tpl numberProvider = &interfaceBlock{value: "42"}
 
-	cloned, err := CloneTarget(template)
+	clone, err := CloneTarget(tpl)
 	require.NoError(t, err)
-	require.NotSame(t, template, cloned)
+	require.NotSame(t, tpl, clone)
 
-	casted, ok := cloned.(*interfaceBlock)
+	casted, ok := clone.(*interfaceBlock)
 	require.True(t, ok)
 	require.Empty(t, casted.Number())
 }
 
-func TestExtractTransactions_ReturnsSliceWhenPresent(t *testing.T) {
-	transactions := []testInjectTx[testReceipt]{{From: "alice", Value: 1}}
-	block := &templateWithTxs{Txs: transactions}
-
-	txs, ok, wasNil := ExtractTransactions[testInjectTx[testReceipt]](block)
-	require.True(t, ok)
-	require.False(t, wasNil)
-	require.Equal(t, transactions, txs)
-}
-
-func TestExtractTransactions_HandlesNilSlice(t *testing.T) {
-	block := &templateWithTxs{Txs: nil}
-
-	txs, ok, wasNil := ExtractTransactions[testInjectTx[testReceipt]](block)
-	require.True(t, ok)
-	require.True(t, wasNil)
-	require.Empty(t, txs)
-}
-
-func TestExtractTransactions_RejectedForIncompatibleTypes(t *testing.T) {
-	block := &templateWithoutTxs{Number: "42"}
-
-	txs, ok, wasNil := ExtractTransactions[testInjectTx[testReceipt]](block)
-	require.False(t, ok)
-	require.False(t, wasNil)
-	require.Nil(t, txs)
-}
-
 func TestStructValueFrom(t *testing.T) {
-	tests := map[string]struct {
-		input          any
-		expectOK       bool
-		expectIsStruct bool
+	cases := map[string]struct {
+		input    any
+		expectOK bool
 	}{
 		"nil":                {input: nil, expectOK: false},
-		"non-struct":         {input: 42, expectOK: false},
-		"struct":             {input: templateWithoutTxs{}, expectOK: true, expectIsStruct: true},
-		"pointer":            {input: &templateWithoutTxs{}, expectOK: true, expectIsStruct: true},
+		"non-struct":         {input: 1, expectOK: false},
+		"struct":             {input: templateWithoutTxs{}, expectOK: true},
+		"pointer":            {input: &templateWithoutTxs{}, expectOK: true},
 		"pointer to pointer": {input: new(*templateWithoutTxs), expectOK: false},
 	}
 
-	for name, tt := range tests {
+	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			value, ok := structValueFrom(tt.input)
-			if !tt.expectOK {
+			value, ok := structValueFrom(tc.input)
+			if !tc.expectOK {
 				require.False(t, ok)
 
 				return
@@ -156,4 +131,94 @@ func TestTxsField(t *testing.T) {
 
 	_, ok = txsField(reflect.ValueOf(templateWithoutTxs{}))
 	require.False(t, ok)
+}
+
+func TestExtractTransactions(t *testing.T) {
+	transactions := []helperTestTx[helperTestReceipt]{
+		{From: "alice", Value: 1},
+	}
+
+	block := &templateWithTxs{Txs: transactions}
+	txs, hasField, fieldNil := extractTransactions[helperTestTx[helperTestReceipt]](block)
+	require.True(t, hasField)
+	require.False(t, fieldNil)
+	require.Equal(t, transactions, txs)
+
+	blockNil := &templateWithTxs{Txs: nil}
+	_, hasField, fieldNil = extractTransactions[helperTestTx[helperTestReceipt]](blockNil)
+	require.True(t, hasField)
+	require.True(t, fieldNil)
+
+	_, hasField, fieldNil = extractTransactions[helperTestTx[helperTestReceipt]](
+		&templateWithoutTxs{},
+	)
+	require.False(t, hasField)
+	require.False(t, fieldNil)
+}
+
+func TestDecodeBlockIntoTarget(t *testing.T) {
+	db := newHelperTestDB(t, kv.TableCfg{gosdk.BlocksBucket: {}})
+
+	type payload struct {
+		Value string `json:"value"`
+	}
+
+	original := payload{Value: "ok"}
+	require.NoError(
+		t,
+		storeCBORValue(context.Background(), db, gosdk.BlocksBucket, 1, original, "encode"),
+	)
+
+	var decoded payload
+	require.NoError(t, decodeBlockIntoTarget(context.Background(), db, 1, &decoded))
+	require.Equal(t, original, decoded)
+
+	err := decodeBlockIntoTarget(context.Background(), db, 2, &decoded)
+	require.ErrorIs(t, err, errBlockNotFound)
+}
+
+func TestStoreAndFetchCBORValue(t *testing.T) {
+	db := newHelperTestDB(t, kv.TableCfg{gosdk.BlocksBucket: {}})
+
+	type payload struct {
+		Value string `cbor:"1,keyasint"`
+	}
+
+	original := payload{Value: "data"}
+	require.NoError(
+		t,
+		storeCBORValue(context.Background(), db, gosdk.BlocksBucket, 10, original, "encode"),
+	)
+
+	bytes, err := fetchBucketValue(context.Background(), db, 10)
+	require.NoError(t, err)
+
+	var decoded payload
+	require.NoError(t, cbor.Unmarshal(bytes, &decoded))
+	require.Equal(t, original, decoded)
+
+	_, err = fetchBucketValue(context.Background(), db, 99)
+	require.ErrorIs(t, err, errBlockNotFound)
+
+	_, err = fetchBucketValue(context.Background(), nil, 1)
+	require.ErrorIs(t, err, errAppchainDatabase)
+}
+
+func newHelperTestDB(t *testing.T, tables kv.TableCfg) kv.RwDB {
+	t.Helper()
+
+	toCfg := func(kv.TableCfg) kv.TableCfg { return tables }
+	dir := t.TempDir()
+
+	db, err := mdbx.NewMDBX(mdbxlog.New()).
+		Path(filepath.Join(dir, "helperdb")).
+		WithTableCfg(toCfg).
+		Open()
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		db.Close()
+	})
+
+	return db
 }

@@ -3,9 +3,6 @@ package rpc
 import (
 	"context"
 	"errors"
-	"math"
-	"strconv"
-	"strings"
 
 	"github.com/ledgerwatch/erigon-lib/kv"
 
@@ -87,7 +84,7 @@ func (m *AppBlockMethods[appTx, R, T]) GetTransactionsByBlockNumber(
 		return nil, err
 	}
 
-	txs, ok, err := appblock.GetTransactionsFromBlock[appTx, R, T](
+	txs, ok, err := appblock.GetTransactionsFromBlock[appTx](
 		ctx,
 		m.appchainDB,
 		blockNumber,
@@ -113,62 +110,4 @@ func AddAppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt, T 
 
 	server.AddMethod("getAppBlock", methods.GetAppBlock)
 	server.AddMethod("getTransactionsByBlockNumber", methods.GetTransactionsByBlockNumber)
-}
-
-func parseBlockNumber(v any) (uint64, error) {
-	switch value := v.(type) {
-	case uint64:
-		return value, nil
-	case int:
-		if value < 0 {
-			return 0, ErrInvalidBlockNumber
-		}
-
-		return uint64(value), nil
-	case int64:
-		if value < 0 {
-			return 0, ErrInvalidBlockNumber
-		}
-
-		return uint64(value), nil
-	case uint32:
-		return uint64(value), nil
-	case int32:
-		if value < 0 {
-			return 0, ErrInvalidBlockNumber
-		}
-
-		return uint64(value), nil
-	case float64:
-		if value < 0 || math.Trunc(value) != value {
-			return 0, ErrInvalidBlockNumber
-		}
-
-		return uint64(value), nil
-	case string:
-		s := strings.TrimSpace(value)
-
-		if s == "" {
-			return 0, ErrInvalidBlockNumber
-		}
-
-		var (
-			parsed uint64
-			err    error
-		)
-
-		if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
-			parsed, err = strconv.ParseUint(s[2:], 16, 64)
-		} else {
-			parsed, err = strconv.ParseUint(s, 10, 64)
-		}
-
-		if err != nil {
-			return 0, ErrInvalidBlockNumber
-		}
-
-		return parsed, nil
-	default:
-		return 0, ErrInvalidBlockNumber
-	}
 }

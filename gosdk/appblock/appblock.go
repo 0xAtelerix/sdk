@@ -3,7 +3,6 @@
 package appblock
 
 import (
-	"encoding/binary"
 	"fmt"
 	"reflect"
 	"strings"
@@ -17,6 +16,14 @@ type AppBlock[T any] struct {
 	Target      T
 }
 
+// NewAppBlock constructs an AppBlock using the provided block number and target.
+func NewAppBlock[T any](blockNumber uint64, target T) *AppBlock[T] {
+	return &AppBlock[T]{
+		BlockNumber: blockNumber,
+		Target:      target,
+	}
+}
+
 type fieldMetadata struct {
 	index int
 	name  string
@@ -26,14 +33,6 @@ type fieldMetadata struct {
 type FieldsValues struct {
 	Fields []string
 	Values []string
-}
-
-// NewAppBlock constructs an AppBlock using the provided block number and target.
-func NewAppBlock[T any](blockNumber uint64, target T) *AppBlock[T] {
-	return &AppBlock[T]{
-		BlockNumber: blockNumber,
-		Target:      target,
-	}
 }
 
 // ToFieldsAndValues returns the exported field names of the underlying Target. The
@@ -129,16 +128,4 @@ func formatValue(field reflect.Value) string {
 	}
 
 	return fmt.Sprintf("%v", value.Interface())
-}
-
-// numberToBytes converts a uint64 block number into its big-endian byte slice
-// representation for use as a storage key.
-func numberToBytes(input uint64) []byte {
-	// Create a byte slice of length 8, as uint64 occupies 8 bytes
-	b := make([]byte, 8)
-
-	// Encode the uint64 into the byte slice using Big Endian byte order
-	binary.BigEndian.PutUint64(b, input)
-
-	return b
 }
