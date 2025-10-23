@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"time"
 
@@ -123,7 +122,6 @@ type Appchain[STI StateTransitionInterface[appTx, R], appTx apptypes.AppTransact
 
 func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 	ctx context.Context,
-	streamConstructor EventStreamWrapperConstructor[appTx, R],
 ) error {
 	logger := log.Ctx(ctx)
 	logger.Warn().Msg("Appchain run started")
@@ -146,7 +144,7 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 		go startPrometheusServer(ctx, a.config.PrometheusPort)
 	}
 
-	startEventPos, startTxPos, err := GetLastStreamPositions(ctx, a.AppchainDB)
+	startEventPos, epoch, err := GetLastStreamPositions(ctx, a.AppchainDB)
 	if err != nil {
 		return err
 	}
@@ -154,37 +152,24 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 	logger.Info().
 		Str("dir", a.config.EventStreamDir).
 		Int64("start event", startEventPos).
-		Int64("start tx", startTxPos).
+		Uint32("epoch", epoch).
 		Msg("Initializing event readers")
 
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
+	err = WaitFile(ctx, a.config.EventStreamDir, logger)
+	if err != nil {
+		return err
+	}
 
-		_, err = os.Stat(a.config.EventStreamDir)
-		if err != nil {
-			logger.Warn().Err(err).Msg("waiting event stream file")
-			time.Sleep(5 * time.Second)
+	err = WaitFile(ctx, a.config.TxStreamDir, logger)
+	if err != nil {
+		return err
+	}
 
-			continue
-		}
-
-		_, err = os.Stat(a.config.TxStreamDir)
-		if err != nil && a.TxBatchDB == nil {
-			logger.Warn().Err(err).Msg("waiting tx stream file")
-			time.Sleep(5 * time.Second)
-
-			continue
-		}
-
-		break
+	if a.TxBatchDB == nil {
+		return ErrEmptyTxBatchDB
 	}
 
 	var (
-		eventStream       Streamer[appTx, R]
 		votingBlocks      *Voting[apptypes.ExternalBlock]
 		votingCheckpoints *Voting[apptypes.Checkpoint]
 	)
@@ -206,32 +191,16 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 		return err
 	}
 
-	if streamConstructor == nil {
-		logger.Info().Msg("NewMdbxEventStreamWrapper")
-		eventStream, err = NewMdbxEventStreamWrapper[appTx, R](
-			filepath.Join(a.config.EventStreamDir, "epoch_1.data"),
-			uint32(a.config.ChainID),
-			startEventPos,
-			a.TxBatchDB,
-			logger,
-			a.AppchainDB,
-			a.subscriber,
-			votingBlocks,
-			votingCheckpoints,
-		)
-	} else {
-		eventStream, err = streamConstructor(filepath.Join(a.config.EventStreamDir, "epoch_1.data"),
-			uint32(a.config.ChainID),
-			startEventPos,
-			a.TxBatchDB,
-			logger,
-			a.AppchainDB,
-			a.subscriber,
-			votingBlocks,
-			votingCheckpoints,
-		)
-	}
-
+	eventStream, err := NewMdbxEventStreamWrapper[appTx, R](
+		a.config.EventStreamDir,
+		uint32(a.config.ChainID),
+		a.TxBatchDB,
+		logger,
+		a.AppchainDB,
+		a.subscriber,
+		votingBlocks,
+		votingCheckpoints,
+	)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to create event stream")
 
@@ -402,7 +371,7 @@ runFor:
 
 				logger.Debug().Int64("Next snapshot pos", batch.EndOffset).Msg("Write checkpoint")
 
-				err = WriteSnapshotPosition(rwtx, currentEpoch, batch.EndOffset)
+				err = WriteSnapshotPosition(rwtx, eventStream.currentEpoch, batch.EndOffset)
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to write snapshot pos")
 
@@ -443,7 +412,7 @@ runFor:
 
 				HeadBlockNumber.WithLabelValues(vid, cid).Set(float64(blockNumber))
 				EventStreamPosition.
-					WithLabelValues(vid, cid, strconv.FormatUint(uint64(currentEpoch), 10)).
+					WithLabelValues(vid, cid, strconv.FormatUint(uint64(eventStream.currentEpoch), 10)).
 					Set(float64(batch.EndOffset))
 				BlockExternalTxs.WithLabelValues(vid, cid).Observe(float64(len(extTxs)))
 				BlockInternalTxs.WithLabelValues(vid, cid).Observe(float64(len(batch.Transactions)))
@@ -462,6 +431,28 @@ runFor:
 		}
 
 		BatchProcessingDuration.WithLabelValues(vid, cid).Observe(time.Since(timer).Seconds())
+	}
+
+	return nil
+}
+
+func WaitFile(ctx context.Context, filePath string, logger *zerolog.Logger) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		_, err := os.Stat(filePath)
+		if err != nil {
+			logger.Warn().Err(err).Str("file", filePath).Msg("waiting file")
+			time.Sleep(5 * time.Second)
+
+			continue
+		}
+
+		break
 	}
 
 	return nil
@@ -702,40 +693,35 @@ func ReadSnapshotPosition(tx kv.Tx, epoch uint32) (int64, error) {
 	return int64(binary.BigEndian.Uint64(val)), nil
 }
 
-func ReadTxSnapshotPosition(tx kv.Tx, epoch uint32) int64 {
-	key := make([]byte, 4)
-	binary.BigEndian.PutUint32(key, epoch)
-
-	val, err := tx.GetOne(TxSnapshot, key)
-	if err != nil {
-		log.Log().Err(err).Msgf("ReadTxSnapshotPosition: can't read tx. Epoch: %d", epoch)
-
-		return 8 // fallback: пропускаем заголовок
-	}
-
-	if len(val) != 8 {
-		return 8
-	}
-
-	return int64(binary.BigEndian.Uint64(val))
-}
-
-const currentEpoch = uint32(1)
-
 func GetLastStreamPositions(
 	ctx context.Context,
 	appchainDB kv.RwDB,
-) (startEventPos int64, startTxPos int64, err error) {
-	startEventPos = int64(8)
-	startTxPos = int64(8)
+) (int64, uint32, error) {
+	startEventPos := int64(8)
+	epoch := uint32(1)
 
-	err = appchainDB.View(ctx, func(tx kv.Tx) error {
-		var dbErr error
-
-		startEventPos, dbErr = ReadSnapshotPosition(tx, currentEpoch)
-		if dbErr != nil {
-			return dbErr
+	err := appchainDB.View(ctx, func(tx kv.Tx) error {
+		c, err := tx.Cursor(Snapshot)
+		if err != nil {
+			return err
 		}
+
+		k, v, err := c.Last()
+		if err != nil {
+			return err
+		}
+
+		if len(k) != 4 {
+			return nil
+		}
+
+		epoch = binary.BigEndian.Uint32(k)
+
+		if len(v) != 8 {
+			return nil
+		}
+
+		startEventPos = int64(binary.BigEndian.Uint64(v))
 
 		return nil
 	})
@@ -743,5 +729,5 @@ func GetLastStreamPositions(
 		return 0, 0, fmt.Errorf("faild to get stream positions: %w", err)
 	}
 
-	return startEventPos, startTxPos, nil
+	return startEventPos, epoch, nil
 }

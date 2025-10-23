@@ -104,7 +104,7 @@ func TestExampleAppchain(t *testing.T) {
 
 	go func() {
 		assert.NotPanics(t, func() {
-			runErr <- appchainExample.Run(ctx, nil)
+			runErr <- appchainExample.Run(ctx)
 		})
 	}()
 
