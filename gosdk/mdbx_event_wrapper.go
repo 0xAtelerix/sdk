@@ -141,7 +141,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 			Str("atropos", hex.EncodeToString(eventBatch.Atropos[4:])).
 			Msg("Compare atropos hash")
 
-		if bytes.Equal(eventBatch.Atropos[4:], EndOfEpochSuffix) {
+		if bytes.Equal(eventBatch.Atropos[4:], endOfEpochSuffix) {
 			newEpoch = binary.BigEndian.Uint32(eventBatch.Atropos[:4])
 			newValset = eventBatch.Events[0]
 

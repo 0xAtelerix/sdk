@@ -24,7 +24,7 @@ const (
 )
 
 //nolint:gochecknoglobals // read only
-var EndOfEpochSuffix = bytes.Repeat(
+var endOfEpochSuffix = bytes.Repeat(
 	[]byte{0xFF},
 	28,
 )
