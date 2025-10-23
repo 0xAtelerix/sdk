@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
-	"errors"
 	"path/filepath"
 	"testing"
 
@@ -18,7 +17,6 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-var errMissingSender = errors.New("missing sender")
 
 func TestGetAppBlockByNumber_Success(t *testing.T) {
 	type payload struct {
