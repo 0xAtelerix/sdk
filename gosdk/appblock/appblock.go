@@ -1,3 +1,5 @@
+// Package appblock provides helpers for decoding, storing, and inspecting
+// application-specific blocks persisted by the SDK.
 package appblock
 
 import (
@@ -74,6 +76,8 @@ func (cb *AppBlock[T]) ToFieldsAndValues() FieldsValues {
 	return FieldsValues{Fields: fields, Values: values}
 }
 
+// buildFieldMetadata gathers metadata for exported fields, respecting JSON tags
+// when present, so field names can be displayed consistently.
 func buildFieldMetadata(typ reflect.Type) []fieldMetadata {
 	count := typ.NumField()
 	result := make([]fieldMetadata, 0, count)
@@ -104,6 +108,8 @@ func buildFieldMetadata(typ reflect.Type) []fieldMetadata {
 	return result
 }
 
+// formatValue converts a reflect.Value into its string representation while
+// safely dereferencing pointers and handling nil values.
 func formatValue(field reflect.Value) string {
 	if !field.IsValid() {
 		return ""
@@ -125,6 +131,8 @@ func formatValue(field reflect.Value) string {
 	return fmt.Sprintf("%v", value.Interface())
 }
 
+// numberToBytes converts a uint64 block number into its big-endian byte slice
+// representation for use as a storage key.
 func numberToBytes(input uint64) []byte {
 	// Create a byte slice of length 8, as uint64 occupies 8 bytes
 	b := make([]byte, 8)

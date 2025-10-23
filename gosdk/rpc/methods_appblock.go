@@ -2,39 +2,38 @@ package rpc
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
-	"fmt"
 	"math"
-	"reflect"
 	"strconv"
 	"strings"
 
 	"github.com/ledgerwatch/erigon-lib/kv"
 
-	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/appblock"
+	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-type AppBlockMethods[T any] struct {
+type AppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt, T any] struct {
 	appchainDB kv.RwDB
-	template   T
+	target     T
 }
 
-var (
-	errAppBlockMethodsNotInitialized = errors.New("chain block methods not initialized")
-	errUnsupportedPayload            = errors.New("unsupported block payload type")
-	errMissingBlockTemplate          = errors.New("block template not configured")
-)
+var errAppBlockMethodsNotInitialized = errors.New("chain block methods not initialized")
 
-func NewAppBlockMethods[T any](appchainDB kv.RwDB, target T) *AppBlockMethods[T] {
-	return &AppBlockMethods[T]{
+func NewAppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt, T any](
+	appchainDB kv.RwDB,
+	target T,
+) *AppBlockMethods[appTx, R, T] {
+	return &AppBlockMethods[appTx, R, T]{
 		appchainDB: appchainDB,
-		template:   target,
+		target:     target,
 	}
 }
 
-func (m *AppBlockMethods[T]) GetAppBlock(
+// GetAppBlock returns the decoded application block fields for the requested
+// block number, optionally enriching the payload with stored transactions when
+// available.
+func (m *AppBlockMethods[appTx, R, T]) GetAppBlock(
 	ctx context.Context,
 	params []any,
 ) (any, error) {
@@ -51,32 +50,12 @@ func (m *AppBlockMethods[T]) GetAppBlock(
 		return nil, err
 	}
 
-	var target T
-
-	target, err = cloneTemplate(m.template)
+	target, err := appblock.CloneTarget(m.target)
 	if err != nil {
 		return nil, err
 	}
 
-	var payload []byte
-
-	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
-		key := make([]byte, 8)
-		binary.BigEndian.PutUint64(key, blockNumber)
-
-		data, getErr := tx.GetOne(gosdk.BlocksBucket, key)
-		if getErr != nil {
-			return getErr
-		}
-
-		if len(data) == 0 {
-			return ErrBlockNotFound
-		}
-
-		payload = append([]byte(nil), data...)
-
-		return nil
-	})
+	payload, err := appblock.LoadBlockPayload(ctx, m.appchainDB, blockNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -89,37 +68,51 @@ func (m *AppBlockMethods[T]) GetAppBlock(
 	return fv, nil
 }
 
-func cloneTemplate[T any](tpl T) (T, error) {
-	var zero T
-
-	val := reflect.ValueOf(tpl)
-	if !val.IsValid() {
-		return zero, errMissingBlockTemplate
+// GetTransactionsByBlockNumber returns all stored application transactions for
+// the given block number.
+func (m *AppBlockMethods[appTx, R, T]) GetTransactionsByBlockNumber(
+	ctx context.Context,
+	params []any,
+) (any, error) {
+	if m == nil {
+		return nil, errAppBlockMethodsNotInitialized
 	}
 
-	typ := val.Type()
-	if typ.Kind() != reflect.Pointer {
-		return zero, fmt.Errorf("%w: %T", errUnsupportedPayload, tpl)
+	if len(params) != 1 {
+		return nil, ErrGetTransactionsByBlockNumberRequires1Param
 	}
 
-	newVal := reflect.New(typ.Elem())
+	blockNumber, err := parseBlockNumber(params[0])
+	if err != nil {
+		return nil, err
+	}
 
-	result, ok := newVal.Interface().(T)
+	txs, ok, err := appblock.GetTransactionsFromBlock[appTx, R, T](
+		ctx,
+		m.appchainDB,
+		blockNumber,
+		m.target,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	if !ok {
-		return zero, fmt.Errorf("%w: %T", errUnsupportedPayload, tpl)
+		return nil, ErrBlockNotFound
 	}
 
-	return result, nil
+	return txs, nil
 }
 
-func AddAppBlockMethods[T any](
+func AddAppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt, T any](
 	server *StandardRPCServer,
 	appchainDB kv.RwDB,
 	target T,
 ) {
-	methods := NewAppBlockMethods(appchainDB, target)
+	methods := NewAppBlockMethods[appTx, R](appchainDB, target)
 
 	server.AddMethod("getAppBlock", methods.GetAppBlock)
+	server.AddMethod("getTransactionsByBlockNumber", methods.GetTransactionsByBlockNumber)
 }
 
 func parseBlockNumber(v any) (uint64, error) {

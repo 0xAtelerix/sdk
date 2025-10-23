@@ -16,6 +16,9 @@ var (
 	ErrGetTransactionStatusRequires1Param = errors.New(
 		"getTransactionStatus requires exactly 1 parameter",
 	)
+	ErrGetTransactionsByBlockNumberRequires1Param = errors.New(
+		"getTransactionsByBlockNumber requires exactly 1 parameter",
+	)
 	ErrHashParameterMustBeString      = errors.New("hash parameter must be a string")
 	ErrInvalidHashFormat              = errors.New("invalid hash format")
 	ErrInvalidTransactionData         = errors.New("invalid transaction data")

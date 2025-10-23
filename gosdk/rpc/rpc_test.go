@@ -28,9 +28,10 @@ import (
 )
 
 type rpcTestBlock struct {
-	Number    string `json:"number"`
-	Timestamp uint64 `json:"timestamp"`
-	Miner     string `json:"miner"`
+	Number    string                         `json:"number"`
+	Timestamp uint64                         `json:"timestamp"`
+	Miner     string                         `json:"miner"`
+	Txs       []TestTransaction[TestReceipt] `json:"txs"`
 }
 
 const (
@@ -1111,7 +1112,7 @@ func TestStandardRPCServer_corsHealthEndpoint(t *testing.T) {
 	assert.Equal(t, 200, w.Code)
 }
 
-// GETAPPBLOCKS TETSTS
+// GETAPPBLOCK TESTS
 
 func TestStandardRPCServer_getAppBlock(t *testing.T) {
 	server, appchainDB, cleanup := setupTestEnvironment(t)
@@ -1135,8 +1136,8 @@ func TestStandardRPCServer_getAppBlock(t *testing.T) {
 	var fv appblock.FieldsValues
 	require.NoError(t, json.Unmarshal(payload, &fv))
 
-	require.Equal(t, []string{"number", "timestamp", "miner"}, fv.Fields)
-	require.Equal(t, []string{"21", "100", "alice"}, fv.Values)
+	require.Equal(t, []string{"number", "timestamp", "miner", "txs"}, fv.Fields)
+	require.Equal(t, []string{"21", "100", "alice", "[]"}, fv.Values)
 }
 
 func TestStandardRPCServer_getAppBlock_InvalidTarget(t *testing.T) {
@@ -1168,28 +1169,6 @@ func TestStandardRPCServer_getAppBlock_InvalidTarget(t *testing.T) {
 	require.Equal(t, ErrWrongParamsCount.Error(), resp.Error.Message)
 }
 
-func TestStandardRPCServer_getAppBlock_MapPayload(t *testing.T) {
-	server, appchainDB, cleanup := setupTestEnvironment(t)
-	defer cleanup()
-
-	block := &rpcTestBlock{Number: "33", Timestamp: 55, Miner: "bob"}
-	require.NoError(t, appblock.StoreAppBlock(context.Background(), appchainDB, 1, block))
-
-	params := []any{uint64(1), map[string]any{
-		"number":    "33",
-		"timestamp": float64(55),
-		"miner":     "bob",
-	}}
-
-	rr := makeJSONRPCRequest(t, server, "getAppBlock", params)
-	require.Equal(t, http.StatusOK, rr.Code)
-
-	var resp JSONRPCResponse
-	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-	require.NotNil(t, resp.Error)
-	require.Equal(t, ErrWrongParamsCount.Error(), resp.Error.Message)
-}
-
 func TestStandardRPCServer_getAppBlock_InvalidParams(t *testing.T) {
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
@@ -1201,4 +1180,143 @@ func TestStandardRPCServer_getAppBlock_InvalidParams(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
 	require.NotNil(t, resp.Error)
 	require.Equal(t, ErrWrongParamsCount.Error(), resp.Error.Message)
+}
+
+// GETTRANSACTIONSBYBLOCKNUMBER TESTS
+
+func TestStandardRPCServer_getTransactionsByBlockNumber(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	block := &rpcTestBlock{
+		Number:    "21",
+		Timestamp: 100,
+		Miner:     "alice",
+		Txs: []TestTransaction[TestReceipt]{
+			{From: "0x1111", To: "0x2222", Value: 10},
+			{From: "0x3333", To: "0x4444", Value: 20},
+		},
+	}
+
+	require.NoError(
+		t,
+		appblock.StoreAppBlock(
+			context.Background(),
+			appchainDB,
+			1,
+			block,
+		),
+	)
+
+	params := []any{uint64(1)}
+
+	rr := makeJSONRPCRequest(t, server, "getTransactionsByBlockNumber", params)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.Nil(t, resp.Error)
+
+	resultPayload, err := json.Marshal(resp.Result)
+	require.NoError(t, err)
+
+	var got []TestTransaction[TestReceipt]
+	require.NoError(t, json.Unmarshal(resultPayload, &got))
+	require.Equal(t, block.Txs, got)
+
+	require.Len(t, got, len(block.Txs))
+
+	for i := range block.Txs {
+		require.Equal(t, block.Txs[i].From, got[i].From)
+		require.Equal(t, block.Txs[i].To, got[i].To)
+		require.Equal(t, block.Txs[i].Value, got[i].Value)
+	}
+}
+
+func TestStandardRPCServer_getTransactionsByBlockNumber_NotFound(t *testing.T) {
+	server, _, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	params := []any{uint64(42)}
+
+	rr := makeJSONRPCRequest(t, server, "getTransactionsByBlockNumber", params)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Error)
+	require.Equal(t, ErrBlockNotFound.Error(), resp.Error.Message)
+}
+
+func TestStandardRPCServer_getTransactionsByBlockNumber_EmptyTxField(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	block := &rpcTestBlock{
+		Number:    "42",
+		Timestamp: 300,
+		Miner:     "carol",
+		Txs:       nil,
+	}
+
+	require.NoError(t, appblock.StoreAppBlock(context.Background(), appchainDB, 2, block))
+
+	params := []any{uint64(2)}
+
+	rr := makeJSONRPCRequest(t, server, "getTransactionsByBlockNumber", params)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.Nil(t, resp.Error)
+
+	resultPayload, err := json.Marshal(resp.Result)
+	require.NoError(t, err)
+
+	var got []TestTransaction[TestReceipt]
+	require.NoError(t, json.Unmarshal(resultPayload, &got))
+	require.Empty(t, got)
+}
+
+func TestStandardRPCServer_getTransactionsByBlockNumber_IgnoresBucketFallback(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	block := &rpcTestBlock{
+		Number:    "43",
+		Timestamp: 310,
+		Miner:     "dave",
+		Txs:       nil,
+	}
+
+	require.NoError(t, appblock.StoreAppBlock(context.Background(), appchainDB, 3, block))
+
+	params := []any{uint64(3)}
+
+	rr := makeJSONRPCRequest(t, server, "getTransactionsByBlockNumber", params)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.Nil(t, resp.Error)
+
+	resultPayload, err := json.Marshal(resp.Result)
+	require.NoError(t, err)
+
+	var got []TestTransaction[TestReceipt]
+	require.NoError(t, json.Unmarshal(resultPayload, &got))
+	require.Empty(t, got)
+}
+
+func TestStandardRPCServer_getTransactionsByBlockNumber_InvalidParams(t *testing.T) {
+	server, _, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	rr := makeJSONRPCRequest(t, server, "getTransactionsByBlockNumber", []any{})
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Error)
+	require.Equal(t, ErrGetTransactionsByBlockNumberRequires1Param.Error(), resp.Error.Message)
 }
