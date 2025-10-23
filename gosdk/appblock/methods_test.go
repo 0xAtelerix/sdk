@@ -17,7 +17,6 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-
 func TestGetAppBlockByNumber_Success(t *testing.T) {
 	type payload struct {
 		ID   string `json:"id"`

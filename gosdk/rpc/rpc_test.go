@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -27,21 +26,9 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
 
-type rpcTestBlock struct {
-	Number    string                         `json:"number"`
-	Timestamp uint64                         `json:"timestamp"`
-	Miner     string                         `json:"miner"`
-	Txs       []TestTransaction[TestReceipt] `json:"txs"`
-}
-
 const (
 	testSuccessMessage        = "success"
 	testShouldNotReachMessage = "should not reach here"
-)
-
-var (
-	errMiddlewareFailed     = errors.New("middleware failed")
-	errInvalidParameterType = errors.New("invalid parameter type")
 )
 
 // TestTransaction - test transaction implementation
@@ -1113,6 +1100,13 @@ func TestStandardRPCServer_corsHealthEndpoint(t *testing.T) {
 }
 
 // GETAPPBLOCK TESTS
+
+type rpcTestBlock struct {
+	Number    string                         `json:"number"`
+	Timestamp uint64                         `json:"timestamp"`
+	Miner     string                         `json:"miner"`
+	Txs       []TestTransaction[TestReceipt] `json:"txs"`
+}
 
 func TestStandardRPCServer_getAppBlock(t *testing.T) {
 	server, appchainDB, cleanup := setupTestEnvironment(t)

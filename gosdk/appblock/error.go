@@ -13,5 +13,5 @@ var (
 	errTransactionsMissing  = errors.New("block does not store transactions in payload")
 	ErrMissingBlockTemplate = errors.New("block template not configured")
 	ErrUnsupportedPayload   = errors.New("unsupported block payload type")
-	errMissingSender = errors.New("missing sender")
+	errMissingSender        = errors.New("missing sender")
 )

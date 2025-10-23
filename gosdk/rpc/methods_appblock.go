@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"context"
-	"errors"
 
 	"github.com/ledgerwatch/erigon-lib/kv"
 
@@ -14,8 +13,6 @@ type AppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt, T any
 	appchainDB kv.RwDB
 	target     T
 }
-
-var errAppBlockMethodsNotInitialized = errors.New("chain block methods not initialized")
 
 func NewAppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt, T any](
 	appchainDB kv.RwDB,
