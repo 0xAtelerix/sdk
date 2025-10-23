@@ -3,7 +3,6 @@ package appblock
 import (
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"reflect"
 
@@ -11,11 +10,6 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 
 	"github.com/0xAtelerix/sdk/gosdk"
-)
-
-var (
-	ErrMissingBlockTemplate = errors.New("block template not configured")
-	ErrUnsupportedPayload   = errors.New("unsupported block payload type")
 )
 
 // CloneTarget returns a new zero-valued instance of the provided pointer

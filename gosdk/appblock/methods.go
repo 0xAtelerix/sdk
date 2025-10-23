@@ -2,22 +2,10 @@ package appblock
 
 import (
 	"context"
-	"errors"
 
 	"github.com/ledgerwatch/erigon-lib/kv"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
-)
-
-var (
-	errTargetNil           = errors.New("target cannot be nil")
-	errTargetNotPointer    = errors.New("target must be a pointer")
-	errTargetNilPointer    = errors.New("target must be a non-nil pointer")
-	errBlockPayloadEmpty   = errors.New("block payload is empty")
-	errAppchainDatabase    = errors.New("appchain database cannot be nil")
-	errAppBlockValueNil    = errors.New("block cannot be nil")
-	errBlockNotFound       = errors.New("block not found")
-	errTransactionsMissing = errors.New("block does not store transactions in payload")
 )
 
 // GetAppBlockByNumber decodes a CBOR-encoded payload into target and returns its fields and values.
