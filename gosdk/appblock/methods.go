@@ -20,7 +20,12 @@ func GetAppBlockByNumber[T any](
 
 	cb := NewAppBlock(blockNumber, target)
 
-	return cb.ToFieldsAndValues(), nil
+	fieldsValues, err := cb.ToFieldsAndValues()
+	if err != nil {
+		return FieldsValues{}, err
+	}
+
+	return fieldsValues, nil
 }
 
 // GetTransactionsFromBlock hydrates the provided target template from the block

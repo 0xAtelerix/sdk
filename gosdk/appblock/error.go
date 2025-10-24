@@ -13,5 +13,6 @@ var (
 	errTransactionsMissing = errors.New("block does not store transactions in payload")
 	ErrUnsupportedPayload  = errors.New("unsupported block payload type")
 	ErrTargetFactoryNil    = errors.New("block target factory not configured")
+	ErrTargetNotStruct     = errors.New("block target must be a struct or pointer to struct")
 	errMissingSender       = errors.New("missing sender")
 )

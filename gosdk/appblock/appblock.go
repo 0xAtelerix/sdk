@@ -38,28 +38,28 @@ type FieldsValues struct {
 // ToFieldsAndValues returns the exported field names of the underlying Target. The
 // method respects `json` struct tags when present (using the tag name before
 // any comma options), falling back to the struct field name otherwise. When the
-// target is nil or not a struct (or pointer to a struct) the function returns an empty result.
-func (cb *AppBlock[T]) ToFieldsAndValues() FieldsValues {
+// target is nil or not a struct (or pointer to a struct) the function returns an error.
+func (cb *AppBlock[T]) ToFieldsAndValues() (FieldsValues, error) {
 	if cb == nil {
-		return FieldsValues{}
+		return FieldsValues{}, errAppBlockValueNil
 	}
 
 	value := reflect.ValueOf(cb.Target)
 	if !value.IsValid() {
-		return FieldsValues{}
+		return FieldsValues{}, errAppBlockValueNil
 	}
 
 	elem := value
 	for elem.Kind() == reflect.Pointer {
 		if elem.IsNil() {
-			return FieldsValues{}
+			return FieldsValues{}, errTargetNilPointer
 		}
 
 		elem = elem.Elem()
 	}
 
 	if elem.Kind() != reflect.Struct {
-		return FieldsValues{}
+		return FieldsValues{}, ErrTargetNotStruct
 	}
 
 	typ := elem.Type()
@@ -72,7 +72,7 @@ func (cb *AppBlock[T]) ToFieldsAndValues() FieldsValues {
 		values = append(values, formatValue(elem.Field(meta.index)))
 	}
 
-	return FieldsValues{Fields: fields, Values: values}
+	return FieldsValues{Fields: fields, Values: values}, nil
 }
 
 // buildFieldMetadata gathers metadata for exported fields, respecting JSON tags
