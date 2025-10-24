@@ -31,12 +31,13 @@ func GetTransactionsFromBlock[appTx apptypes.AppTransaction[R], R apptypes.Recei
 	ctx context.Context,
 	db kv.RwDB,
 	blockNumber uint64,
-	target T,
+	targetFactory func() T,
 ) ([]appTx, bool, error) {
-	target, err := CloneTarget(target)
-	if err != nil {
-		return nil, false, err
+	if targetFactory == nil {
+		return nil, false, ErrTargetFactoryNil
 	}
+
+	target := targetFactory()
 
 	if err := decodeBlockIntoTarget(ctx, db, blockNumber, target); err != nil {
 		return nil, false, err

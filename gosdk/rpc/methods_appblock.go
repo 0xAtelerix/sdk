@@ -10,17 +10,17 @@ import (
 )
 
 type AppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt, T any] struct {
-	appchainDB kv.RwDB
-	target     T
+	appchainDB    kv.RwDB
+	targetFactory func() T
 }
 
 func NewAppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt, T any](
 	appchainDB kv.RwDB,
-	target T,
+	targetFactory func() T,
 ) *AppBlockMethods[appTx, R, T] {
 	return &AppBlockMethods[appTx, R, T]{
-		appchainDB: appchainDB,
-		target:     target,
+		appchainDB:    appchainDB,
+		targetFactory: targetFactory,
 	}
 }
 
@@ -44,10 +44,11 @@ func (m *AppBlockMethods[appTx, R, T]) GetAppBlock(
 		return nil, err
 	}
 
-	target, err := appblock.CloneTarget(m.target)
-	if err != nil {
-		return nil, err
+	if m.targetFactory == nil {
+		return nil, appblock.ErrTargetFactoryNil
 	}
+
+	target := m.targetFactory()
 
 	payload, err := appblock.LoadBlockPayload(ctx, m.appchainDB, blockNumber)
 	if err != nil {
@@ -85,7 +86,7 @@ func (m *AppBlockMethods[appTx, R, T]) GetTransactionsByBlockNumber(
 		ctx,
 		m.appchainDB,
 		blockNumber,
-		m.target,
+		m.targetFactory,
 	)
 	if err != nil {
 		return nil, err
@@ -101,9 +102,9 @@ func (m *AppBlockMethods[appTx, R, T]) GetTransactionsByBlockNumber(
 func AddAppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt, T any](
 	server *StandardRPCServer,
 	appchainDB kv.RwDB,
-	target T,
+	targetFactory func() T,
 ) {
-	methods := NewAppBlockMethods[appTx, R](appchainDB, target)
+	methods := NewAppBlockMethods[appTx, R](appchainDB, targetFactory)
 
 	server.AddMethod("getAppBlock", methods.GetAppBlock)
 	server.AddMethod("getTransactionsByBlockNumber", methods.GetTransactionsByBlockNumber)

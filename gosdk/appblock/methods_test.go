@@ -215,7 +215,7 @@ func TestGetTransactionsFromBlock_WithEmbeddedTransactions(t *testing.T) {
 		context.Background(),
 		db,
 		1,
-		&testBlockTemplate{},
+		func() *testBlockTemplate { return &testBlockTemplate{} },
 	)
 	require.NoError(t, err)
 	require.True(t, ok)
@@ -239,7 +239,7 @@ func TestGetTransactionsFromBlock_NilTxsField(t *testing.T) {
 		context.Background(),
 		db,
 		2,
-		&testBlockTemplate{},
+		func() *testBlockTemplate { return &testBlockTemplate{} },
 	)
 	require.NoError(t, err)
 	require.True(t, ok)
@@ -261,7 +261,7 @@ func TestGetTransactionsFromBlock_MissingTransactionsField(t *testing.T) {
 		context.Background(),
 		db,
 		4,
-		&blockWithoutTxs{},
+		func() *blockWithoutTxs { return &blockWithoutTxs{} },
 	)
 	require.Error(t, err)
 	require.False(t, ok)
@@ -278,7 +278,7 @@ func TestGetTransactionsFromBlock_BlockNotFound(t *testing.T) {
 		context.Background(),
 		db,
 		99,
-		&testBlockTemplate{},
+		func() *testBlockTemplate { return &testBlockTemplate{} },
 	)
 	require.Error(t, err)
 	require.False(t, ok)
@@ -286,21 +286,67 @@ func TestGetTransactionsFromBlock_BlockNotFound(t *testing.T) {
 	require.ErrorIs(t, err, errBlockNotFound)
 }
 
-func TestGetTransactionsFromBlock_InvalidTemplate(t *testing.T) {
+func TestGetTransactionsFromBlock_NilTargetFactory(t *testing.T) {
 	db := newTestDB(t, kv.TableCfg{
 		gosdk.BlocksBucket: {},
 	})
+
+	var factory func() *testBlockTemplate
 
 	txs, ok, err := GetTransactionsFromBlock[testTx, blockTestReceipt](
 		context.Background(),
 		db,
 		1,
-		123,
+		factory,
 	)
 	require.Error(t, err)
 	require.False(t, ok)
 	require.Nil(t, txs)
-	require.ErrorContains(t, err, "unsupported block payload type")
+	require.ErrorIs(t, err, ErrTargetFactoryNil)
+}
+
+func TestGetTransactionsFromBlock_TargetFactoryReturnsNilTarget(t *testing.T) {
+	db := newTestDB(t, kv.TableCfg{
+		gosdk.BlocksBucket: {},
+	})
+
+	require.NoError(
+		t,
+		StoreAppBlock(context.Background(), db, 1, &testBlockTemplate{Number: "1"}),
+	)
+
+	txs, ok, err := GetTransactionsFromBlock[testTx, blockTestReceipt](
+		context.Background(),
+		db,
+		1,
+		func() *testBlockTemplate { return nil },
+	)
+	require.Error(t, err)
+	require.False(t, ok)
+	require.Nil(t, txs)
+	require.ErrorIs(t, err, errTargetNilPointer)
+}
+
+func TestGetTransactionsFromBlock_InvalidTargetFactory(t *testing.T) {
+	db := newTestDB(t, kv.TableCfg{
+		gosdk.BlocksBucket: {},
+	})
+
+	require.NoError(
+		t,
+		StoreAppBlock(context.Background(), db, 1, &testBlockTemplate{Number: "1"}),
+	)
+
+	txs, ok, err := GetTransactionsFromBlock[testTx](
+		context.Background(),
+		db,
+		1,
+		func() int { return 123 },
+	)
+	require.Error(t, err)
+	require.False(t, ok)
+	require.Nil(t, txs)
+	require.ErrorContains(t, err, "target must be a pointer")
 }
 
 func newTestDB(t *testing.T, tables kv.TableCfg) kv.RwDB {

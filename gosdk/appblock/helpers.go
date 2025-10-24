@@ -12,31 +12,6 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk"
 )
 
-// CloneTarget returns a new zero-valued instance of the provided pointer
-// template, ensuring the original template remains untouched.
-func CloneTarget[T any](tpl T) (T, error) {
-	var zero T
-
-	val := reflect.ValueOf(tpl)
-	if !val.IsValid() {
-		return zero, ErrMissingBlockTemplate
-	}
-
-	typ := val.Type()
-	if typ.Kind() != reflect.Pointer {
-		return zero, fmt.Errorf("%w: %T", ErrUnsupportedPayload, tpl)
-	}
-
-	newVal := reflect.New(typ.Elem())
-
-	result, ok := newVal.Interface().(T)
-	if !ok {
-		return zero, fmt.Errorf("%w: %T", ErrUnsupportedPayload, tpl)
-	}
-
-	return result, nil
-}
-
 // structValueFrom unwraps pointer chains on target and returns the underlying
 // struct value if present, signalling success via the second return value.
 func structValueFrom(target any) (reflect.Value, bool) {

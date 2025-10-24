@@ -110,7 +110,7 @@ func setupTestEnvironment(
 	server = NewStandardRPCServer(nil)
 
 	// Add standard methods to maintain compatibility with existing tests
-	AddStandardMethods(server, appchainDB, txPool, &rpcTestBlock{})
+	AddStandardMethods(server, appchainDB, txPool, func() *rpcTestBlock { return &rpcTestBlock{} })
 
 	cleanup = func() {
 		localDB.Close()

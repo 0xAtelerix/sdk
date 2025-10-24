@@ -43,57 +43,8 @@ type templateWithTxs struct {
 	Txs []helperTestTx[helperTestReceipt]
 }
 
-type templateWithPointerTxs struct {
-	Txs *[]helperTestTx[helperTestReceipt]
-}
-
 type templateWithoutTxs struct {
 	Number string
-}
-
-type numberProvider interface {
-	Number() string
-}
-
-type interfaceBlock struct {
-	value string
-}
-
-func (b *interfaceBlock) Number() string { return b.value }
-
-func TestCloneTarget(t *testing.T) {
-	pl := templateWithTxs{}
-
-	clone, err := CloneTarget(&pl)
-	require.NoError(t, err)
-	require.NotNil(t, clone)
-	require.NotSame(t, &pl, clone)
-}
-
-func TestCloneTarget_InvalidTemplate(t *testing.T) {
-	clone, err := CloneTarget(templateWithTxs{})
-	require.Error(t, err)
-	require.Equal(t, templateWithTxs{}, clone)
-}
-
-func TestCloneTarget_NilPointerTemplate(t *testing.T) {
-	var tpl *templateWithTxs
-
-	clone, err := CloneTarget(tpl)
-	require.NoError(t, err)
-	require.NotNil(t, clone)
-}
-
-func TestCloneTarget_InterfacePointerTemplate(t *testing.T) {
-	var tpl numberProvider = &interfaceBlock{value: "42"}
-
-	clone, err := CloneTarget(tpl)
-	require.NoError(t, err)
-	require.NotSame(t, tpl, clone)
-
-	casted, ok := clone.(*interfaceBlock)
-	require.True(t, ok)
-	require.Empty(t, casted.Number())
 }
 
 func TestStructValueFrom(t *testing.T) {
