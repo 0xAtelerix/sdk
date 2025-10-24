@@ -31,9 +31,9 @@ func GetTransactionsFromBlock[appTx apptypes.AppTransaction[R], R apptypes.Recei
 	ctx context.Context,
 	db kv.RwDB,
 	blockNumber uint64,
-	rootTemplate T,
+	target T,
 ) ([]appTx, bool, error) {
-	target, err := CloneTarget(rootTemplate)
+	target, err := CloneTarget(target)
 	if err != nil {
 		return nil, false, err
 	}
