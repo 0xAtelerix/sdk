@@ -107,25 +107,7 @@ func buildFieldMetadata(typ reflect.Type) []fieldMetadata {
 	return result
 }
 
-// formatValue converts a reflect.Value into its string representation while
-// safely dereferencing pointers and handling nil values.
+// formatValue converts the supplied reflect.Value into a string
 func formatValue(field reflect.Value) string {
-	if !field.IsValid() {
-		return ""
-	}
-
-	value := field
-	for value.Kind() == reflect.Pointer {
-		if value.IsNil() {
-			return ""
-		}
-
-		value = value.Elem()
-	}
-
-	if !value.IsValid() {
-		return ""
-	}
-
-	return fmt.Sprintf("%v", value.Interface())
+	return fmt.Sprintf("%v", field.Interface())
 }

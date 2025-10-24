@@ -1,7 +1,9 @@
 package appblock
 
 import (
+	"fmt"
 	"math/big"
+	"reflect"
 	"testing"
 	"time"
 
@@ -9,6 +11,25 @@ import (
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
+
+func TestBuildFieldMetadata(t *testing.T) {
+	type sample struct {
+		ID     string `json:"id,omitempty"`
+		Name   string
+		skip   string
+		Age    int    `json:"age"`
+		Ignore string `json:"-"`
+	}
+
+	typ := reflect.TypeOf(sample{})
+	metadata := buildFieldMetadata(typ)
+
+	require.Len(t, metadata, 4)
+	require.Equal(t, fieldMetadata{index: 0, name: "id"}, metadata[0])
+	require.Equal(t, fieldMetadata{index: 1, name: "Name"}, metadata[1])
+	require.Equal(t, fieldMetadata{index: 3, name: "age"}, metadata[2])
+	require.Equal(t, fieldMetadata{index: 4, name: "-"}, metadata[3])
+}
 
 func TestAppBlockToFields_EthereumBlock(t *testing.T) {
 	header := &gethtypes.Header{Number: big.NewInt(42)}
@@ -42,8 +63,8 @@ func TestAppBlockToFields_SolanaBlock(t *testing.T) {
 		t,
 		map[string]string{
 			"Blockhash":         "hash",
-			"BlockTime":         "",
-			"BlockHeight":       "",
+			"BlockTime":         fmt.Sprintf("%v", sol.BlockTime),
+			"BlockHeight":       fmt.Sprintf("%v", sol.BlockHeight),
 			"PreviousBlockhash": "prev",
 			"ParentSlot":        "0",
 			"Transactions":      "[]",
@@ -132,7 +153,42 @@ func TestAppBlockToFields_PointerFields(t *testing.T) {
 
 	fv, err := cb.ToFieldsAndValues()
 	require.NoError(t, err)
-	require.Equal(t, map[string]string{"Name": name, "Count": "7"}, pairMap(fv))
+	require.Equal(
+		t,
+		map[string]string{
+			"Name":  fmt.Sprintf("%v", payload.Name),
+			"Count": fmt.Sprintf("%v", payload.Count),
+		},
+		pairMap(fv),
+	)
+}
+
+func TestAppBlockToFields_NestedPointers(t *testing.T) {
+	type nested struct {
+		Label *string
+		Child **int
+	}
+
+	var (
+		label *string
+		child *int
+	)
+
+	ptr := &child
+
+	payload := &nested{Label: label, Child: ptr}
+	cb := &AppBlock[*nested]{BlockNumber: 8, Target: payload}
+
+	fv, err := cb.ToFieldsAndValues()
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		map[string]string{
+			"Label": fmt.Sprintf("%v", payload.Label),
+			"Child": fmt.Sprintf("%v", payload.Child),
+		},
+		pairMap(fv),
+	)
 }
 
 func TestAppBlockToFields_ValueStruct(t *testing.T) {
