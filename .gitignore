@@ -2,6 +2,7 @@
 gosdk/testdb
 gosdk/42
 gosdk/chaindb
+.gomodcache/
 
 # Rust
 target/
