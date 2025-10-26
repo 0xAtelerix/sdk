@@ -1,7 +1,6 @@
 package appblock
 
 import (
-	"errors"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -12,9 +11,7 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
-
 )
-
 
 // structValueFrom unwraps pointer chains on target and returns the underlying
 // struct value if present, signalling success via the second return value.
@@ -84,7 +81,7 @@ func extractTransactions[AppTx any](target any) (txs []AppTx, hasField bool, fie
 // target, validating that the target is a non-nil pointer before populating it.
 func unmarshallIntoTarget(payload []byte, target apptypes.AppchainBlock) error {
 	if len(payload) == 0 {
-		return errors.New("block payload is empty")
+		return errBlockPayloadEmpty
 	}
 
 	if err := cbor.Unmarshal(payload, &target); err != nil {

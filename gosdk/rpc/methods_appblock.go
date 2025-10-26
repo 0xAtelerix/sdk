@@ -9,16 +9,16 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-type AppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
+type AppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt, T apptypes.AppchainBlock] struct {
 	appchainDB kv.RwDB
-	target     apptypes.AppchainBlock
+	target     T
 }
 
-func NewAppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
+func NewAppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt, T apptypes.AppchainBlock](
 	appchainDB kv.RwDB,
-	target apptypes.AppchainBlock,
-) *AppBlockMethods[appTx, R] {
-	return &AppBlockMethods[appTx, R]{
+	target T,
+) *AppBlockMethods[appTx, R, T] {
+	return &AppBlockMethods[appTx, R, T]{
 		appchainDB: appchainDB,
 		target:     target,
 	}
@@ -27,7 +27,7 @@ func NewAppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 // GetAppBlock returns the decoded application block fields for the requested
 // block number, optionally enriching the payload with stored transactions when
 // available.
-func (m *AppBlockMethods[appTx, R]) GetAppBlock(
+func (m *AppBlockMethods[appTx, R, T]) GetAppBlock(
 	ctx context.Context,
 	params []any,
 ) (any, error) {
@@ -59,7 +59,7 @@ func (m *AppBlockMethods[appTx, R]) GetAppBlock(
 
 // GetTransactionsByBlockNumber returns all stored application transactions for
 // the given block number.
-func (m *AppBlockMethods[appTx, R]) GetTransactionsByBlockNumber(
+func (m *AppBlockMethods[appTx, R, T]) GetTransactionsByBlockNumber(
 	ctx context.Context,
 	params []any,
 ) (any, error) {
@@ -93,12 +93,12 @@ func (m *AppBlockMethods[appTx, R]) GetTransactionsByBlockNumber(
 	return txs, nil
 }
 
-func AddAppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
+func AddAppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt, T apptypes.AppchainBlock](
 	server *StandardRPCServer,
 	appchainDB kv.RwDB,
-	target apptypes.AppchainBlock,
+	target T,
 ) {
-	methods := NewAppBlockMethods[appTx, R](appchainDB, target)
+	methods := NewAppBlockMethods[appTx, R, T](appchainDB, target)
 
 	server.AddMethod("getAppBlock", methods.GetAppBlock)
 	server.AddMethod("getTransactionsByBlockNumber", methods.GetTransactionsByBlockNumber)

@@ -19,7 +19,7 @@ func GetAppBlockByNumber(
 	}
 
 	cb := NewAppBlock(blockNumber, target)
- 
+
 	fieldsValues, err := cb.ToFieldsAndValues()
 	if err != nil {
 		return FieldsValues{}, err

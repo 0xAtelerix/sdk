@@ -1102,18 +1102,18 @@ func TestStandardRPCServer_corsHealthEndpoint(t *testing.T) {
 // GETAPPBLOCK TESTS
 
 type rpcTestBlock struct {
-	Number    string                         `json:"number"`
+	RawNumber string                         `json:"number"`
 	Timestamp uint64                         `json:"timestamp"`
 	Miner     string                         `json:"miner"`
 	Txs       []TestTransaction[TestReceipt] `json:"txs"`
 }
 
 func (b *rpcTestBlock) Number() uint64 {
-	if b == nil || b.Number == "" {
+	if b == nil || b.RawNumber == "" {
 		return 0
 	}
 
-	n, err := strconv.ParseUint(b.Number, 10, 64)
+	n, err := strconv.ParseUint(b.RawNumber, 10, 64)
 	if err != nil {
 		return 0
 	}
@@ -1129,7 +1129,7 @@ func TestStandardRPCServer_getAppBlock(t *testing.T) {
 	server, appchainDB, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
-	block := &rpcTestBlock{Number: "21", Timestamp: 100, Miner: "alice"}
+	block := &rpcTestBlock{RawNumber: "21", Timestamp: 100, Miner: "alice"}
 	require.NoError(t, appblock.StoreAppBlock(context.Background(), appchainDB, 1, block))
 
 	params := []any{uint64(1)}
@@ -1165,7 +1165,7 @@ func TestStandardRPCServer_getAppBlock_InvalidTarget(t *testing.T) {
 			context.Background(),
 			appchainDB,
 			1,
-			&rpcTestBlock{Number: "21", Timestamp: 100, Miner: "alice"},
+			&rpcTestBlock{RawNumber: "21", Timestamp: 100, Miner: "alice"},
 		),
 	)
 
@@ -1195,12 +1195,12 @@ func TestStandardRPCServer_getAppBlock_InvalidParams(t *testing.T) {
 
 // GETTRANSACTIONSBYBLOCKNUMBER TESTS
 
-func TestStandardRPCServer_getTransactionsByBlockNumber(t *testing.T) {
+func TestStandardRPCServer_getTransactionsByBlockNumber_Success(t *testing.T) {
 	server, appchainDB, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
 	block := &rpcTestBlock{
-		Number:    "21",
+		RawNumber: "21",
 		Timestamp: 100,
 		Miner:     "alice",
 		Txs: []TestTransaction[TestReceipt]{
@@ -1264,7 +1264,7 @@ func TestStandardRPCServer_getTransactionsByBlockNumber_EmptyTxField(t *testing.
 	defer cleanup()
 
 	block := &rpcTestBlock{
-		Number:    "42",
+		RawNumber: "42",
 		Timestamp: 300,
 		Miner:     "carol",
 		Txs:       nil,
@@ -1294,7 +1294,7 @@ func TestStandardRPCServer_getTransactionsByBlockNumber_IgnoresBucketFallback(t 
 	defer cleanup()
 
 	block := &rpcTestBlock{
-		Number:    "43",
+		RawNumber: "43",
 		Timestamp: 310,
 		Miner:     "dave",
 		Txs:       nil,

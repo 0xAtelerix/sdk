@@ -21,7 +21,7 @@ import (
 var _ apptypes.AppchainBlock = (*testBlock)(nil)
 
 type testBlock struct {
-	BlockNumber uint64  `json:"number"`
+	BlockNumber uint64   `json:"number"`
 	Miner       string   `json:"miner"`
 	Note        string   `json:"note"`
 	Txs         []testTx `json:"txs"`
@@ -100,7 +100,6 @@ func TestGetAppBlockByNumber_NilTarget(t *testing.T) {
 	require.Empty(t, fv.Fields)
 	require.Empty(t, fv.Values)
 }
-
 
 func TestStoreAppBlockAndRetrieve(t *testing.T) {
 	dir := t.TempDir()
@@ -298,7 +297,6 @@ func TestGetTransactionsFromBlock_BlockNotFound(t *testing.T) {
 	require.Nil(t, txs)
 	require.ErrorIs(t, err, errBlockNotFound)
 }
-
 
 func newTestDB(t *testing.T, tables kv.TableCfg) kv.RwDB {
 	t.Helper()
