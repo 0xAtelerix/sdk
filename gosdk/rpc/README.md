@@ -36,10 +36,7 @@ func main() {
     server.AddMiddleware(&LoggingMiddleware{})
 
     // Add standard blockchain methods
-    rpc.AddStandardMethods[MyTransaction, MyReceipt](server, appchainDB, txpool, func() *MyBlock {
-        // MyBlock is your application-specific block payload type.
-        return &MyBlock{}
-    })
+    rpc.AddStandardMethods[MyTransaction, MyReceipt](server, appchainDB, txpool, &MyBlock{})
 
     // Start server
     log.Println("RPC server starting on :8080")
@@ -119,12 +116,10 @@ server.AddMiddleware(&AuthMiddleware{})
 ### Standard Methods (Recommended)
 
 ```go
-rpc.AddStandardMethods[MyTransaction, MyReceipt](server, appchainDB, txpool, func() *MyBlock {
-    return &MyBlock{}
-})
+rpc.AddStandardMethods[MyTransaction, MyReceipt](server, appchainDB, txpool, &MyBlock{})
 ```
 
-Includes: transaction submission, status queries, receipts, and txpool operations.
+Includes: transaction submission, status queries, receipts, and txpool operations. The `MyBlock` pointer you pass acts as a decode template for app-block queries; provide a zero value that implements `apptypes.AppchainBlock` so each request can safely unmarshal into it.
 
 ### Individual Method Sets
 
@@ -210,9 +205,7 @@ func main() {
     server.AddMiddleware(&LoggingMiddleware{})
 
     // Add standard methods
-rpc.AddStandardMethods[MyTransaction, MyReceipt](server, db, txpool, func() *MyBlock {
-    return &MyBlock{}
-})
+    rpc.AddStandardMethods[MyTransaction, MyReceipt](server, db, txpool, &MyBlock{})
 
     // Add custom method
     server.AddMethod("ping", func(ctx context.Context, params []any) (any, error) {
@@ -234,7 +227,7 @@ rpc.AddStandardMethods[MyTransaction, MyReceipt](server, db, txpool, func() *MyB
 
 ### Method Sets
 
-- `AddStandardMethods[T, R](server, db, txpool, func() *YourBlock { return &YourBlock{} })` - All methods
+- `AddStandardMethods[T, R](server, db, txpool, &YourBlock{})` - All methods
 - `AddTransactionMethods[T, R](server, txpool, db)` - Transaction status during lifecycle
 - `AddTxPoolMethods[T, R](server, txpool)` - Submit/query transactions to/from pool
 - `AddReceiptMethods[R](server, db)` - Receipt queries once processed/failed
