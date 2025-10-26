@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/fxamacker/cbor/v2"
@@ -17,52 +18,91 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-func TestGetAppBlockByNumber_Success(t *testing.T) {
-	type payload struct {
-		ID   string `json:"id"`
-		Note string
+var _ apptypes.AppchainBlock = (*testBlock)(nil)
+
+type testBlock struct {
+	BlockNumber uint64  `json:"number"`
+	Miner       string   `json:"miner"`
+	Note        string   `json:"note"`
+	Txs         []testTx `json:"txs"`
+}
+
+func (b *testBlock) Number() uint64 {
+	return b.BlockNumber
+}
+
+func (*testBlock) Hash() [32]byte      { return [32]byte{} }
+func (*testBlock) StateRoot() [32]byte { return [32]byte{} }
+func (*testBlock) Bytes() []byte       { return nil }
+
+var _ apptypes.AppchainBlock = (*blockWithoutTxs)(nil)
+
+type blockWithoutTxs struct {
+	BlockNumber string `json:"number"`
+}
+
+func (b *blockWithoutTxs) Number() uint64 {
+	if b == nil || b.BlockNumber == "" {
+		return 0
 	}
 
-	original := payload{ID: "123", Note: "ok"}
+	n, err := strconv.ParseUint(b.BlockNumber, 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	return n
+}
+
+func (*blockWithoutTxs) Hash() [32]byte      { return [32]byte{} }
+func (*blockWithoutTxs) StateRoot() [32]byte { return [32]byte{} }
+func (*blockWithoutTxs) Bytes() []byte       { return nil }
+
+type valueBlock struct {
+	BlockNumber uint64 `json:"number"`
+}
+
+func (b valueBlock) Number() uint64    { return b.BlockNumber }
+func (valueBlock) Hash() [32]byte      { return [32]byte{} }
+func (valueBlock) StateRoot() [32]byte { return [32]byte{} }
+func (valueBlock) Bytes() []byte       { return nil }
+
+func TestGetAppBlockByNumber_Success(t *testing.T) {
+	original := &testBlock{
+		BlockNumber: 123,
+		Miner:       "alice",
+		Note:        "ok",
+		Txs:         nil,
+	}
+
 	encoded, err := cbor.Marshal(original)
 	require.NoError(t, err)
 
-	target := &payload{}
+	target := &testBlock{}
 
 	fv, err := GetAppBlockByNumber(uint64(15), encoded, target)
 	require.NoError(t, err)
-	require.Equal(t, []string{"id", "Note"}, fv.Fields)
-	require.Equal(t, []string{"123", "ok"}, fv.Values)
-	require.Equal(t, original, *target)
+	require.Equal(t, []string{"number", "miner", "note", "txs"}, fv.Fields)
+	require.Equal(t, []string{"123", "alice", "ok", "[]"}, fv.Values)
+	require.Equal(t, original.BlockNumber, target.BlockNumber)
+	require.Equal(t, original.Miner, target.Miner)
+	require.Equal(t, original.Note, target.Note)
 }
 
 func TestGetAppBlockByNumber_NilTarget(t *testing.T) {
-	encoded, err := cbor.Marshal(struct{}{})
+	encoded, err := cbor.Marshal(&testBlock{})
 	require.NoError(t, err)
 
-	fv, err := GetAppBlockByNumber[*string](uint64(15), encoded, nil)
+	var target *testBlock
+
+	fv, err := GetAppBlockByNumber(uint64(15), encoded, target)
 	require.Error(t, err)
 	require.Empty(t, fv.Fields)
 	require.Empty(t, fv.Values)
 }
 
-func TestGetAppBlockByNumber_NonPointerTarget(t *testing.T) {
-	encoded, err := cbor.Marshal(struct{}{})
-	require.NoError(t, err)
-
-	fv, err := GetAppBlockByNumber(uint64(15), encoded, struct{}{})
-	require.Error(t, err)
-	require.Empty(t, fv.Fields)
-	require.Empty(t, fv.Values)
-}
 
 func TestStoreAppBlockAndRetrieve(t *testing.T) {
-	type testTargetBlock struct {
-		Height uint64 `json:"height"`
-		Miner  string `json:"miner"`
-		Note   string `json:"note"`
-	}
-
 	dir := t.TempDir()
 
 	db, err := mdbx.NewMDBX(mdbxlog.New()).
@@ -78,7 +118,7 @@ func TestStoreAppBlockAndRetrieve(t *testing.T) {
 		db.Close()
 	})
 
-	block := &testTargetBlock{Height: 99, Miner: "bob", Note: "testing"}
+	block := &testBlock{BlockNumber: 99, Miner: "bob", Note: "testing"}
 	require.NoError(t, StoreAppBlock(context.Background(), db, 42, block))
 
 	var payload []byte // target payload
@@ -96,54 +136,34 @@ func TestStoreAppBlockAndRetrieve(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, payload)
 
-	target := &testTargetBlock{}
+	target := &testBlock{}
 	fv, err := GetAppBlockByNumber(uint64(42), payload, target)
 	require.NoError(t, err)
-	require.Equal(t, []string{"height", "miner", "note"}, fv.Fields)
-	require.Equal(t, []string{"99", "bob", "testing"}, fv.Values)
-	require.Equal(t, block.Height, target.Height)
+	require.Equal(t, []string{"number", "miner", "note", "txs"}, fv.Fields)
+	require.Equal(t, []string{"99", "bob", "testing", "[]"}, fv.Values)
+	require.Equal(t, block.BlockNumber, target.BlockNumber)
 	require.Equal(t, block.Miner, target.Miner)
 	require.Equal(t, block.Note, target.Note)
 }
 
 func TestUnmarshallIntoTarget_Success(t *testing.T) {
-	type payload struct {
-		Name string `json:"name"`
-		Note string `json:"note"`
+	original := &testBlock{
+		BlockNumber: 7,
+		Note:        "ok",
 	}
 
-	original := payload{Name: "carol", Note: "ok"}
 	encoded, err := cbor.Marshal(original)
 	require.NoError(t, err)
 
-	target := &payload{}
+	target := &testBlock{}
 
 	require.NoError(t, unmarshallIntoTarget(encoded, target))
-	require.Equal(t, original, *target)
-}
-
-func TestUnmarshallIntoTarget_ValidationErrors(t *testing.T) {
-	encoded, err := cbor.Marshal(struct{ Value int }{Value: 42})
-	require.NoError(t, err)
-
-	err = unmarshallIntoTarget[any](encoded, nil)
-	require.ErrorContains(t, err, "target cannot be nil")
-
-	err = unmarshallIntoTarget(encoded, struct{}{})
-	require.ErrorContains(t, err, "target must be a pointer")
-
-	var target *struct{ Value int }
-
-	err = unmarshallIntoTarget(encoded, target)
-	require.ErrorContains(t, err, "target must be a non-nil pointer")
+	require.Equal(t, original.BlockNumber, target.BlockNumber)
+	require.Equal(t, original.Note, target.Note)
 }
 
 func TestUnmarshallIntoTarget_EmptyPayload(t *testing.T) {
-	type payload struct {
-		Value int `json:"value"`
-	}
-
-	target := &payload{}
+	target := &testBlock{}
 	err := unmarshallIntoTarget([]byte{}, target)
 	require.ErrorContains(t, err, "block payload is empty")
 }
@@ -189,19 +209,13 @@ func (blockTestReceipt) Error() string {
 	return ""
 }
 
-type testBlockTemplate struct {
-	Number string   `json:"number"`
-	Txs    []testTx `json:"txs"`
-	Note   string   `json:"note"`
-}
-
 func TestGetTransactionsFromBlock_WithEmbeddedTransactions(t *testing.T) {
 	db := newTestDB(t, kv.TableCfg{
 		gosdk.BlocksBucket: {},
 	})
 
-	block := &testBlockTemplate{
-		Number: "1",
+	block := &testBlock{
+		BlockNumber: 1,
 		Txs: []testTx{
 			{From: "alice", To: "bob"},
 			{From: "carol", To: "dan"},
@@ -211,11 +225,11 @@ func TestGetTransactionsFromBlock_WithEmbeddedTransactions(t *testing.T) {
 
 	require.NoError(t, StoreAppBlock(context.Background(), db, 1, block))
 
-	txs, ok, err := GetTransactionsFromBlock[testTx](
+	txs, ok, err := GetTransactionsFromBlock[testTx, blockTestReceipt](
 		context.Background(),
 		db,
 		1,
-		func() *testBlockTemplate { return &testBlockTemplate{} },
+		&testBlock{},
 	)
 	require.NoError(t, err)
 	require.True(t, ok)
@@ -227,19 +241,19 @@ func TestGetTransactionsFromBlock_NilTxsField(t *testing.T) {
 		gosdk.BlocksBucket: {},
 	})
 
-	block := &testBlockTemplate{
-		Number: "2",
-		Txs:    nil,
-		Note:   "nil txs",
+	block := &testBlock{
+		BlockNumber: 2,
+		Txs:         nil,
+		Note:        "nil txs",
 	}
 
 	require.NoError(t, StoreAppBlock(context.Background(), db, 2, block))
 
-	txs, ok, err := GetTransactionsFromBlock[testTx](
+	txs, ok, err := GetTransactionsFromBlock[testTx, blockTestReceipt](
 		context.Background(),
 		db,
 		2,
-		func() *testBlockTemplate { return &testBlockTemplate{} },
+		&testBlock{},
 	)
 	require.NoError(t, err)
 	require.True(t, ok)
@@ -247,21 +261,20 @@ func TestGetTransactionsFromBlock_NilTxsField(t *testing.T) {
 }
 
 func TestGetTransactionsFromBlock_MissingTransactionsField(t *testing.T) {
-	type blockWithoutTxs struct {
-		Number string `json:"number"`
-	}
-
 	db := newTestDB(t, kv.TableCfg{
 		gosdk.BlocksBucket: {},
 	})
 
-	require.NoError(t, StoreAppBlock(context.Background(), db, 4, &blockWithoutTxs{Number: "4"}))
+	require.NoError(
+		t,
+		StoreAppBlock(context.Background(), db, 4, &blockWithoutTxs{BlockNumber: "4"}),
+	)
 
 	txs, ok, err := GetTransactionsFromBlock[testTx, blockTestReceipt](
 		context.Background(),
 		db,
 		4,
-		func() *blockWithoutTxs { return &blockWithoutTxs{} },
+		&blockWithoutTxs{},
 	)
 	require.Error(t, err)
 	require.False(t, ok)
@@ -278,7 +291,7 @@ func TestGetTransactionsFromBlock_BlockNotFound(t *testing.T) {
 		context.Background(),
 		db,
 		99,
-		func() *testBlockTemplate { return &testBlockTemplate{} },
+		&testBlock{},
 	)
 	require.Error(t, err)
 	require.False(t, ok)
@@ -286,68 +299,6 @@ func TestGetTransactionsFromBlock_BlockNotFound(t *testing.T) {
 	require.ErrorIs(t, err, errBlockNotFound)
 }
 
-func TestGetTransactionsFromBlock_NilTargetFactory(t *testing.T) {
-	db := newTestDB(t, kv.TableCfg{
-		gosdk.BlocksBucket: {},
-	})
-
-	var factory func() *testBlockTemplate
-
-	txs, ok, err := GetTransactionsFromBlock[testTx, blockTestReceipt](
-		context.Background(),
-		db,
-		1,
-		factory,
-	)
-	require.Error(t, err)
-	require.False(t, ok)
-	require.Nil(t, txs)
-	require.ErrorIs(t, err, ErrTargetFactoryNil)
-}
-
-func TestGetTransactionsFromBlock_TargetFactoryReturnsNilTarget(t *testing.T) {
-	db := newTestDB(t, kv.TableCfg{
-		gosdk.BlocksBucket: {},
-	})
-
-	require.NoError(
-		t,
-		StoreAppBlock(context.Background(), db, 1, &testBlockTemplate{Number: "1"}),
-	)
-
-	txs, ok, err := GetTransactionsFromBlock[testTx, blockTestReceipt](
-		context.Background(),
-		db,
-		1,
-		func() *testBlockTemplate { return nil },
-	)
-	require.Error(t, err)
-	require.False(t, ok)
-	require.Nil(t, txs)
-	require.ErrorIs(t, err, errTargetNilPointer)
-}
-
-func TestGetTransactionsFromBlock_InvalidTargetFactory(t *testing.T) {
-	db := newTestDB(t, kv.TableCfg{
-		gosdk.BlocksBucket: {},
-	})
-
-	require.NoError(
-		t,
-		StoreAppBlock(context.Background(), db, 1, &testBlockTemplate{Number: "1"}),
-	)
-
-	txs, ok, err := GetTransactionsFromBlock[testTx](
-		context.Background(),
-		db,
-		1,
-		func() int { return 123 },
-	)
-	require.Error(t, err)
-	require.False(t, ok)
-	require.Nil(t, txs)
-	require.ErrorContains(t, err, "target must be a pointer")
-}
 
 func newTestDB(t *testing.T, tables kv.TableCfg) kv.RwDB {
 	t.Helper()

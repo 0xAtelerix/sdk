@@ -1,6 +1,7 @@
 package appblock
 
 import (
+	"errors"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -10,7 +11,10 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 
 	"github.com/0xAtelerix/sdk/gosdk"
+	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+
 )
+
 
 // structValueFrom unwraps pointer chains on target and returns the underlying
 // struct value if present, signalling success via the second return value.
@@ -78,25 +82,12 @@ func extractTransactions[AppTx any](target any) (txs []AppTx, hasField bool, fie
 
 // unmarshallIntoTarget decodes the CBOR payload into the provided pointer
 // target, validating that the target is a non-nil pointer before populating it.
-func unmarshallIntoTarget[T any](encoded []byte, target T) error {
-	value := reflect.ValueOf(target)
-	if !value.IsValid() {
-		return errTargetNil
+func unmarshallIntoTarget(payload []byte, target apptypes.AppchainBlock) error {
+	if len(payload) == 0 {
+		return errors.New("block payload is empty")
 	}
 
-	if value.Kind() != reflect.Pointer {
-		return fmt.Errorf("%w: %T", errTargetNotPointer, target)
-	}
-
-	if value.IsNil() {
-		return errTargetNilPointer
-	}
-
-	if len(encoded) == 0 {
-		return errBlockPayloadEmpty
-	}
-
-	if err := cbor.Unmarshal(encoded, value.Interface()); err != nil {
+	if err := cbor.Unmarshal(payload, &target); err != nil {
 		return fmt.Errorf("decode block payload: %w", err)
 	}
 
@@ -105,11 +96,11 @@ func unmarshallIntoTarget[T any](encoded []byte, target T) error {
 
 // decodeBlockIntoTarget loads the block payload from storage and decodes it into the
 // supplied target, preserving the same validation guarantees as unmarshallIntoTarget.
-func decodeBlockIntoTarget[T any](
+func decodeBlockIntoTarget(
 	ctx context.Context,
 	db kv.RwDB,
 	blockNumber uint64,
-	target T,
+	target apptypes.AppchainBlock,
 ) error {
 	payload, err := LoadBlockPayload(ctx, db, blockNumber)
 	if err != nil {

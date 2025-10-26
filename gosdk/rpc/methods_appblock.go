@@ -9,25 +9,25 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-type AppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt, T any] struct {
-	appchainDB    kv.RwDB
-	targetFactory func() T
+type AppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
+	appchainDB kv.RwDB
+	target     apptypes.AppchainBlock
 }
 
-func NewAppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt, T any](
+func NewAppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	appchainDB kv.RwDB,
-	targetFactory func() T,
-) *AppBlockMethods[appTx, R, T] {
-	return &AppBlockMethods[appTx, R, T]{
-		appchainDB:    appchainDB,
-		targetFactory: targetFactory,
+	target apptypes.AppchainBlock,
+) *AppBlockMethods[appTx, R] {
+	return &AppBlockMethods[appTx, R]{
+		appchainDB: appchainDB,
+		target:     target,
 	}
 }
 
 // GetAppBlock returns the decoded application block fields for the requested
 // block number, optionally enriching the payload with stored transactions when
 // available.
-func (m *AppBlockMethods[appTx, R, T]) GetAppBlock(
+func (m *AppBlockMethods[appTx, R]) GetAppBlock(
 	ctx context.Context,
 	params []any,
 ) (any, error) {
@@ -44,18 +44,12 @@ func (m *AppBlockMethods[appTx, R, T]) GetAppBlock(
 		return nil, err
 	}
 
-	if m.targetFactory == nil {
-		return nil, appblock.ErrTargetFactoryNil
-	}
-
-	target := m.targetFactory()
-
 	payload, err := appblock.LoadBlockPayload(ctx, m.appchainDB, blockNumber)
 	if err != nil {
 		return nil, err
 	}
 
-	fv, err := appblock.GetAppBlockByNumber(blockNumber, payload, target)
+	fv, err := appblock.GetAppBlockByNumber(blockNumber, payload, m.target)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +59,7 @@ func (m *AppBlockMethods[appTx, R, T]) GetAppBlock(
 
 // GetTransactionsByBlockNumber returns all stored application transactions for
 // the given block number.
-func (m *AppBlockMethods[appTx, R, T]) GetTransactionsByBlockNumber(
+func (m *AppBlockMethods[appTx, R]) GetTransactionsByBlockNumber(
 	ctx context.Context,
 	params []any,
 ) (any, error) {
@@ -86,7 +80,7 @@ func (m *AppBlockMethods[appTx, R, T]) GetTransactionsByBlockNumber(
 		ctx,
 		m.appchainDB,
 		blockNumber,
-		m.targetFactory,
+		m.target,
 	)
 	if err != nil {
 		return nil, err
@@ -99,12 +93,12 @@ func (m *AppBlockMethods[appTx, R, T]) GetTransactionsByBlockNumber(
 	return txs, nil
 }
 
-func AddAppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt, T any](
+func AddAppBlockMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	server *StandardRPCServer,
 	appchainDB kv.RwDB,
-	targetFactory func() T,
+	target apptypes.AppchainBlock,
 ) {
-	methods := NewAppBlockMethods[appTx, R](appchainDB, targetFactory)
+	methods := NewAppBlockMethods[appTx, R](appchainDB, target)
 
 	server.AddMethod("getAppBlock", methods.GetAppBlock)
 	server.AddMethod("getTransactionsByBlockNumber", methods.GetTransactionsByBlockNumber)

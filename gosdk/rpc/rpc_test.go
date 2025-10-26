@@ -110,7 +110,7 @@ func setupTestEnvironment(
 	server = NewStandardRPCServer(nil)
 
 	// Add standard methods to maintain compatibility with existing tests
-	AddStandardMethods(server, appchainDB, txPool, func() *rpcTestBlock { return &rpcTestBlock{} })
+	AddStandardMethods(server, appchainDB, txPool, &rpcTestBlock{})
 
 	cleanup = func() {
 		localDB.Close()
@@ -1107,6 +1107,23 @@ type rpcTestBlock struct {
 	Miner     string                         `json:"miner"`
 	Txs       []TestTransaction[TestReceipt] `json:"txs"`
 }
+
+func (b *rpcTestBlock) Number() uint64 {
+	if b == nil || b.Number == "" {
+		return 0
+	}
+
+	n, err := strconv.ParseUint(b.Number, 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	return n
+}
+
+func (*rpcTestBlock) Hash() [32]byte      { return [32]byte{} }
+func (*rpcTestBlock) StateRoot() [32]byte { return [32]byte{} }
+func (*rpcTestBlock) Bytes() []byte       { return nil }
 
 func TestStandardRPCServer_getAppBlock(t *testing.T) {
 	server, appchainDB, cleanup := setupTestEnvironment(t)

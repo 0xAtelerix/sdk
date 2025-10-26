@@ -281,14 +281,14 @@ func (s *StandardRPCServer) setCORSHeaders(w http.ResponseWriter, defaultMethods
 }
 
 // AddStandardMethods adds all standard blockchain methods to the RPC server
-func AddStandardMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt, T any](
+func AddStandardMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	server *StandardRPCServer,
 	appchainDB kv.RwDB,
 	txpool apptypes.TxPoolInterface[appTx, R],
-	targetFactory func() T,
+	target apptypes.AppchainBlock,
 ) {
 	AddTxPoolMethods(server, txpool)
 	AddReceiptMethods[R](server, appchainDB)
 	AddTransactionMethods(server, txpool, appchainDB)
-	AddAppBlockMethods[appTx](server, appchainDB, targetFactory)
+	AddAppBlockMethods[appTx](server, appchainDB, target)
 }

@@ -6,18 +6,21 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+
+	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
+
 
 // AppBlock is a generic wrapper that associates a decoded payload with the block
 // number it belongs to. Target holds the payload value used when exporting
 // metadata.
-type AppBlock[T any] struct {
+type AppBlock[T apptypes.AppchainBlock] struct {
 	BlockNumber uint64
 	Target      T
 }
 
 // NewAppBlock constructs an AppBlock using the provided block number and target.
-func NewAppBlock[T any](blockNumber uint64, target T) *AppBlock[T] {
+func NewAppBlock[T apptypes.AppchainBlock](blockNumber uint64, target T) *AppBlock[T] {
 	return &AppBlock[T]{
 		BlockNumber: blockNumber,
 		Target:      target,

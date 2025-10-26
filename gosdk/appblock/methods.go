@@ -9,17 +9,17 @@ import (
 )
 
 // GetAppBlockByNumber decodes a CBOR-encoded payload into target and returns its fields and values.
-func GetAppBlockByNumber[T any](
+func GetAppBlockByNumber(
 	blockNumber uint64,
 	payload []byte,
-	target T,
+	target apptypes.AppchainBlock,
 ) (FieldsValues, error) {
 	if err := unmarshallIntoTarget(payload, target); err != nil {
 		return FieldsValues{}, err
 	}
 
 	cb := NewAppBlock(blockNumber, target)
-
+ 
 	fieldsValues, err := cb.ToFieldsAndValues()
 	if err != nil {
 		return FieldsValues{}, err
@@ -32,18 +32,12 @@ func GetAppBlockByNumber[T any](
 // payload stored for blockNumber and extracts transactions via the target's Txs
 // field when present. It falls back to the block transactions bucket and
 // distinguishes between missing data and an explicitly nil Txs field.
-func GetTransactionsFromBlock[appTx apptypes.AppTransaction[R], R apptypes.Receipt, T any](
+func GetTransactionsFromBlock[appTx apptypes.AppTransaction[R], R apptypes.Receipt, T apptypes.AppchainBlock](
 	ctx context.Context,
 	db kv.RwDB,
 	blockNumber uint64,
-	targetFactory func() T,
+	target T,
 ) ([]appTx, bool, error) {
-	if targetFactory == nil {
-		return nil, false, ErrTargetFactoryNil
-	}
-
-	target := targetFactory()
-
 	if err := decodeBlockIntoTarget(ctx, db, blockNumber, target); err != nil {
 		return nil, false, err
 	}

@@ -47,6 +47,15 @@ type templateWithoutTxs struct {
 	Number string
 }
 
+type helperBlock struct {
+	Value string `json:"value"`
+}
+
+func (*helperBlock) Number() uint64      { return 0 }
+func (*helperBlock) Hash() [32]byte      { return [32]byte{} }
+func (*helperBlock) StateRoot() [32]byte { return [32]byte{} }
+func (*helperBlock) Bytes() []byte       { return nil }
+
 func TestStructValueFrom(t *testing.T) {
 	cases := map[string]struct {
 		input    any
@@ -110,21 +119,17 @@ func TestExtractTransactions(t *testing.T) {
 func TestDecodeBlockIntoTarget(t *testing.T) {
 	db := newHelperTestDB(t, kv.TableCfg{gosdk.BlocksBucket: {}})
 
-	type payload struct {
-		Value string `json:"value"`
-	}
-
-	original := payload{Value: "ok"}
+	original := &helperBlock{Value: "ok"}
 	require.NoError(
 		t,
 		storeCBORValue(context.Background(), db, gosdk.BlocksBucket, 1, original, "encode"),
 	)
 
-	var decoded payload
-	require.NoError(t, decodeBlockIntoTarget(context.Background(), db, 1, &decoded))
-	require.Equal(t, original, decoded)
+	decoded := &helperBlock{}
+	require.NoError(t, decodeBlockIntoTarget(context.Background(), db, 1, decoded))
+	require.Equal(t, original.Value, decoded.Value)
 
-	err := decodeBlockIntoTarget(context.Background(), db, 2, &decoded)
+	err := decodeBlockIntoTarget(context.Background(), db, 2, decoded)
 	require.ErrorIs(t, err, errBlockNotFound)
 }
 
