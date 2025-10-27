@@ -5,6 +5,7 @@ import (
 
 	"github.com/ledgerwatch/erigon-lib/kv"
 
+	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
@@ -50,5 +51,5 @@ func GetTransactionsFromBlock[appTx apptypes.AppTransaction[R], R apptypes.Recei
 		return txs, true, nil
 	}
 
-	return nil, false, errTransactionsMissing
+	return nil, false, gosdk.ErrAppBlockTransactionsMissing
 }

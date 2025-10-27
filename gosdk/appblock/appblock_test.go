@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/0xAtelerix/sdk/gosdk"
 )
 
 type testChainBlock struct {
@@ -99,7 +101,7 @@ func TestAppBlockToFields_NilReceiver(t *testing.T) {
 	var cb *AppBlock[*testChainBlock]
 
 	fv, err := cb.ToFieldsAndValues()
-	require.ErrorIs(t, err, errAppBlockValueNil)
+	require.ErrorIs(t, err, gosdk.ErrAppBlockValueNil)
 	require.Empty(t, fv.Fields)
 	require.Empty(t, fv.Values)
 }
@@ -109,7 +111,7 @@ func TestAppBlockToFields_NilTarget(t *testing.T) {
 
 	cb := NewAppBlock(uint64(1), target)
 	fv, err := cb.ToFieldsAndValues()
-	require.ErrorIs(t, err, errTargetNilPointer)
+	require.ErrorIs(t, err, gosdk.ErrAppBlockTargetNilPointer)
 	require.Empty(t, fv.Fields)
 	require.Empty(t, fv.Values)
 }
@@ -119,7 +121,7 @@ func TestAppBlockToFields_NonStruct(t *testing.T) {
 
 	cb := NewAppBlock(uint64(1), &sb)
 	_, err := cb.ToFieldsAndValues()
-	require.ErrorIs(t, err, ErrTargetNotStruct)
+	require.ErrorIs(t, err, gosdk.ErrAppBlockTargetNotStruct)
 }
 
 func TestBuildFieldMetadata_RespectsTags(t *testing.T) {

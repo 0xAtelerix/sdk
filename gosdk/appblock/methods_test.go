@@ -186,7 +186,7 @@ func (t testTx) Process(kvTx kv.RwTx) (blockTestReceipt, []apptypes.ExternalTran
 
 	var err error
 	if t.From == "" {
-		err = errMissingSender
+		err = gosdk.ErrAppBlockMissingSender
 	}
 
 	return blockTestReceipt{hash: t.Hash()}, ext, err
@@ -278,7 +278,7 @@ func TestGetTransactionsFromBlock_MissingTransactionsField(t *testing.T) {
 	require.Error(t, err)
 	require.False(t, ok)
 	require.Nil(t, txs)
-	require.ErrorIs(t, err, errTransactionsMissing)
+	require.ErrorIs(t, err, gosdk.ErrAppBlockTransactionsMissing)
 }
 
 func TestGetTransactionsFromBlock_BlockNotFound(t *testing.T) {
@@ -295,7 +295,7 @@ func TestGetTransactionsFromBlock_BlockNotFound(t *testing.T) {
 	require.Error(t, err)
 	require.False(t, ok)
 	require.Nil(t, txs)
-	require.ErrorIs(t, err, errBlockNotFound)
+	require.ErrorIs(t, err, gosdk.ErrAppBlockNotFound)
 }
 
 func newTestDB(t *testing.T, tables kv.TableCfg) kv.RwDB {

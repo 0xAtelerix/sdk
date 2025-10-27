@@ -130,7 +130,7 @@ func TestDecodeBlockIntoTarget(t *testing.T) {
 	require.Equal(t, original.Value, decoded.Value)
 
 	err := decodeBlockIntoTarget(context.Background(), db, 2, decoded)
-	require.ErrorIs(t, err, errBlockNotFound)
+	require.ErrorIs(t, err, gosdk.ErrAppBlockNotFound)
 }
 
 func TestStoreAndFetchCBORValue(t *testing.T) {
@@ -154,10 +154,10 @@ func TestStoreAndFetchCBORValue(t *testing.T) {
 	require.Equal(t, original, decoded)
 
 	_, err = fetchBucketValue(context.Background(), db, 99)
-	require.ErrorIs(t, err, errBlockNotFound)
+	require.ErrorIs(t, err, gosdk.ErrAppBlockNotFound)
 
 	_, err = fetchBucketValue(context.Background(), nil, 1)
-	require.ErrorIs(t, err, errAppchainDatabase)
+	require.ErrorIs(t, err, gosdk.ErrAppBlockDatabaseNil)
 }
 
 func newHelperTestDB(t *testing.T, tables kv.TableCfg) kv.RwDB {

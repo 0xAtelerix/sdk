@@ -81,7 +81,7 @@ func extractTransactions[AppTx any](target any) (txs []AppTx, hasField bool, fie
 // target, validating that the target is a non-nil pointer before populating it.
 func unmarshallIntoTarget(payload []byte, target apptypes.AppchainBlock) error {
 	if len(payload) == 0 {
-		return errBlockPayloadEmpty
+		return gosdk.ErrAppBlockPayloadEmpty
 	}
 
 	if err := cbor.Unmarshal(payload, &target); err != nil {
@@ -135,7 +135,7 @@ func fetchBucketValue(
 	blockNumber uint64,
 ) ([]byte, error) {
 	if db == nil {
-		return nil, errAppchainDatabase
+		return nil, gosdk.ErrAppBlockDatabaseNil
 	}
 
 	var encoded []byte
@@ -147,7 +147,7 @@ func fetchBucketValue(
 		}
 
 		if len(data) == 0 {
-			return errBlockNotFound
+			return gosdk.ErrAppBlockNotFound
 		}
 
 		encoded = append([]byte(nil), data...)
@@ -165,11 +165,11 @@ func fetchBucketValue(
 // This helper is primarily intended for tests that need to seed the BlocksBucket.
 func StoreAppBlock(ctx context.Context, db kv.RwDB, blockNumber uint64, block any) error {
 	if db == nil {
-		return errAppchainDatabase
+		return gosdk.ErrAppBlockDatabaseNil
 	}
 
 	if block == nil {
-		return errAppBlockValueNil
+		return gosdk.ErrAppBlockValueNil
 	}
 
 	return storeCBORValue(ctx, db, gosdk.BlocksBucket, blockNumber, block, "encode app block")

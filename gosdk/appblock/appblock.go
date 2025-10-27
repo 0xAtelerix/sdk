@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
@@ -43,25 +44,25 @@ type FieldsValues struct {
 // target is nil or not a struct (or pointer to a struct) the function returns an error.
 func (cb *AppBlock[T]) ToFieldsAndValues() (FieldsValues, error) {
 	if cb == nil {
-		return FieldsValues{}, errAppBlockValueNil
+		return FieldsValues{}, gosdk.ErrAppBlockValueNil
 	}
 
 	value := reflect.ValueOf(cb.Target)
 	if !value.IsValid() {
-		return FieldsValues{}, errAppBlockValueNil
+		return FieldsValues{}, gosdk.ErrAppBlockValueNil
 	}
 
 	elem := value
 	for elem.Kind() == reflect.Pointer {
 		if elem.IsNil() {
-			return FieldsValues{}, errTargetNilPointer
+			return FieldsValues{}, gosdk.ErrAppBlockTargetNilPointer
 		}
 
 		elem = elem.Elem()
 	}
 
 	if elem.Kind() != reflect.Struct {
-		return FieldsValues{}, ErrTargetNotStruct
+		return FieldsValues{}, gosdk.ErrAppBlockTargetNotStruct
 	}
 
 	typ := elem.Type()
