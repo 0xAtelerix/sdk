@@ -263,6 +263,7 @@ func Threshold(totalVotingPower *uint256.Int) *uint256.Int {
 	// floor(2n/3) + 1
 	t2 := new(uint256.Int).Mul(totalVotingPower, two)
 	floor := new(uint256.Int).Div(t2, three)
+
 	return new(uint256.Int).Add(floor, uint256.NewInt(1))
 }
 

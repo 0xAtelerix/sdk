@@ -121,6 +121,7 @@ func (sa *MultichainStateAccess) EthBlock(
 	key := EthBlockKey(block.BlockNumber, block.BlockHash)
 
 	ethBlock := EthereumBlock{}
+
 	for {
 		err := sa.stateAccessDB[apptypes.ChainType(block.ChainID)].View(ctx, func(tx kv.Tx) error {
 			v, err := tx.GetOne(EthBlocks, key)
@@ -133,7 +134,10 @@ func (sa *MultichainStateAccess) EthBlock(
 		if err != nil {
 			log.Ctx(ctx).Error().Err(err).Msg("Failed to unmarshal block")
 			time.Sleep(50 * time.Millisecond)
+
+			continue
 		}
+
 		break
 	}
 
@@ -143,7 +147,7 @@ func (sa *MultichainStateAccess) EthBlock(
 			"%w, chainID %d; got block number %d, hash %s; expected block number %d, hash %s",
 			ErrWrongBlock,
 			block.ChainID,
-			uint64(block.BlockNumber),
+			block.BlockNumber,
 			hex.EncodeToString(ethBlockHash[:]),
 			block.BlockNumber,
 			hex.EncodeToString(block.BlockHash[:]),

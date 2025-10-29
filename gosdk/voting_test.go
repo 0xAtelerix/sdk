@@ -57,7 +57,14 @@ func TestThreshold_FloorTwoThirdsPlusOne(t *testing.T) {
 	for _, tc := range cases {
 		got := Threshold(uint256.NewInt(tc.total))
 		exp := uint256.NewInt(tc.exp)
-		require.Zerof(t, got.Cmp(exp), "total=%d got=%s exp=%s", tc.total, got.String(), exp.String())
+		require.Zerof(
+			t,
+			got.Cmp(exp),
+			"total=%d got=%s exp=%s",
+			tc.total,
+			got.String(),
+			exp.String(),
+		)
 	}
 }
 
