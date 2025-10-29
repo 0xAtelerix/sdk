@@ -143,7 +143,7 @@ func (sa *MultichainStateAccess) EthBlock(
 			"%w, chainID %d; got block number %d, hash %s; expected block number %d, hash %s",
 			ErrWrongBlock,
 			block.ChainID,
-			ethBlock.Header.Number.Uint64(),
+			uint64(block.BlockNumber),
 			hex.EncodeToString(ethBlockHash[:]),
 			block.BlockNumber,
 			hex.EncodeToString(block.BlockHash[:]),
