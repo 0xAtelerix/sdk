@@ -319,18 +319,17 @@ runFor:
 				// we believe that blocks are not very important, so we added them for capability with block explorers
 				blockNumber := previousBlockNumber + 1
 				block := a.blockBuilder(blockNumber, stateRoot, previousBlockHash, batch)
+				blockHash := block.Hash()
 
 				// сохраняем блок
 				logger.Debug().Uint64("block_number", blockNumber).
 					Msg("Write block")
 
-				if err = WriteBlock(rwtx, block.Number(), block.Bytes()); err != nil {
+				if err = WriteBlock(rwtx, block.Number(), blockHash, block.Bytes()); err != nil {
 					logger.Error().Err(err).Msg("Failed to write block")
 
 					return fmt.Errorf("failed to write block: %w", err)
 				}
-
-				blockHash := block.Hash()
 
 				var externalTXRoot [32]byte
 
@@ -535,11 +534,18 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Shutdown() {
 	}
 }
 
-func WriteBlock(rwtx kv.RwTx, blockNumber uint64, blockBytes []byte) error {
-	number := make([]byte, 8)
-	binary.BigEndian.PutUint64(number, blockNumber)
+func WriteBlock(rwtx kv.RwTx, blockNumber uint64, blockHash [32]byte, blockBytes []byte) error {
+	numberKey := make([]byte, 8)
+	binary.BigEndian.PutUint64(numberKey, blockNumber)
 
-	return rwtx.Put(BlocksBucket, number, blockBytes)
+	if err := rwtx.Put(BlocksBucket, numberKey, blockBytes); err != nil {
+		return err
+	}
+
+	numberValue := make([]byte, 8)
+	binary.BigEndian.PutUint64(numberValue, blockNumber)
+
+	return rwtx.Put(BlockHashesBucket, blockHash[:], numberValue)
 }
 
 func WriteLastBlock(rwtx kv.RwTx, number uint64, hash [32]byte) error {

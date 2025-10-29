@@ -280,13 +280,39 @@ func (s *StandardRPCServer) setCORSHeaders(w http.ResponseWriter, defaultMethods
 	}
 }
 
+type StandardMethodsOption func(*standardMethodsConfig)
+
+type standardMethodsConfig struct {
+	blockDecoder apptypes.ExplorerBlockDecoder
+}
+
+// WithBlockExplorer augments AddStandardMethods with block explorer handlers.
+// Provide an ExplorerBlockDecoder that can reconstruct blocks stored in MDBX.
+func WithBlockExplorer(decoder apptypes.ExplorerBlockDecoder) StandardMethodsOption {
+	return func(cfg *standardMethodsConfig) {
+		cfg.blockDecoder = decoder
+	}
+}
+
 // AddStandardMethods adds all standard blockchain methods to the RPC server
 func AddStandardMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	server *StandardRPCServer,
 	appchainDB kv.RwDB,
 	txpool apptypes.TxPoolInterface[appTx, R],
+	options ...StandardMethodsOption,
 ) {
+	cfg := standardMethodsConfig{}
+	for _, opt := range options {
+		if opt != nil {
+			opt(&cfg)
+		}
+	}
+
 	AddTxPoolMethods(server, txpool)
 	AddReceiptMethods[R](server, appchainDB)
 	AddTransactionMethods(server, txpool, appchainDB)
+
+	if cfg.blockDecoder != nil {
+		AddBlockExplorerMethods(server, appchainDB, cfg.blockDecoder)
+	}
 }

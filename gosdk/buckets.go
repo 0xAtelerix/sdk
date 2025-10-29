@@ -7,14 +7,15 @@ import (
 )
 
 const (
-	CheckpointBucket = "checkpoints"
-	ExternalTxBucket = "external_transactions"
-	BlocksBucket     = "blocks"
-	ConfigBucket     = "config" // last block number, hash, chainID, configHash, generisHash/infohash
-	LastBlockKey     = "last_block"
-	StateBucket      = "state"
-	Snapshot         = "snapshot"
-	TxSnapshot       = "tx_snapshot"
+	CheckpointBucket  = "checkpoints"
+	ExternalTxBucket  = "external_transactions"
+	BlocksBucket      = "blocks"
+	BlockHashesBucket = "block_hashes"
+	ConfigBucket      = "config" // last block number, hash, chainID, configHash, generisHash/infohash
+	LastBlockKey      = "last_block"
+	StateBucket       = "state"
+	Snapshot          = "snapshot"
+	TxSnapshot        = "tx_snapshot"
 
 	processedBuckets       = "processed_buckets"
 	eventStreamPositionKey = "event_stream_pos"
@@ -38,6 +39,7 @@ func DefaultTables() kv.TableCfg {
 		CheckpointBucket:          {},
 		ExternalTxBucket:          {},
 		BlocksBucket:              {},
+		BlockHashesBucket:         {},
 		ConfigBucket:              {},
 		StateBucket:               {},
 		Snapshot:                  {},

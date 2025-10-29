@@ -227,10 +227,12 @@ func main() {
 
 ### Method Sets
 
-- `AddStandardMethods[T, R](server, db, txpool)` - All methods
+- `AddStandardMethods[T, R](server, db, txpool, opts ...rpc.StandardMethodsOption)` - All methods (use `rpc.WithBlockExplorer` to
+  auto-register explorer endpoints)
 - `AddTransactionMethods[T, R](server, txpool, db)` - Transaction status during lifecycle
 - `AddTxPoolMethods[T, R](server, txpool)` - Submit/query transactions to/from pool
 - `AddReceiptMethods[R](server, db)` - Receipt queries once processed/failed
+- `AddBlockExplorerMethods(server, db, decodeBlock)` - Blocks/transactions for explorer UIs
 
 ### Available RPC Methods
 
@@ -241,6 +243,46 @@ func main() {
 | `getTransactionStatus` | Get comprehensive status |
 | `getPendingTransactions` | List pending transactions |
 | `getTransactionReceipt` | Get transaction receipt |
+| `getBlockByNumber` | Explorer block by height |
+| `getBlockByHash` | Explorer block by hash |
+| `getBlocks` | Explorer block list (start + limit) |
+| `getBlockTransactions` | Explorer transactions in block |
+
+### Block Explorer helpers
+
+Explorer endpoints return tabular data with explicit field metadata so front-end code can render
+localized column headers. Each response has the shape:
+
+```json
+{
+  "fields": [
+    {"key": "number", "label": "Block Number"},
+    {"key": "hash", "label": "Block Hash"}
+  ],
+  "rows": [
+    ["42", "0xabc…"],
+    ["43", "0xdef…"]
+  ]
+}
+```
+
+To hook your block format into the explorer methods implement `apptypes.ExplorerBlock` and return a
+decoder:
+
+```go
+func decodeMyBlock(data []byte) (apptypes.ExplorerBlock, error) {
+    var blk MyExplorerBlock
+    if err := cbor.Unmarshal(data, &blk); err != nil {
+        return nil, err
+    }
+    return &blk, nil
+}
+
+rpc.AddBlockExplorerMethods(server, appchainDB, decodeMyBlock)
+
+// Or register automatically together with the standard suite
+rpc.AddStandardMethods(server, appchainDB, txpool, rpc.WithBlockExplorer(decodeMyBlock))
+```
 
 ### Middleware Interface
 

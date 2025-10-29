@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -20,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/receipt"
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
@@ -76,6 +78,142 @@ func (r TestReceipt) Error() string {
 	return ""
 }
 
+var (
+	testBlockExplorerFields = []apptypes.ExplorerField{
+		{Key: "number", Label: "Block Number"},
+		{Key: "hash", Label: "Block Hash"},
+		{Key: "stateRoot", Label: "State Root"},
+	}
+	testTransactionExplorerFields = []apptypes.ExplorerField{
+		{Key: "txHash", Label: "Transaction Hash"},
+		{Key: "from", Label: "From"},
+		{Key: "to", Label: "To"},
+		{Key: "amount", Label: "Amount"},
+	}
+)
+
+type ExplorerTestTransaction struct {
+	HashBytes [32]byte `cbor:"1,keyasint"`
+	From      string   `cbor:"2,keyasint"`
+	To        string   `cbor:"3,keyasint"`
+	Amount    uint64   `cbor:"4,keyasint"`
+}
+
+func (tx *ExplorerTestTransaction) ExplorerFields() []apptypes.ExplorerField {
+	return append([]apptypes.ExplorerField(nil), testTransactionExplorerFields...)
+}
+
+func (tx *ExplorerTestTransaction) ExplorerValues() []string {
+	return []string{
+		fmt.Sprintf("0x%x", tx.HashBytes[:]),
+		tx.From,
+		tx.To,
+		strconv.FormatUint(tx.Amount, 10),
+	}
+}
+
+type ExplorerTestBlock struct {
+	BlockNumber   uint64                     `cbor:"1,keyasint"`
+	BlockHash     [32]byte                   `cbor:"2,keyasint"`
+	StateRootData [32]byte                   `cbor:"3,keyasint"`
+	Transactions  []*ExplorerTestTransaction `cbor:"4,keyasint"`
+}
+
+func (b *ExplorerTestBlock) Number() uint64 {
+	return b.BlockNumber
+}
+
+func (b *ExplorerTestBlock) Hash() [32]byte {
+	return b.BlockHash
+}
+
+func (b *ExplorerTestBlock) StateRoot() [32]byte {
+	return b.StateRootData
+}
+
+func (b *ExplorerTestBlock) Bytes() []byte {
+	data, err := cbor.Marshal(b)
+	if err != nil {
+		panic(err)
+	}
+
+	return data
+}
+
+func (b *ExplorerTestBlock) ExplorerFields() []apptypes.ExplorerField {
+	return append([]apptypes.ExplorerField(nil), testBlockExplorerFields...)
+}
+
+func (b *ExplorerTestBlock) ExplorerValues() []string {
+	return []string{
+		strconv.FormatUint(b.BlockNumber, 10),
+		fmt.Sprintf("0x%x", b.BlockHash[:]),
+		fmt.Sprintf("0x%x", b.StateRootData[:]),
+	}
+}
+
+func (b *ExplorerTestBlock) ExplorerTransactions() []apptypes.ExplorerTransaction {
+	entries := make([]apptypes.ExplorerTransaction, len(b.Transactions))
+	for i, tx := range b.Transactions {
+		entries[i] = tx
+	}
+
+	return entries
+}
+
+func (b *ExplorerTestBlock) ExplorerTransactionFields() []apptypes.ExplorerField {
+	return append([]apptypes.ExplorerField(nil), testTransactionExplorerFields...)
+}
+
+func newExplorerTestBlock(number uint64, txCount int) *ExplorerTestBlock {
+	block := &ExplorerTestBlock{BlockNumber: number}
+	block.BlockHash = sha256.Sum256([]byte(fmt.Sprintf("block-hash-%d", number)))
+	block.StateRootData = sha256.Sum256([]byte(fmt.Sprintf("state-root-%d", number)))
+	block.Transactions = make([]*ExplorerTestTransaction, txCount)
+
+	for i := 0; i < txCount; i++ {
+		tx := &ExplorerTestTransaction{
+			From:   fmt.Sprintf("sender-%d", i),
+			To:     fmt.Sprintf("receiver-%d", i),
+			Amount: uint64(number*100 + uint64(i)),
+		}
+		tx.HashBytes = sha256.Sum256([]byte(fmt.Sprintf("tx-%d-%d", number, i)))
+		block.Transactions[i] = tx
+	}
+
+	return block
+}
+
+func decodeExplorerTestBlock(data []byte) (apptypes.ExplorerBlock, error) {
+	block := &ExplorerTestBlock{}
+	if err := cbor.Unmarshal(data, block); err != nil {
+		return nil, err
+	}
+
+	return block, nil
+}
+
+func storeExplorerBlock(t *testing.T, db kv.RwDB, block *ExplorerTestBlock) {
+	t.Helper()
+
+	err := db.Update(context.Background(), func(tx kv.RwTx) error {
+		numberKey := make([]byte, 8)
+		binary.BigEndian.PutUint64(numberKey, block.Number())
+
+		if err := tx.Put(gosdk.BlocksBucket, numberKey, block.Bytes()); err != nil {
+			return err
+		}
+
+		numberValue := make([]byte, 8)
+		binary.BigEndian.PutUint64(numberValue, block.Number())
+
+		hash := block.Hash()
+
+		return tx.Put(gosdk.BlockHashesBucket, hash[:], numberValue)
+	})
+	require.NoError(t, err)
+}
+
 // setupTestEnvironment creates a test environment with databases and server
 func setupTestEnvironment(
 	t *testing.T,
@@ -100,7 +238,9 @@ func setupTestEnvironment(
 		Path(appchainDBPath).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return kv.TableCfg{
-				receipt.ReceiptBucket: {},
+				receipt.ReceiptBucket:   {},
+				gosdk.BlocksBucket:      {},
+				gosdk.BlockHashesBucket: {},
 			}
 		}).
 		Open()
@@ -978,6 +1118,198 @@ func TestStandardRPCServer_middlewareMultipleResponseFailures(t *testing.T) {
 	assert.InEpsilon(t, float64(5), responses[4].ID, 0.001)
 	assert.Equal(t, testSuccessMessage, responses[4].Result)
 	assert.Nil(t, responses[4].Error)
+}
+
+// ============= BLOCK EXPLORER METHODS =============
+
+func TestBlockExplorer_GetBlockByNumber(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	block := newExplorerTestBlock(42, 2)
+	storeExplorerBlock(t, appchainDB, block)
+
+	AddBlockExplorerMethods(server, appchainDB, decodeExplorerTestBlock)
+
+	rr := makeJSONRPCRequest(t, server, "getBlockByNumber", []any{block.Number()})
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var response JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &response))
+	require.Nil(t, response.Error)
+
+	payload, err := json.Marshal(response.Result)
+	require.NoError(t, err)
+
+	var explorer explorerResponse
+	require.NoError(t, json.Unmarshal(payload, &explorer))
+
+	assert.Equal(t, testBlockExplorerFields, explorer.Fields)
+	require.Len(t, explorer.Rows, 1)
+	assert.Equal(t, block.ExplorerValues(), explorer.Rows[0])
+}
+
+func TestBlockExplorer_GetBlockByHash(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	block := newExplorerTestBlock(7, 1)
+	storeExplorerBlock(t, appchainDB, block)
+
+	AddBlockExplorerMethods(server, appchainDB, decodeExplorerTestBlock)
+
+	hash := block.Hash()
+	hashStr := "0x" + hex.EncodeToString(hash[:])
+
+	rr := makeJSONRPCRequest(t, server, "getBlockByHash", []any{hashStr})
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var response JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &response))
+	require.Nil(t, response.Error)
+
+	payload, err := json.Marshal(response.Result)
+	require.NoError(t, err)
+
+	var explorer explorerResponse
+	require.NoError(t, json.Unmarshal(payload, &explorer))
+
+	assert.Equal(t, testBlockExplorerFields, explorer.Fields)
+	require.Len(t, explorer.Rows, 1)
+	assert.Equal(t, block.ExplorerValues(), explorer.Rows[0])
+}
+
+func TestBlockExplorer_GetBlocks(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	first := newExplorerTestBlock(10, 1)
+	second := newExplorerTestBlock(11, 2)
+	storeExplorerBlock(t, appchainDB, first)
+	storeExplorerBlock(t, appchainDB, second)
+
+	AddBlockExplorerMethods(server, appchainDB, decodeExplorerTestBlock)
+
+	rr := makeJSONRPCRequest(t, server, "getBlocks", []any{first.Number(), 2})
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var response JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &response))
+	require.Nil(t, response.Error)
+
+	payload, err := json.Marshal(response.Result)
+	require.NoError(t, err)
+
+	var explorer explorerResponse
+	require.NoError(t, json.Unmarshal(payload, &explorer))
+
+	assert.Equal(t, testBlockExplorerFields, explorer.Fields)
+	require.Len(t, explorer.Rows, 2)
+	assert.Equal(t, first.ExplorerValues(), explorer.Rows[0])
+	assert.Equal(t, second.ExplorerValues(), explorer.Rows[1])
+}
+
+func TestBlockExplorer_GetBlockTransactions(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	block := newExplorerTestBlock(15, 3)
+	storeExplorerBlock(t, appchainDB, block)
+
+	AddBlockExplorerMethods(server, appchainDB, decodeExplorerTestBlock)
+
+	rr := makeJSONRPCRequest(t, server, "getBlockTransactions", []any{block.Number()})
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var response JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &response))
+	require.Nil(t, response.Error)
+
+	payload, err := json.Marshal(response.Result)
+	require.NoError(t, err)
+
+	var explorer explorerResponse
+	require.NoError(t, json.Unmarshal(payload, &explorer))
+
+	assert.Equal(t, testTransactionExplorerFields, explorer.Fields)
+	require.Len(t, explorer.Rows, len(block.Transactions))
+	assert.Equal(t, block.Transactions[0].ExplorerValues(), explorer.Rows[0])
+}
+
+func TestBlockExplorer_GetBlockTransactionsEmpty(t *testing.T) {
+	server, appchainDB, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	block := newExplorerTestBlock(21, 0)
+	storeExplorerBlock(t, appchainDB, block)
+
+	AddBlockExplorerMethods(server, appchainDB, decodeExplorerTestBlock)
+
+	rr := makeJSONRPCRequest(t, server, "getBlockTransactions", []any{block.Number()})
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var response JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &response))
+	require.Nil(t, response.Error)
+
+	payload, err := json.Marshal(response.Result)
+	require.NoError(t, err)
+
+	var explorer explorerResponse
+	require.NoError(t, json.Unmarshal(payload, &explorer))
+
+	assert.Equal(t, testTransactionExplorerFields, explorer.Fields)
+	assert.Empty(t, explorer.Rows)
+}
+
+func TestAddStandardMethods_WithBlockExplorer(t *testing.T) {
+	localDBPath := t.TempDir()
+	appchainDBPath := t.TempDir()
+
+	localDB, err := mdbx.NewMDBX(mdbxlog.New()).
+		Path(localDBPath).
+		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
+			return txpool.Tables()
+		}).
+		Open()
+	require.NoError(t, err)
+	defer localDB.Close()
+
+	appchainDB, err := mdbx.NewMDBX(mdbxlog.New()).
+		Path(appchainDBPath).
+		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
+			return kv.TableCfg{
+				receipt.ReceiptBucket:   {},
+				gosdk.BlocksBucket:      {},
+				gosdk.BlockHashesBucket: {},
+			}
+		}).
+		Open()
+	require.NoError(t, err)
+	defer appchainDB.Close()
+
+	txPool := txpool.NewTxPool[TestTransaction[TestReceipt]](localDB)
+
+	server := NewStandardRPCServer(nil)
+	AddStandardMethods(server, appchainDB, txPool, WithBlockExplorer(decodeExplorerTestBlock))
+
+	block := newExplorerTestBlock(30, 1)
+	storeExplorerBlock(t, appchainDB, block)
+
+	rr := makeJSONRPCRequest(t, server, "getBlockByNumber", []any{block.Number()})
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var response JSONRPCResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &response))
+	require.Nil(t, response.Error)
+
+	payload, err := json.Marshal(response.Result)
+	require.NoError(t, err)
+
+	var explorer explorerResponse
+	require.NoError(t, json.Unmarshal(payload, &explorer))
+
+	assert.Equal(t, block.ExplorerValues(), explorer.Rows[0])
 }
 
 // ============= CORS TESTS =============

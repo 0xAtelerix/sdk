@@ -86,6 +86,39 @@ type StoredAppchainBlock[appBlock AppchainBlock] struct {
 	Block appBlock `cbor:"2,keyasint"`
 }
 
+// ExplorerField describes a single column that should be rendered by block explorer UIs.
+// Both Key and Label are controlled by the appchain implementation so interfaces can
+// display localized or domain specific captions.
+type ExplorerField struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+}
+
+// ExplorerRecord is implemented by any entity (block, transaction) that can expose
+// a tabular representation for block explorer consumers.
+type ExplorerRecord interface {
+	ExplorerFields() []ExplorerField
+	ExplorerValues() []string
+}
+
+// ExplorerTransaction represents a single formatted transaction entry for explorer APIs.
+type ExplorerTransaction interface {
+	ExplorerRecord
+}
+
+// ExplorerBlock extends the basic AppchainBlock with explorer specific formatting helpers.
+// Implementations decide which block level fields to expose and how to label them, and
+// also provide schema information for the block's transactions.
+type ExplorerBlock interface {
+	AppchainBlock
+	ExplorerRecord
+	ExplorerTransactionFields() []ExplorerField
+	ExplorerTransactions() []ExplorerTransaction
+}
+
+// ExplorerBlockDecoder reconstructs an ExplorerBlock instance from raw bytes stored in MDBX.
+type ExplorerBlockDecoder func([]byte) (ExplorerBlock, error)
+
 type AppchainBlockConstructor[appTx AppTransaction[R], R Receipt, block AppchainBlock] func(
 	blockNumber uint64,
 	stateRoot [32]byte,
