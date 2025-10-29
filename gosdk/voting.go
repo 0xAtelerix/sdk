@@ -258,6 +258,10 @@ func Threshold(totalVotingPower *uint256.Int) *uint256.Int {
 		return uint256.NewInt(0)
 	}
 
+	if totalVotingPower.Eq(uint256.NewInt(1)) || totalVotingPower.Eq(uint256.NewInt(2)) {
+		return totalVotingPower.Clone()
+	}
+
 	two := uint256.NewInt(2)
 	three := uint256.NewInt(3)
 	// floor(2n/3) + 1
