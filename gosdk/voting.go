@@ -258,23 +258,12 @@ func Threshold(totalVotingPower *uint256.Int) *uint256.Int {
 		return uint256.NewInt(0)
 	}
 
-	if totalVotingPower.Eq(uint256.NewInt(1)) || totalVotingPower.Eq(uint256.NewInt(2)) {
-		return totalVotingPower.Clone()
-	}
-
-	// floor(total*2/3) + 1
 	two := uint256.NewInt(2)
 	three := uint256.NewInt(3)
-
-	// numerator = 2*total + (3 - 1)
-	numer := new(uint256.Int).Mul(totalVotingPower, two)
-	numer.Add(numer, uint256.NewInt(2)) // add (y - 1), where y=3
-
-	// ceilDiv = numerator / 3
-	ceilDiv := new(uint256.Int).Div(numer, three)
-
-	// +1 for the strict “>⅔” condition
-	return new(uint256.Int).Add(ceilDiv, uint256.NewInt(1))
+	// floor(2n/3) + 1
+	t2 := new(uint256.Int).Mul(totalVotingPower, two)
+	floor := new(uint256.Int).Div(t2, three)
+	return new(uint256.Int).Add(floor, uint256.NewInt(1))
 }
 
 func getTotalVoting(validators *ValidatorSet) *uint256.Int {

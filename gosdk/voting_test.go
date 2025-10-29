@@ -32,30 +32,32 @@ func TestThreshold_ZeroTotal_ReturnsZero(t *testing.T) {
 	require.True(t, got.IsZero())
 }
 
-func TestThreshold_CeilTwoThirdsPlusOne(t *testing.T) {
+func TestThreshold_FloorTwoThirdsPlusOne(t *testing.T) {
 	t.Parallel()
 
-	// table: total -> ceil(2*total/3) + 1
+	// table: total -> floor(2*total/3) + 1
 	cases := []struct {
 		total uint64
 		exp   uint64
 	}{
-		{1, 1},  // special case
-		{2, 2},  // special case
-		{3, 3},  // ceil(2)=2 -> +1=3
-		{4, 4},  // ceil(2.66)=3 -> +1=4
-		{5, 5},  // ceil(3.33)=4 -> +1=5
-		{6, 5},  // ceil(4)=4 -> +1=5
-		{7, 6},  // ceil(4.66)=5 -> +1=6
-		{8, 7},  // ceil(5.33)=6 -> +1=7
-		{9, 7},  // ceil(6)=6 -> +1=7
-		{10, 8}, // ceil(6.66)=7 -> +1=8
-		{11, 9}, // ceil(7.33)=8 -> +1=9
-		{12, 9}, // ceil(8)=8 -> +1=9
+		{1, 1},  // floor(0.66)=0 -> +1=1
+		{2, 2},  // floor(1.33)=1 -> +1=2
+		{3, 3},  // floor(2)=2     -> +1=3
+		{4, 3},  // floor(2.66)=2  -> +1=3
+		{5, 4},  // floor(3.33)=3  -> +1=4
+		{6, 5},  // floor(4)=4     -> +1=5
+		{7, 5},  // floor(4.66)=4  -> +1=5
+		{8, 6},  // floor(5.33)=5  -> +1=6
+		{9, 7},  // floor(6)=6     -> +1=7
+		{10, 7}, // floor(6.66)=6  -> +1=7
+		{11, 8}, // floor(7.33)=7  -> +1=8
+		{12, 9}, // floor(8)=8     -> +1=9
 	}
+
 	for _, tc := range cases {
 		got := Threshold(uint256.NewInt(tc.total))
-		require.Equalf(t, uint256.NewInt(tc.exp), got, "total=%d", tc.total)
+		exp := uint256.NewInt(tc.exp)
+		require.Zerof(t, got.Cmp(exp), "total=%d got=%s exp=%s", tc.total, got.String(), exp.String())
 	}
 }
 
