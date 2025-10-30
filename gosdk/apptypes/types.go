@@ -50,9 +50,9 @@ type ExternalReceipt interface {
 }
 
 type ExternalBlock struct {
-	ChainID     uint64   `cbor:"1,keyasint"`
-	BlockNumber uint64   `cbor:"2,keyasint"`
-	BlockHash   [32]byte `cbor:"3,keyasint"`
+	ChainID     uint64   `json:"chainId" cbor:"1,keyasint"`
+	BlockNumber uint64   `json:"blockNumber" cbor:"2,keyasint"`
+	BlockHash   [32]byte `json:"blockHash" cbor:"3,keyasint"`
 }
 
 func MakeExternalBlock(chainID uint64, blockNumber uint64, blockHash [32]byte) ExternalBlock {
@@ -68,17 +68,15 @@ func (e ExternalBlock) GetEntityID() ExternalID {
 }
 
 type ExternalID struct {
-	ChainID     uint64   `cbor:"1,keyasint"`
-	BlockNumber uint64   `cbor:"2,keyasint"`
-	BlockHash   [32]byte `cbor:"3,keyasint"`
+	ChainID     uint64   `json:"chainId" cbor:"1,keyasint"`
+	BlockNumber uint64   `json:"blockNumber" cbor:"2,keyasint"`
+	BlockHash   [32]byte `json:"blockHash" cbor:"3,keyasint"`
 }
 
 // For DAG it represents an interval between two Atroposes
 type AppchainBlock interface {
-	Number() uint64
 	Hash() [32]byte
 	StateRoot() [32]byte
-	Bytes() []byte
 }
 
 type StoredAppchainBlock[appBlock AppchainBlock] struct {
@@ -95,8 +93,8 @@ type AppchainBlockConstructor[appTx AppTransaction[R], R Receipt, block Appchain
 // Для подключенных L1/L2 мы должны  уметь анмаршалить поле tx.
 // Для межапчейновых - вставляем, как есть.
 type ExternalTransaction struct {
-	ChainID ChainType `cbor:"1,keyasint"`
-	Tx      []byte    `cbor:"2,keyasint"`
+	ChainID ChainType `json:"chainId" cbor:"1,keyasint"`
+	Tx      []byte    `json:"tx" cbor:"2,keyasint"`
 }
 
 //3) Calculate state root

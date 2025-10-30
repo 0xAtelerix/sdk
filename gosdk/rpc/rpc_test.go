@@ -76,6 +76,30 @@ func (r TestReceipt) Error() string {
 	return ""
 }
 
+// TestBlock - test block implementation
+type TestBlock struct {
+	BlockNumber uint64   `json:"number"`
+	BlockHash   [32]byte `json:"hash"`
+	Root        [32]byte `json:"root"`
+}
+
+func (b TestBlock) Number() uint64 {
+	return b.BlockNumber
+}
+
+func (b TestBlock) Hash() [32]byte {
+	return b.BlockHash
+}
+
+func (b TestBlock) StateRoot() [32]byte {
+	return b.Root
+}
+
+func (b TestBlock) Bytes() []byte {
+	data, _ := cbor.Marshal(b)
+	return data
+}
+
 // setupTestEnvironment creates a test environment with databases and server
 func setupTestEnvironment(
 	t *testing.T,
@@ -113,7 +137,12 @@ func setupTestEnvironment(
 	server = NewStandardRPCServer(nil)
 
 	// Add standard methods to maintain compatibility with existing tests
-	AddStandardMethods(server, appchainDB, txPool)
+	AddStandardMethods[TestTransaction[TestReceipt], TestReceipt, TestBlock](
+		server,
+		appchainDB,
+		txPool,
+		42, // test chainID
+	)
 
 	cleanup = func() {
 		localDB.Close()
@@ -151,7 +180,20 @@ func makeJSONRPCRequest(
 	return rr
 }
 
-// ============= BASIC RPC METHODS =============
+// ============= INTEGRATION TESTS FOR RPC METHODS =============
+// These tests verify that RPC methods work correctly through the full HTTP/JSON-RPC stack.
+// They test:
+//   - HTTP request/response handling
+//   - JSON-RPC protocol compliance (version, id, error codes)
+//   - Request serialization and response deserialization
+//   - Integration between the RPC server and method handlers
+//
+// For unit tests that test method logic in isolation (without HTTP overhead),
+// see the dedicated methods_*_test.go files:
+//   - methods_receipt_test.go: Receipt-related methods
+//   - methods_tx_test.go: All transaction methods (submit, pending, queries, status)
+//   - methods_block_test.go: Block query methods
+//   - methods_schema_test.go: Schema discovery methods
 
 func TestStandardRPCServer_sendTransaction(t *testing.T) {
 	server, _, cleanup := setupTestEnvironment(t)
@@ -184,7 +226,7 @@ func TestStandardRPCServer_sendTransaction(t *testing.T) {
 	assert.Equal(t, "0x", hashStr[:2])
 }
 
-func TestStandardRPCServer_getTransactionByHash(t *testing.T) {
+func TestStandardRPCServer_getTransaction(t *testing.T) {
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -207,8 +249,8 @@ func TestStandardRPCServer_getTransactionByHash(t *testing.T) {
 	hashStr, ok := sendResponse.Result.(string)
 	require.True(t, ok, "sendResponse should be string", sendResponse.Result, sendRR.Body)
 
-	// Now get the transaction by hash
-	getRR := makeJSONRPCRequest(t, server, "getTransactionByHash", []any{hashStr})
+	// Now get the transaction by hash (unified method checks txpool + blocks)
+	getRR := makeJSONRPCRequest(t, server, "getTransaction", []any{hashStr})
 
 	assert.Equal(t, http.StatusOK, getRR.Code)
 
@@ -336,7 +378,13 @@ func TestStandardRPCServer_getTransactionReceipt(t *testing.T) {
 	assert.NotNil(t, receiptResponse.Result)
 }
 
-// ============= CUSTOM METHODS & ERROR HANDLING =============
+// ============= RPC SERVER FUNCTIONALITY TESTS =============
+// These tests are unique to the RPC server layer and are NOT duplicated
+// in the methods_*_test.go files. They test:
+//   - Custom method registration
+//   - Error handling at the HTTP/JSON-RPC layer
+//   - Invalid requests and malformed JSON
+//   - HTTP method validation
 
 func TestStandardRPCServer_customMethod(t *testing.T) {
 	server, _, cleanup := setupTestEnvironment(t)
@@ -1100,4 +1148,64 @@ func TestStandardRPCServer_corsHealthEndpoint(t *testing.T) {
 	assert.Equal(t, "GET, HEAD", w.Header().Get("Access-Control-Allow-Methods"))
 	assert.Equal(t, "Accept", w.Header().Get("Access-Control-Allow-Headers"))
 	assert.Equal(t, 200, w.Code)
+}
+
+// ============= SCHEMA DISCOVERY TESTS =============
+
+func TestSchemaMethod_AddAndCall(t *testing.T) {
+	server := NewStandardRPCServer(nil)
+	chainID := uint64(42)
+
+	// Add schema method to server
+	AddSchemaMethod[TestTransaction[TestReceipt], TestReceipt, TestBlock](server, chainID)
+
+	// Verify that the method was registered
+	_, exists := server.methods["getAppchainSchema"]
+	assert.True(t, exists, "getAppchainSchema method should be registered")
+
+	// Call the method via the server
+	method := server.methods["getAppchainSchema"]
+	result, err := method(context.Background(), []any{})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	schema, ok := result.(map[string]any)
+	require.True(t, ok)
+
+	// Verify top-level structure
+	assert.Equal(t, chainID, schema["chainId"])
+	assert.Equal(t, "1.0.0", schema["version"])
+
+	// Verify schemas object exists
+	schemas, ok := schema["schemas"].(map[string]any)
+	require.True(t, ok)
+
+	// Verify all three schema types exist
+	assert.Contains(t, schemas, "block")
+	assert.Contains(t, schemas, "transaction")
+	assert.Contains(t, schemas, "receipt")
+
+	// Verify they're not nil
+	assert.NotNil(t, schemas["block"])
+	assert.NotNil(t, schemas["transaction"])
+	assert.NotNil(t, schemas["receipt"])
+}
+
+func TestSchemaMethod_DifferentChainIDs(t *testing.T) {
+	chainIDs := []uint64{1, 42, 100, 999}
+
+	for _, chainID := range chainIDs {
+		t.Run("chainID_"+string(rune(chainID)), func(t *testing.T) {
+			server := NewStandardRPCServer(nil)
+			AddSchemaMethod[TestTransaction[TestReceipt], TestReceipt, TestBlock](server, chainID)
+
+			method := server.methods["getAppchainSchema"]
+			result, err := method(context.Background(), []any{})
+
+			require.NoError(t, err)
+			schema := result.(map[string]any)
+			assert.Equal(t, chainID, schema["chainId"])
+		})
+	}
 }

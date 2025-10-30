@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
+	"github.com/invopop/jsonschema"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/rs/zerolog/log"
 
@@ -281,12 +282,55 @@ func (s *StandardRPCServer) setCORSHeaders(w http.ResponseWriter, defaultMethods
 }
 
 // AddStandardMethods adds all standard blockchain methods to the RPC server
-func AddStandardMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
+func AddStandardMethods[
+	appTx apptypes.AppTransaction[R],
+	R apptypes.Receipt,
+	Block apptypes.AppchainBlock,
+](
 	server *StandardRPCServer,
 	appchainDB kv.RwDB,
 	txpool apptypes.TxPoolInterface[appTx, R],
+	chainID uint64,
 ) {
-	AddTxPoolMethods(server, txpool)
-	AddReceiptMethods[R](server, appchainDB)
 	AddTransactionMethods(server, txpool, appchainDB)
+	AddReceiptMethods[R](server, appchainDB)
+	AddBlockMethods[appTx, R, Block](server, appchainDB)
+	AddSchemaMethod[appTx, R, Block](server, chainID)
+}
+
+// ============= SCHEMA DISCOVERY =============
+
+// AddSchemaMethod registers the schema discovery RPC method on the server.
+// This is a simple helper that creates a closure over the chainID and type samples.
+func AddSchemaMethod[
+	appTx apptypes.AppTransaction[R],
+	R apptypes.Receipt,
+	Block apptypes.AppchainBlock,
+](
+	server *StandardRPCServer,
+	chainID uint64,
+) {
+	// Create zero-value samples for reflection
+	var txSample appTx
+	var receiptSample R
+	var blockSample Block
+
+	// Register the schema method as a closure
+	server.AddMethod("getAppchainSchema", func(ctx context.Context, params []any) (any, error) {
+		// Create a reflector for generating schemas
+		reflector := &jsonschema.Reflector{
+			Anonymous:                 true,
+			DoNotReference:            true,  // Inline all definitions instead of using $ref
+			AllowAdditionalProperties: false, // Strict schema
+		}
+
+		return map[string]any{
+			"chainId": chainID,
+			"schemas": map[string]any{
+				"block":       reflector.Reflect(blockSample),
+				"transaction": reflector.Reflect(txSample),
+				"receipt":     reflector.Reflect(receiptSample),
+			},
+		}, nil
+	})
 }
