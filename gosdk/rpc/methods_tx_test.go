@@ -473,13 +473,13 @@ func TestTransactionMethods_SendTransaction_WrongParamsCount(t *testing.T) {
 	result, err := methods.SendTransaction(context.Background(), []any{})
 	require.Error(t, err)
 	assert.Nil(t, result)
-	require.ErrorIs(t, err, ErrSendTransactionRequires1Param)
+	require.ErrorIs(t, err, ErrWrongParamsCount)
 
 	// Too many parameters
 	result, err = methods.SendTransaction(context.Background(), []any{"tx1", "tx2"})
 	require.Error(t, err)
 	assert.Nil(t, result)
-	require.ErrorIs(t, err, ErrSendTransactionRequires1Param)
+	require.ErrorIs(t, err, ErrWrongParamsCount)
 }
 
 func TestTransactionMethods_SendTransaction_InvalidData(t *testing.T) {

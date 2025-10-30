@@ -560,11 +560,6 @@ func WriteBlockTransactions[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 	blockNumber uint64,
 	txs []appTx,
 ) error {
-	if len(txs) == 0 {
-		// Store empty array for blocks with no transactions
-		txs = make([]appTx, 0)
-	}
-
 	blockNumBytes := utility.Uint64ToBytes(blockNumber)
 
 	// Marshal transactions to CBOR
@@ -642,6 +637,7 @@ func WriteExternalTransactions(
 		return [32]byte{}, fmt.Errorf("can't write external transactions to the DB: error %w", err)
 	}
 
+	// todo: store the root in DB
 	return root, nil
 }
 
@@ -659,8 +655,7 @@ func ReadExternalTransactions(
 	}
 
 	if len(value) == 0 {
-		// No transactions for this block
-		return make([]apptypes.ExternalTransaction, 0), nil
+		return []apptypes.ExternalTransaction{}, nil
 	}
 
 	var txs []apptypes.ExternalTransaction

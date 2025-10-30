@@ -24,9 +24,11 @@ import (
 )
 
 // setupReceiptTestEnvironment creates a test environment for receipt methods
-func setupReceiptTestEnvironment(
-	t *testing.T,
-) (methods *ReceiptMethods[TestReceipt], appchainDB kv.RwDB, cleanup func()) {
+func setupReceiptTestEnvironment(t *testing.T) (
+	methods *ReceiptMethods[TestReceipt],
+	appchainDB kv.RwDB,
+	cleanup func(),
+) {
 	t.Helper()
 
 	appchainDBPath := t.TempDir()
@@ -108,13 +110,13 @@ func TestReceiptMethods_GetTransactionReceipt_WrongParamsCount(t *testing.T) {
 	result, err := methods.GetTransactionReceipt(context.Background(), []any{})
 	require.Error(t, err)
 	assert.Nil(t, result)
-	require.ErrorIs(t, err, ErrGetTransactionReceiptRequires1Param)
+	require.ErrorIs(t, err, ErrWrongParamsCount)
 
 	// Test with too many parameters
 	result, err = methods.GetTransactionReceipt(context.Background(), []any{"hash1", "hash2"})
 	require.Error(t, err)
 	assert.Nil(t, result)
-	require.ErrorIs(t, err, ErrGetTransactionReceiptRequires1Param)
+	require.ErrorIs(t, err, ErrWrongParamsCount)
 }
 
 func TestReceiptMethods_GetTransactionReceipt_InvalidHashType(t *testing.T) {

@@ -83,22 +83,12 @@ type TestBlock struct {
 	Root        [32]byte `json:"root"`
 }
 
-func (b TestBlock) Number() uint64 {
-	return b.BlockNumber
-}
-
 func (b TestBlock) Hash() [32]byte {
 	return b.BlockHash
 }
 
 func (b TestBlock) StateRoot() [32]byte {
 	return b.Root
-}
-
-func (b TestBlock) Bytes() []byte {
-	data, _ := cbor.Marshal(b)
-
-	return data
 }
 
 // setupTestEnvironment creates a test environment with databases and server
@@ -191,10 +181,6 @@ func makeJSONRPCRequest(
 //
 // For unit tests that test method logic in isolation (without HTTP overhead),
 // see the dedicated methods_*_test.go files:
-//   - methods_receipt_test.go: Receipt-related methods
-//   - methods_tx_test.go: All transaction methods (submit, pending, queries, status)
-//   - methods_block_test.go: Block query methods
-//   - methods_schema_test.go: Schema discovery methods
 
 func TestStandardRPCServer_sendTransaction(t *testing.T) {
 	server, _, cleanup := setupTestEnvironment(t)
@@ -378,14 +364,6 @@ func TestStandardRPCServer_getTransactionReceipt(t *testing.T) {
 	assert.Nil(t, receiptResponse.Error)
 	assert.NotNil(t, receiptResponse.Result)
 }
-
-// ============= RPC SERVER FUNCTIONALITY TESTS =============
-// These tests are unique to the RPC server layer and are NOT duplicated
-// in the methods_*_test.go files. They test:
-//   - Custom method registration
-//   - Error handling at the HTTP/JSON-RPC layer
-//   - Invalid requests and malformed JSON
-//   - HTTP method validation
 
 func TestStandardRPCServer_customMethod(t *testing.T) {
 	server, _, cleanup := setupTestEnvironment(t)

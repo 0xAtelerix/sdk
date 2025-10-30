@@ -58,7 +58,7 @@ func parseHash(hashStr string) ([32]byte, error) {
 	}
 
 	if len(bytes) != 32 {
-		return result, fmt.Errorf("%w, got %d", ErrHashMustBe32Bytes, len(bytes))
+		return result, fmt.Errorf("%w: expected 32 bytes, got %d", ErrInvalidHashFormat, len(bytes))
 	}
 
 	copy(result[:], bytes)
@@ -66,57 +66,33 @@ func parseHash(hashStr string) ([32]byte, error) {
 	return result, nil
 }
 
-// parseBlockNumber normalizes a variety of numeric and string inputs into an
-// unsigned block number, returning ErrInvalidBlockNumber when the value is
-// negative, empty, or otherwise unsupported.
+// parseBlockNumber normalizes numeric and string inputs from JSON-RPC into an
+// unsigned block number. JSON unmarshaling produces float64 for numbers and
+// string for hex values like "0x123".
 func parseBlockNumber(v any) (uint64, error) {
 	switch value := v.(type) {
-	case uint64:
-		return value, nil
-	case int:
-		if value < 0 {
-			return 0, ErrInvalidBlockNumber
-		}
-
-		return uint64(value), nil
-	case int64:
-		if value < 0 {
-			return 0, ErrInvalidBlockNumber
-		}
-
-		return uint64(value), nil
-	case uint32:
-		return uint64(value), nil
-	case int32:
-		if value < 0 {
-			return 0, ErrInvalidBlockNumber
-		}
-
-		return uint64(value), nil
 	case float64:
+		// JSON numbers are unmarshaled as float64
 		if value < 0 || math.Trunc(value) != value {
 			return 0, ErrInvalidBlockNumber
 		}
 
 		return uint64(value), nil
 	case string:
+		// Support both decimal "123" and hex "0x123" formats
 		s := strings.TrimSpace(value)
-
 		if s == "" {
 			return 0, ErrInvalidBlockNumber
 		}
 
-		var (
-			parsed uint64
-			err    error
-		)
+		base := 10
 
 		if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
-			parsed, err = strconv.ParseUint(s[2:], 16, 64)
-		} else {
-			parsed, err = strconv.ParseUint(s, 10, 64)
+			s = s[2:]
+			base = 16
 		}
 
+		parsed, err := strconv.ParseUint(s, base, 64)
 		if err != nil {
 			return 0, ErrInvalidBlockNumber
 		}

@@ -45,7 +45,7 @@ func (m *TransactionMethods[appTx, R]) SendTransaction(
 	params []any,
 ) (any, error) {
 	if len(params) != 1 {
-		return nil, ErrSendTransactionRequires1Param
+		return nil, ErrWrongParamsCount
 	}
 
 	// Convert params to transaction
@@ -175,8 +175,7 @@ func (m *TransactionMethods[appTx, R]) GetTransactionsByBlockNumber(
 		}
 
 		if len(payload) == 0 {
-			// No transactions in this block (or block doesn't exist)
-			txs = make([]appTx, 0)
+			txs = []appTx{}
 
 			return nil
 		}
@@ -236,7 +235,7 @@ func (m *TransactionMethods[appTx, R]) GetTransactionStatus(
 	params []any,
 ) (any, error) {
 	if len(params) != 1 {
-		return nil, ErrGetTransactionStatusRequires1Param
+		return nil, ErrWrongParamsCount
 	}
 
 	hashStr, ok := params[0].(string)
