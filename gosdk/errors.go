@@ -21,6 +21,15 @@ const (
 	ErrUnsupportedEntityType = SDKError("unsupported entity type")
 	ErrMalformedKey          = SDKError("malformed key")
 	ErrUnsupportedFixture    = SDKError("unsupported type in FixtureWriter")
+
+	ErrBlockMarshalling              = SDKError("failed to marshal block")
+	ErrBlockWrite                    = SDKError("failed to write block")
+	ErrBlockTransactionsWrite        = SDKError("failed to write block transactions")
+	ErrTransactionsMarshalling       = SDKError("failed to marshal transactions")
+	ErrTransactionMarshalling        = SDKError("failed to marshal transaction")
+	ErrTransactionLookupWrite        = SDKError("failed to write transaction lookup")
+	ErrExternalTransactionsGet       = SDKError("failed to get external transactions")
+	ErrExternalTransactionsUnmarshal = SDKError("failed to unmarshal external transactions")
 )
 
 //nolint:gochecknoglobals // read only

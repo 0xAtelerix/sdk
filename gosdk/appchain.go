@@ -327,20 +327,20 @@ runFor:
 				if marshalErr != nil {
 					logger.Error().Err(marshalErr).Msg("Failed to marshal block")
 
-					return fmt.Errorf("failed to marshal block: %w", marshalErr)
+					return fmt.Errorf("%w: %w", ErrBlockMarshalling, marshalErr)
 				}
 
 				if err = WriteBlock(rwtx, blockNumber, blockBytes); err != nil {
 					logger.Error().Err(err).Msg("Failed to write block")
 
-					return fmt.Errorf("failed to write block: %w", err)
+					return fmt.Errorf("%w: %w", ErrBlockWrite, err)
 				}
 
 				// Store transactions with relation to the block
 				if err = WriteBlockTransactions(rwtx, blockNumber, batch.Transactions); err != nil {
 					logger.Error().Err(err).Msg("Failed to write block transactions")
 
-					return fmt.Errorf("failed to write block transactions: %w", err)
+					return fmt.Errorf("%w: %w", ErrBlockTransactionsWrite, err)
 				}
 
 				blockHash := block.Hash()
@@ -565,12 +565,12 @@ func WriteBlockTransactions[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 	// Marshal transactions to CBOR
 	txsBytes, err := cbor.Marshal(txs)
 	if err != nil {
-		return fmt.Errorf("failed to marshal transactions: %w", err)
+		return fmt.Errorf("%w: %w", ErrTransactionsMarshalling, err)
 	}
 
 	// Store in BlockTransactionsBucket
 	if err := rwtx.Put(BlockTransactionsBucket, blockNumBytes, txsBytes); err != nil {
-		return fmt.Errorf("failed to write block transactions: %w", err)
+		return fmt.Errorf("%w: %w", ErrBlockTransactionsWrite, err)
 	}
 
 	// Create lookup entries: txHash -> transaction (CBOR encoded)
@@ -579,11 +579,11 @@ func WriteBlockTransactions[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 
 		txBytes, marshalErr := cbor.Marshal(tx)
 		if marshalErr != nil {
-			return fmt.Errorf("failed to marshal tx %x: %w", txHash[:4], marshalErr)
+			return fmt.Errorf("%w (tx %x): %w", ErrTransactionMarshalling, txHash[:4], marshalErr)
 		}
 
 		if err := rwtx.Put(TxLookupBucket, txHash[:], txBytes); err != nil {
-			return fmt.Errorf("failed to write tx lookup for %x: %w", txHash[:4], err)
+			return fmt.Errorf("%w (tx %x): %w", ErrTransactionLookupWrite, txHash[:4], err)
 		}
 	}
 
@@ -651,7 +651,7 @@ func ReadExternalTransactions(
 
 	value, err := tx.GetOne(ExternalTxBucket, key)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get external transactions: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrExternalTransactionsGet, err)
 	}
 
 	if len(value) == 0 {
@@ -660,7 +660,7 @@ func ReadExternalTransactions(
 
 	var txs []apptypes.ExternalTransaction
 	if err := cbor.Unmarshal(value, &txs); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal external transactions: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrExternalTransactionsUnmarshal, err)
 	}
 
 	return txs, nil
