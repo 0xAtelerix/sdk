@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"context"
-	"encoding/binary"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
@@ -34,27 +33,44 @@ func NewBlockMethods[
 }
 
 // GetBlock retrieves a single block by block number.
-// Params: [blockNumber]
+// Params: [blockNumber] - if blockNumber is omitted, returns the latest block
 // Returns: Block object with all custom fields
 func (m *BlockMethods[appTx, R, Block]) GetBlock(
 	ctx context.Context,
 	params []any,
 ) (any, error) {
-	if len(params) != 1 {
+	if len(params) > 1 {
 		return nil, ErrWrongParamsCount
 	}
 
-	blockNumber, err := parseBlockNumber(params[0])
-	if err != nil {
-		return nil, err
+	var blockNumber uint64
+	var err error
+
+	if len(params) == 0 {
+		// No params provided - get the latest block
+		err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
+			blockNumber, _, err = gosdk.GetLastBlock(tx)
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+		if blockNumber == 0 {
+			return nil, ErrBlockNotFound
+		}
+	} else {
+		// Block number provided
+		blockNumber, err = parseBlockNumber(params[0])
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var payload []byte
 
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
 		// Use the same key format as WriteBlock in appchain.go
-		number := make([]byte, 8)
-		binary.BigEndian.PutUint64(number, blockNumber)
+		number := uint64ToBytes(blockNumber)
 		payload, err = tx.GetOne(gosdk.BlocksBucket, number)
 		if err != nil {
 			return err

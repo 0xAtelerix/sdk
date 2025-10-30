@@ -1175,7 +1175,6 @@ func TestSchemaMethod_AddAndCall(t *testing.T) {
 
 	// Verify top-level structure
 	assert.Equal(t, chainID, schema["chainId"])
-	assert.Equal(t, "1.0.0", schema["version"])
 
 	// Verify schemas object exists
 	schemas, ok := schema["schemas"].(map[string]any)

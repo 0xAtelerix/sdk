@@ -174,6 +174,30 @@ curl -X POST http://localhost:8080/rpc \
   ]'
 ```
 
+## Usage Examples
+
+### Get Latest Block
+
+```bash
+# Get the latest block (no params)
+curl -X POST http://localhost:8080/rpc \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "method": "getBlock", "params": [], "id": 1}'
+
+# Get a specific block by number
+curl -X POST http://localhost:8080/rpc \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "method": "getBlock", "params": [100], "id": 1}'
+```
+
+### Query Transaction Status
+
+```bash
+curl -X POST http://localhost:8080/rpc \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "method": "getTransactionStatus", "params": ["0xabc..."], "id": 1}'
+```
+
 ## Health Check
 
 ```bash
@@ -259,7 +283,7 @@ func main() {
 | `getExternalTransactions` | Transactions | Get cross-chain transactions from a block |
 | `getTransactionStatus` | Transactions | Get comprehensive transaction status (finalized + pending) |
 | `getTransactionReceipt` | Receipts | Get transaction receipt |
-| `getBlock` | Blocks | Get single block by number |
+| `getBlock` | Blocks | Get block by number (omit params to get latest block) |
 | `getAppchainSchema` | Schema | Discover appchain block/transaction/receipt structure (JSON Schema) |
 
 ### Middleware Interface

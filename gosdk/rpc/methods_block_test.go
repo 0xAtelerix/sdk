@@ -37,6 +37,7 @@ func setupBlockTestEnvironment(t *testing.T) (
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return kv.TableCfg{
 				gosdk.BlocksBucket: {},
+				gosdk.ConfigBucket: {},
 			}
 		}).
 		Open()
@@ -102,14 +103,8 @@ func TestBlockMethods_GetBlock_WrongParamsCount(t *testing.T) {
 	methods, _, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
-	// No parameters
-	result, err := methods.GetBlock(context.Background(), []any{})
-	assert.Error(t, err)
-	assert.Nil(t, result)
-	assert.ErrorIs(t, err, ErrWrongParamsCount)
-
 	// Too many parameters
-	result, err = methods.GetBlock(context.Background(), []any{float64(1), float64(2)})
+	result, err := methods.GetBlock(context.Background(), []any{float64(1), float64(2)})
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.ErrorIs(t, err, ErrWrongParamsCount)
@@ -304,4 +299,68 @@ func TestBlockMethods_GetBlock_CorruptedData(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
+}
+
+func TestBlockMethods_GetBlock_LatestBlock(t *testing.T) {
+	methods, appchainDB, cleanup := setupBlockTestEnvironment(t)
+	defer cleanup()
+
+	// Create and store multiple blocks
+	blocks := []TestBlock{
+		{
+			BlockNumber: 1,
+			BlockHash:   sha256.Sum256([]byte("block-1")),
+			Root:        sha256.Sum256([]byte("root-1")),
+		},
+		{
+			BlockNumber: 5,
+			BlockHash:   sha256.Sum256([]byte("block-5")),
+			Root:        sha256.Sum256([]byte("root-5")),
+		},
+		{
+			BlockNumber: 10,
+			BlockHash:   sha256.Sum256([]byte("block-10")),
+			Root:        sha256.Sum256([]byte("root-10")),
+		},
+	}
+
+	// Store blocks and update last block pointer
+	err := appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
+		for _, block := range blocks {
+			blockBytes, marshalErr := cbor.Marshal(block)
+			if marshalErr != nil {
+				return marshalErr
+			}
+			if writeErr := gosdk.WriteBlock(tx, block.BlockNumber, blockBytes); writeErr != nil {
+				return writeErr
+			}
+		}
+		// Set the last block to block 10
+		return gosdk.WriteLastBlock(tx, 10, blocks[2].BlockHash)
+	})
+	require.NoError(t, err)
+
+	// Get latest block (no params)
+	result, err := methods.GetBlock(context.Background(), []any{})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	returnedBlock, ok := result.(TestBlock)
+	require.True(t, ok)
+	assert.Equal(t, uint64(10), returnedBlock.BlockNumber)
+	assert.Equal(t, blocks[2].BlockHash, returnedBlock.BlockHash)
+	assert.Equal(t, blocks[2].Root, returnedBlock.Root)
+}
+
+func TestBlockMethods_GetBlock_LatestBlock_NoBlocks(t *testing.T) {
+	methods, _, cleanup := setupBlockTestEnvironment(t)
+	defer cleanup()
+
+	// Try to get latest block when no blocks exist
+	result, err := methods.GetBlock(context.Background(), []any{})
+
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, ErrBlockNotFound)
 }
