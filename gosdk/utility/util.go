@@ -122,3 +122,12 @@ func ChainIDFromCtx(ctx context.Context) string {
 }
 
 const unknownChainID = "unknown"
+
+// Uint64ToBytes converts a uint64 to big-endian byte representation.
+// This is a utility function used throughout the SDK for consistent encoding.
+func Uint64ToBytes(n uint64) []byte {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, n)
+
+	return b
+}

@@ -222,7 +222,7 @@ Your appchain’s RPC surface is how wallets, indexers, and backend services sub
 
 1. **Bootstrap the standard server.** Create a server instance with `rpc.NewStandardRPCServer()` during appchain startup (often alongside your txpool and MDBX wiring). The helper exposes `StartHTTPServer`, which takes a context and listen address so you can tie shutdown to the same lifecycle signals that stop `Appchain.Run`.
 
-2. **Register the built-in method sets.** Call `rpc.AddStandardMethods[YourTx, YourReceipt](server, appchainDB, txpool)` to expose the default suite—`sendTransaction`, `getTransactionStatus`, `getPendingTransactions`, and `getTransactionReceipt`. If you prefer a narrower surface, pick from `AddTransactionMethods`, `AddTxPoolMethods`, or `AddReceiptMethods`. All of these helpers live in the [`gosdk/rpc` README](gosdk/rpc/README.md) with complete usage samples.
+2. **Register the built-in method sets.** Call `rpc.AddStandardMethods[YourTx, YourReceipt, YourBlock](server, appchainDB, txpool, chainID)` to expose all standard methods. If you prefer a narrower surface, pick from `AddTransactionMethods`, `AddTxPoolMethods`, `AddReceiptMethods`, or `AddBlockMethods`. See the [`gosdk/rpc` README](gosdk/rpc/README.md) for the complete method list and usage examples.
 
 3. **Add custom endpoints.** Use `server.AddCustomMethod` to register domain-specific calls that read from your MDBX state or query derived caches. Handlers receive a `context.Context` plus raw parameters, so you can layer validation, authentication, or tracing before touching storage.
 

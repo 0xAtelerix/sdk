@@ -10,6 +10,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
 type Subscriber struct {
@@ -316,11 +317,10 @@ func loadAllSubscriptions(tx kv.Tx) (
 }
 
 func putChainAddresses[T Address](tx kv.RwTx, chainID apptypes.ChainType, addrs []T) error {
-	var key [8]byte
-	binary.BigEndian.PutUint64(key[:], uint64(chainID))
+	key := utility.Uint64ToBytes(uint64(chainID))
 
 	if len(addrs) == 0 {
-		return tx.Delete(SubscriptionBucket, key[:])
+		return tx.Delete(SubscriptionBucket, key)
 	}
 
 	data, err := cbor.Marshal(addrs)
@@ -328,7 +328,7 @@ func putChainAddresses[T Address](tx kv.RwTx, chainID apptypes.ChainType, addrs 
 		return err
 	}
 
-	return tx.Put(SubscriptionBucket, key[:], data)
+	return tx.Put(SubscriptionBucket, key, data)
 }
 
 func bytesOf[T Address](a T) []byte {

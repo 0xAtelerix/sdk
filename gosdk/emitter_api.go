@@ -12,7 +12,6 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
@@ -87,8 +86,7 @@ func (s *AppchainEmitterServer[appTx, R]) GetCheckpoints(
 	}
 
 	// Начинаем поиск с блока >= LatestPreviousCheckpointBlockNumber
-	startKey := make([]byte, 8)
-	binary.BigEndian.PutUint64(startKey, req.GetLatestPreviousCheckpointBlockNumber())
+	startKey := utility.Uint64ToBytes(req.GetLatestPreviousCheckpointBlockNumber())
 
 	count := uint32(0)
 	for k, v, err := cursor.Seek(startKey); err == nil && count < limit; k, v, err = cursor.Next() {
@@ -163,7 +161,7 @@ func (s *AppchainEmitterServer[appTx, R]) GetExternalTransactions(
 
 	// Начинаем поиск с блока >= LatestPreviousBlockNumber
 	startKey := make([]byte, 10)
-	binary.BigEndian.PutUint64(startKey[:8], req.GetLatestPreviousBlockNumber())
+	copy(startKey[:8], utility.Uint64ToBytes(req.GetLatestPreviousBlockNumber()))
 
 	s.logger.Warn().
 		Str("GetExternalTransactions", strconv.FormatUint(req.GetLatestPreviousBlockNumber(), 10))
@@ -178,14 +176,24 @@ func (s *AppchainEmitterServer[appTx, R]) GetExternalTransactions(
 
 		blockNumber := binary.BigEndian.Uint64(k[:8])
 
-		blocktxs := &emitterproto.GetExternalTransactionsResponse_BlockTransactions{}
-		if err := proto.Unmarshal(v, blocktxs); err != nil {
+		// Unmarshal CBOR directly to ExternalTransaction array
+		var txs []apptypes.ExternalTransaction
+		if err := cbor.Unmarshal(v, &txs); err != nil {
 			s.logger.Error().Err(err).Msg("Transaction deserialization failed")
 
 			return nil, fmt.Errorf("transaction deserialization failed: %w", err)
 		}
 
-		blockMap[blockNumber] = append(blockMap[blockNumber], blocktxs.GetExternalTransactions()...)
+		// Convert to proto format for response
+		protoTxs := make([]*emitterproto.ExternalTransaction, len(txs))
+		for i, tx := range txs {
+			protoTxs[i] = &emitterproto.ExternalTransaction{
+				ChainId: uint64(tx.ChainID),
+				Tx:      tx.Tx,
+			}
+		}
+
+		blockMap[blockNumber] = append(blockMap[blockNumber], protoTxs...)
 		count++
 	}
 
