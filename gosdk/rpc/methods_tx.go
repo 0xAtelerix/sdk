@@ -12,6 +12,7 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/receipt"
+	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
 // TransactionMethods provides comprehensive transaction-related RPC methods.
@@ -39,7 +40,10 @@ func NewTransactionMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt]
 // SendTransaction submits a transaction to the pool.
 // Params: [transaction]
 // Returns: transaction hash as hex string
-func (m *TransactionMethods[appTx, R]) SendTransaction(ctx context.Context, params []any) (any, error) {
+func (m *TransactionMethods[appTx, R]) SendTransaction(
+	ctx context.Context,
+	params []any,
+) (any, error) {
 	if len(params) != 1 {
 		return nil, ErrSendTransactionRequires1Param
 	}
@@ -62,6 +66,7 @@ func (m *TransactionMethods[appTx, R]) SendTransaction(ctx context.Context, para
 
 	// Return transaction hash
 	hash := tx.Hash()
+
 	return fmt.Sprintf("0x%x", hash[:]), nil
 }
 
@@ -81,7 +86,7 @@ func (m *TransactionMethods[appTx, R]) GetPendingTransactions(
 }
 
 // GetTransaction retrieves a transaction by hash from either finalized blocks or txpool.
-// Searches in this order: 1) Finalized blocks (via TxLookupBucket), 2) Txpool (pending)
+// Searches in this order: 1) Finalized blocks (direct TxLookupBucket lookup), 2) Txpool (pending)
 // Params: [txHash]
 // Returns: Transaction object
 func (m *TransactionMethods[appTx, R]) GetTransaction(
@@ -106,41 +111,23 @@ func (m *TransactionMethods[appTx, R]) GetTransaction(
 	var transaction appTx
 
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
-		// Lookup block number by tx hash
-		blockNumBytes, getErr := tx.GetOne(gosdk.TxLookupBucket, txHash[:])
+		// Direct lookup: txHash -> transaction
+		txBytes, getErr := tx.GetOne(gosdk.TxLookupBucket, txHash[:])
 		if getErr != nil {
-			// Ignore DB errors (bucket might not exist yet), just return not found
 			return ErrTransactionNotFound
 		}
-		if len(blockNumBytes) == 0 {
+
+		if len(txBytes) == 0 {
 			return ErrTransactionNotFound // Not in blocks
 		}
 
-		// Get all transactions from the block
-		txsPayload, getErr := tx.GetOne(gosdk.BlockTransactionsBucket, blockNumBytes)
-		if getErr != nil {
-			return getErr
-		}
-		if len(txsPayload) == 0 {
-			return fmt.Errorf("%w: block transactions not found", ErrBlockNotFound)
+		// Unmarshal the transaction
+		if unmarshalErr := cbor.Unmarshal(txBytes, &transaction); unmarshalErr != nil {
+			return fmt.Errorf("decode transaction: %w", unmarshalErr)
 		}
 
-		var txs []appTx
-		if unmarshalErr := cbor.Unmarshal(txsPayload, &txs); unmarshalErr != nil {
-			return fmt.Errorf("decode transactions: %w", unmarshalErr)
-		}
-
-		// Find the transaction with matching hash
-		for _, t := range txs {
-			if t.Hash() == txHash {
-				transaction = t
-				return nil
-			}
-		}
-
-		return fmt.Errorf("%w: transaction not found in block", ErrTransactionNotFound)
+		return nil
 	})
-
 	if err == nil {
 		// Found in finalized blocks
 		return transaction, nil
@@ -179,13 +166,18 @@ func (m *TransactionMethods[appTx, R]) GetTransactionsByBlockNumber(
 	var txs []appTx
 
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
-		payload, getErr := tx.GetOne(gosdk.BlockTransactionsBucket, uint64ToBytes(blockNumber))
+		payload, getErr := tx.GetOne(
+			gosdk.BlockTransactionsBucket,
+			utility.Uint64ToBytes(blockNumber),
+		)
 		if getErr != nil {
 			return getErr
 		}
+
 		if len(payload) == 0 {
 			// No transactions in this block (or block doesn't exist)
 			txs = make([]appTx, 0)
+
 			return nil
 		}
 
@@ -224,7 +216,9 @@ func (m *TransactionMethods[appTx, R]) GetExternalTransactions(
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
 		// Use the shared ReadExternalTransactions helper
 		var readErr error
+
 		externalTxs, readErr = gosdk.ReadExternalTransactions(tx, blockNumber)
+
 		return readErr
 	})
 	if err != nil {

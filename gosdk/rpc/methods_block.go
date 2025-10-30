@@ -8,6 +8,7 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
 // BlockMethods provides RPC methods to query blocks from the appchain.
@@ -43,18 +44,22 @@ func (m *BlockMethods[appTx, R, Block]) GetBlock(
 		return nil, ErrWrongParamsCount
 	}
 
-	var blockNumber uint64
-	var err error
+	var (
+		blockNumber uint64
+		err         error
+	)
 
 	if len(params) == 0 {
 		// No params provided - get the latest block
 		err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
 			blockNumber, _, err = gosdk.GetLastBlock(tx)
+
 			return err
 		})
 		if err != nil {
 			return nil, err
 		}
+
 		if blockNumber == 0 {
 			return nil, ErrBlockNotFound
 		}
@@ -70,14 +75,17 @@ func (m *BlockMethods[appTx, R, Block]) GetBlock(
 
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
 		// Use the same key format as WriteBlock in appchain.go
-		number := uint64ToBytes(blockNumber)
+		number := utility.Uint64ToBytes(blockNumber)
+
 		payload, err = tx.GetOne(gosdk.BlocksBucket, number)
 		if err != nil {
 			return err
 		}
+
 		if len(payload) == 0 {
 			return ErrBlockNotFound
 		}
+
 		return nil
 	})
 	if err != nil {

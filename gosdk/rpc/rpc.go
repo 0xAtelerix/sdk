@@ -311,12 +311,15 @@ func AddSchemaMethod[
 	chainID uint64,
 ) {
 	// Create zero-value samples for reflection
-	var txSample appTx
-	var receiptSample R
-	var blockSample Block
+	var (
+		txSample      appTx
+		receiptSample R
+		blockSample   Block
+	)
 
 	// Register the schema method as a closure
-	server.AddMethod("getAppchainSchema", func(ctx context.Context, params []any) (any, error) {
+
+	server.AddMethod("getAppchainSchema", func(_ context.Context, _ []any) (any, error) {
 		// Create a reflector for generating schemas
 		reflector := &jsonschema.Reflector{
 			Anonymous:                 true,

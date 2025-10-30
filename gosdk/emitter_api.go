@@ -86,8 +86,7 @@ func (s *AppchainEmitterServer[appTx, R]) GetCheckpoints(
 	}
 
 	// Начинаем поиск с блока >= LatestPreviousCheckpointBlockNumber
-	startKey := make([]byte, 8)
-	binary.BigEndian.PutUint64(startKey, req.GetLatestPreviousCheckpointBlockNumber())
+	startKey := utility.Uint64ToBytes(req.GetLatestPreviousCheckpointBlockNumber())
 
 	count := uint32(0)
 	for k, v, err := cursor.Seek(startKey); err == nil && count < limit; k, v, err = cursor.Next() {
@@ -162,7 +161,7 @@ func (s *AppchainEmitterServer[appTx, R]) GetExternalTransactions(
 
 	// Начинаем поиск с блока >= LatestPreviousBlockNumber
 	startKey := make([]byte, 10)
-	binary.BigEndian.PutUint64(startKey[:8], req.GetLatestPreviousBlockNumber())
+	copy(startKey[:8], utility.Uint64ToBytes(req.GetLatestPreviousBlockNumber()))
 
 	s.logger.Warn().
 		Str("GetExternalTransactions", strconv.FormatUint(req.GetLatestPreviousBlockNumber(), 10))

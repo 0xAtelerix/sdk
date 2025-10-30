@@ -70,6 +70,7 @@ func TestBlockMethods_GetBlock_Success(t *testing.T) {
 		if marshalErr != nil {
 			return marshalErr
 		}
+
 		return gosdk.WriteBlock(tx, blockNumber, blockBytes)
 	})
 	require.NoError(t, err)
@@ -94,9 +95,9 @@ func TestBlockMethods_GetBlock_NotFound(t *testing.T) {
 	// Try to get a non-existent block
 	result, err := methods.GetBlock(context.Background(), []any{float64(999)})
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
-	assert.ErrorIs(t, err, ErrBlockNotFound)
+	require.ErrorIs(t, err, ErrBlockNotFound)
 }
 
 func TestBlockMethods_GetBlock_WrongParamsCount(t *testing.T) {
@@ -105,9 +106,9 @@ func TestBlockMethods_GetBlock_WrongParamsCount(t *testing.T) {
 
 	// Too many parameters
 	result, err := methods.GetBlock(context.Background(), []any{float64(1), float64(2)})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
-	assert.ErrorIs(t, err, ErrWrongParamsCount)
+	require.ErrorIs(t, err, ErrWrongParamsCount)
 }
 
 func TestBlockMethods_GetBlock_InvalidBlockNumber(t *testing.T) {
@@ -140,7 +141,7 @@ func TestBlockMethods_GetBlock_InvalidBlockNumber(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := methods.GetBlock(context.Background(), []any{tt.blockNumber})
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Nil(t, result)
 			} else {
 				assert.NoError(t, err)
@@ -178,17 +179,22 @@ func TestBlockMethods_GetBlock_MultipleBlocks(t *testing.T) {
 			if marshalErr != nil {
 				return marshalErr
 			}
+
 			if writeErr := gosdk.WriteBlock(tx, block.BlockNumber, blockBytes); writeErr != nil {
 				return writeErr
 			}
 		}
+
 		return nil
 	})
 	require.NoError(t, err)
 
 	// Retrieve each block and verify
 	for _, expectedBlock := range blocks {
-		result, err := methods.GetBlock(context.Background(), []any{float64(expectedBlock.BlockNumber)})
+		result, err := methods.GetBlock(
+			context.Background(),
+			[]any{float64(expectedBlock.BlockNumber)},
+		)
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
@@ -216,6 +222,7 @@ func TestBlockMethods_GetBlock_ZeroBlock(t *testing.T) {
 		if marshalErr != nil {
 			return marshalErr
 		}
+
 		return gosdk.WriteBlock(tx, 0, blockBytes)
 	})
 	require.NoError(t, err)
@@ -249,6 +256,7 @@ func TestBlockMethods_GetBlock_LargeBlockNumber(t *testing.T) {
 		if marshalErr != nil {
 			return marshalErr
 		}
+
 		return gosdk.WriteBlock(tx, largeBlockNumber, blockBytes)
 	})
 	require.NoError(t, err)
@@ -290,6 +298,7 @@ func TestBlockMethods_GetBlock_CorruptedData(t *testing.T) {
 	// Store corrupted (non-CBOR) data
 	err := appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
 		corruptedData := []byte{0xFF, 0xFE, 0xFD, 0xFC}
+
 		return gosdk.WriteBlock(tx, blockNumber, corruptedData)
 	})
 	require.NoError(t, err)
@@ -297,7 +306,7 @@ func TestBlockMethods_GetBlock_CorruptedData(t *testing.T) {
 	// Try to get the block - should fail to unmarshal
 	result, err := methods.GetBlock(context.Background(), []any{float64(blockNumber)})
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 }
 
@@ -331,6 +340,7 @@ func TestBlockMethods_GetBlock_LatestBlock(t *testing.T) {
 			if marshalErr != nil {
 				return marshalErr
 			}
+
 			if writeErr := gosdk.WriteBlock(tx, block.BlockNumber, blockBytes); writeErr != nil {
 				return writeErr
 			}
@@ -360,7 +370,7 @@ func TestBlockMethods_GetBlock_LatestBlock_NoBlocks(t *testing.T) {
 	// Try to get latest block when no blocks exist
 	result, err := methods.GetBlock(context.Background(), []any{})
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
-	assert.ErrorIs(t, err, ErrBlockNotFound)
+	require.ErrorIs(t, err, ErrBlockNotFound)
 }

@@ -23,9 +23,8 @@ const (
 
 	TxBuckets = "txbatch"
 
-	// Block explorer buckets
 	BlockTransactionsBucket = "block_transactions" // blockNumber -> []Transaction (CBOR encoded)
-	TxLookupBucket          = "tx_lookup"          // txHash -> blockNumber
+	TxLookupBucket          = "tx_lookup"          // txHash -> Transaction (CBOR encoded)
 )
 
 func TxBucketsTables() kv.TableCfg {

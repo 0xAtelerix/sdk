@@ -323,11 +323,11 @@ runFor:
 				logger.Debug().Uint64("block_number", blockNumber).
 					Msg("Write block")
 
-				blockBytes, err := cbor.Marshal(block)
-				if err != nil {
-					logger.Error().Err(err).Msg("Failed to marshal block")
+				blockBytes, marshalErr := cbor.Marshal(block)
+				if marshalErr != nil {
+					logger.Error().Err(marshalErr).Msg("Failed to marshal block")
 
-					return fmt.Errorf("failed to marshal block: %w", err)
+					return fmt.Errorf("failed to marshal block: %w", marshalErr)
 				}
 
 				if err = WriteBlock(rwtx, blockNumber, blockBytes); err != nil {
@@ -336,7 +336,7 @@ runFor:
 					return fmt.Errorf("failed to write block: %w", err)
 				}
 
-				// Store transactions for block explorer
+				// Store transactions with relation to the block
 				if err = WriteBlockTransactions(rwtx, blockNumber, batch.Transactions); err != nil {
 					logger.Error().Err(err).Msg("Failed to write block transactions")
 
@@ -549,14 +549,12 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Shutdown() {
 }
 
 func WriteBlock(rwtx kv.RwTx, blockNumber uint64, blockBytes []byte) error {
-	number := make([]byte, 8)
-	binary.BigEndian.PutUint64(number, blockNumber)
+	number := utility.Uint64ToBytes(blockNumber)
 
 	return rwtx.Put(BlocksBucket, number, blockBytes)
 }
 
 // WriteBlockTransactions stores the transactions for a block in CBOR format
-// for block explorer queries
 func WriteBlockTransactions[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	rwtx kv.RwTx,
 	blockNumber uint64,
@@ -567,8 +565,7 @@ func WriteBlockTransactions[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 		txs = make([]appTx, 0)
 	}
 
-	blockNumBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(blockNumBytes, blockNumber)
+	blockNumBytes := utility.Uint64ToBytes(blockNumber)
 
 	// Marshal transactions to CBOR
 	txsBytes, err := cbor.Marshal(txs)
@@ -581,10 +578,16 @@ func WriteBlockTransactions[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 		return fmt.Errorf("failed to write block transactions: %w", err)
 	}
 
-	// Create lookup entries: txHash -> blockNumber
+	// Create lookup entries: txHash -> transaction (CBOR encoded)
 	for _, tx := range txs {
 		txHash := tx.Hash()
-		if err := rwtx.Put(TxLookupBucket, txHash[:], blockNumBytes); err != nil {
+
+		txBytes, marshalErr := cbor.Marshal(tx)
+		if marshalErr != nil {
+			return fmt.Errorf("failed to marshal tx %x: %w", txHash[:4], marshalErr)
+		}
+
+		if err := rwtx.Put(TxLookupBucket, txHash[:], txBytes); err != nil {
 			return fmt.Errorf("failed to write tx lookup for %x: %w", txHash[:4], err)
 		}
 	}
@@ -594,7 +597,7 @@ func WriteBlockTransactions[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 
 func WriteLastBlock(rwtx kv.RwTx, number uint64, hash [32]byte) error {
 	value := make([]byte, 8+32)
-	binary.BigEndian.PutUint64(value[:8], number)
+	copy(value[:8], utility.Uint64ToBytes(number))
 	copy(value[8:], hash[:])
 
 	return rwtx.Put(ConfigBucket, []byte(LastBlockKey), value)
@@ -616,7 +619,6 @@ func GetLastBlock(tx kv.Tx) (uint64, [32]byte, error) {
 }
 
 // WriteExternalTransactions writes external transactions to the database in CBOR format.
-// This is used by both the validator/emitter API and the block explorer RPC.
 // Should be called strictly once per block
 func WriteExternalTransactions(
 	dbTx kv.RwTx,
@@ -634,8 +636,7 @@ func WriteExternalTransactions(
 	}
 
 	// Write to database
-	key := make([]byte, 8)
-	binary.BigEndian.PutUint64(key, blockNumber)
+	key := utility.Uint64ToBytes(blockNumber)
 
 	if err = dbTx.Put(ExternalTxBucket, key, value); err != nil {
 		return [32]byte{}, fmt.Errorf("can't write external transactions to the DB: error %w", err)
@@ -650,8 +651,7 @@ func ReadExternalTransactions(
 	tx kv.Tx,
 	blockNumber uint64,
 ) ([]apptypes.ExternalTransaction, error) {
-	key := make([]byte, 8)
-	binary.BigEndian.PutUint64(key, blockNumber)
+	key := utility.Uint64ToBytes(blockNumber)
 
 	value, err := tx.GetOne(ExternalTxBucket, key)
 	if err != nil {
@@ -708,8 +708,7 @@ func WriteCheckpoint(ctx context.Context, dbTx kv.RwTx, checkpoint apptypes.Chec
 	logger := log.Ctx(ctx)
 
 	// Генерируем ключ из LatestBlockNumber (8 байт)
-	key := make([]byte, 8)
-	binary.BigEndian.PutUint64(key, checkpoint.BlockNumber)
+	key := utility.Uint64ToBytes(checkpoint.BlockNumber)
 
 	// Сериализуем чекпоинт
 	value, err := cbor.Marshal(checkpoint)
@@ -727,8 +726,7 @@ func WriteSnapshotPosition(rwtx kv.RwTx, epoch uint32, pos int64) error {
 	key := make([]byte, 4)
 	binary.BigEndian.PutUint32(key, epoch)
 
-	val := make([]byte, 8)
-	binary.BigEndian.PutUint64(val, uint64(pos))
+	val := utility.Uint64ToBytes(uint64(pos))
 
 	return rwtx.Put(Snapshot, key, val)
 }

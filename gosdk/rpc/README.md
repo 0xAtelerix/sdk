@@ -270,7 +270,7 @@ func main() {
 - `AddTransactionMethods[T, R](server, txpool, db)` - All transaction-related methods (submit, query pending/finalized, status)
 - `AddReceiptMethods[R](server, db)` - Query transaction receipts (finalized only)
 - `AddBlockMethods[T, R, Block](server, db, chainID)` - Block query methods
-- `AddSchemaMethod[T, R, Block](server, chainID)` - Schema discovery (JSON Schema for appchain types)
+- `AddSchemaMethod[T, R, Block](server, chainID)` - Schema discovery (JSON Schema for appchain types for explorer integration)
 
 ### Available RPC Methods
 

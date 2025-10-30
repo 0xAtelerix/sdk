@@ -19,6 +19,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
 const (
@@ -269,7 +270,7 @@ func (sa *MultichainStateAccess) Close() {
 // EthBlocks: [8 bytes blockNumber][32 bytes blockHash]  => total 40 bytes
 func EthBlockKey(num uint64, hash [32]byte) []byte {
 	key := make([]byte, 8+32)
-	binary.BigEndian.PutUint64(key[:8], num)
+	copy(key[:8], utility.Uint64ToBytes(num))
 	copy(key[8:], hash[:])
 
 	return key
@@ -283,7 +284,7 @@ func EthReceiptKey(blockNumber uint64, blockHash [32]byte, txIndex ...uint32) []
 	}
 
 	key := make([]byte, keyLength)
-	binary.BigEndian.PutUint64(key[:8], blockNumber)
+	copy(key[:8], utility.Uint64ToBytes(blockNumber))
 	copy(key[8:40], blockHash[:])
 
 	if len(txIndex) > 0 {
@@ -296,10 +297,7 @@ func EthReceiptKey(blockNumber uint64, blockHash [32]byte, txIndex ...uint32) []
 // SolanaBlocks: [8 bytes blockNumber]  (you read by ExternalBlock.BlockNumber)
 // If you use Slot as BlockNumber, write Slot here.
 func SolBlockKey(num uint64) []byte {
-	key := make([]byte, 8)
-	binary.BigEndian.PutUint64(key, num)
-
-	return key
+	return utility.Uint64ToBytes(num)
 }
 
 type EthereumBlock struct {

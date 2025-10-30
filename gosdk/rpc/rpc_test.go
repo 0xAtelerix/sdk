@@ -97,6 +97,7 @@ func (b TestBlock) StateRoot() [32]byte {
 
 func (b TestBlock) Bytes() []byte {
 	data, _ := cbor.Marshal(b)
+
 	return data
 }
 
@@ -1203,7 +1204,9 @@ func TestSchemaMethod_DifferentChainIDs(t *testing.T) {
 			result, err := method(context.Background(), []any{})
 
 			require.NoError(t, err)
-			schema := result.(map[string]any)
+
+			schema, ok := result.(map[string]any)
+			require.True(t, ok)
 			assert.Equal(t, chainID, schema["chainId"])
 		})
 	}

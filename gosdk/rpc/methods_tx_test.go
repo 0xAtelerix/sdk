@@ -29,6 +29,7 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/receipt"
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
+	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
 // setupTransactionTestEnvironment creates a test environment for transaction methods
@@ -55,10 +56,10 @@ func setupTransactionTestEnvironment(t *testing.T) (
 		Path(appchainDBPath).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return kv.TableCfg{
-				gosdk.TxLookupBucket:         {},
+				gosdk.TxLookupBucket:          {},
 				gosdk.BlockTransactionsBucket: {},
-				gosdk.ExternalTxBucket:       {},
-				receipt.ReceiptBucket:        {},
+				gosdk.ExternalTxBucket:        {},
+				receipt.ReceiptBucket:         {},
 			}
 		}).
 		Open()
@@ -119,18 +120,25 @@ func TestTransactionMethods_GetTransaction_FromBlocks(t *testing.T) {
 	blockNumber := uint64(10)
 
 	err := appchainDB.Update(context.Background(), func(rwTx kv.RwTx) error {
-		// Store transaction lookup
-		blockNumBytes := uint64ToBytes(blockNumber)
-		if err := rwTx.Put(gosdk.TxLookupBucket, txHash[:], blockNumBytes); err != nil {
+		// Store transaction lookup (direct tx storage)
+		txBytes, marshalErr := cbor.Marshal(tx)
+		if marshalErr != nil {
+			return marshalErr
+		}
+
+		if err := rwTx.Put(gosdk.TxLookupBucket, txHash[:], txBytes); err != nil {
 			return err
 		}
 
 		// Store block transactions
+		blockNumBytes := utility.Uint64ToBytes(blockNumber)
 		txs := []TestTransaction[TestReceipt]{tx}
+
 		txsBytes, err := cbor.Marshal(txs)
 		if err != nil {
 			return err
 		}
+
 		return rwTx.Put(gosdk.BlockTransactionsBucket, blockNumBytes, txsBytes)
 	})
 	require.NoError(t, err)
@@ -159,9 +167,9 @@ func TestTransactionMethods_GetTransaction_NotFound(t *testing.T) {
 
 	result, err := methods.GetTransaction(context.Background(), []any{hashStr})
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
-	assert.ErrorIs(t, err, ErrTransactionNotFound)
+	require.ErrorIs(t, err, ErrTransactionNotFound)
 }
 
 func TestTransactionMethods_GetTransaction_WrongParamsCount(t *testing.T) {
@@ -170,15 +178,15 @@ func TestTransactionMethods_GetTransaction_WrongParamsCount(t *testing.T) {
 
 	// No parameters
 	result, err := methods.GetTransaction(context.Background(), []any{})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
-	assert.ErrorIs(t, err, ErrWrongParamsCount)
+	require.ErrorIs(t, err, ErrWrongParamsCount)
 
 	// Too many parameters
 	result, err = methods.GetTransaction(context.Background(), []any{"hash1", "hash2"})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
-	assert.ErrorIs(t, err, ErrWrongParamsCount)
+	require.ErrorIs(t, err, ErrWrongParamsCount)
 }
 
 func TestTransactionMethods_GetTransaction_InvalidHashType(t *testing.T) {
@@ -187,9 +195,9 @@ func TestTransactionMethods_GetTransaction_InvalidHashType(t *testing.T) {
 
 	// Non-string parameter
 	result, err := methods.GetTransaction(context.Background(), []any{12345})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
-	assert.ErrorIs(t, err, ErrHashParameterMustBeString)
+	require.ErrorIs(t, err, ErrHashParameterMustBeString)
 }
 
 func TestTransactionMethods_GetTransactionsByBlockNumber_Success(t *testing.T) {
@@ -209,12 +217,16 @@ func TestTransactionMethods_GetTransactionsByBlockNumber_Success(t *testing.T) {
 		if marshalErr != nil {
 			return marshalErr
 		}
-		return rwTx.Put(gosdk.BlockTransactionsBucket, uint64ToBytes(blockNumber), txsBytes)
+
+		return rwTx.Put(gosdk.BlockTransactionsBucket, utility.Uint64ToBytes(blockNumber), txsBytes)
 	})
 	require.NoError(t, err)
 
 	// Get transactions by block number
-	result, err := methods.GetTransactionsByBlockNumber(context.Background(), []any{float64(blockNumber)})
+	result, err := methods.GetTransactionsByBlockNumber(
+		context.Background(),
+		[]any{float64(blockNumber)},
+	)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -242,7 +254,7 @@ func TestTransactionMethods_GetTransactionsByBlockNumber_EmptyBlock(t *testing.T
 
 	returnedTxs, ok := result.([]TestTransaction[TestReceipt])
 	require.True(t, ok)
-	assert.Len(t, returnedTxs, 0)
+	assert.Empty(t, returnedTxs)
 }
 
 func TestTransactionMethods_GetExternalTransactions_Success(t *testing.T) {
@@ -264,12 +276,16 @@ func TestTransactionMethods_GetExternalTransactions_Success(t *testing.T) {
 	// Store external transactions
 	err := appchainDB.Update(context.Background(), func(rwTx kv.RwTx) error {
 		_, writeErr := gosdk.WriteExternalTransactions(rwTx, blockNumber, externalTxs)
+
 		return writeErr
 	})
 	require.NoError(t, err)
 
 	// Get external transactions
-	result, err := methods.GetExternalTransactions(context.Background(), []any{float64(blockNumber)})
+	result, err := methods.GetExternalTransactions(
+		context.Background(),
+		[]any{float64(blockNumber)},
+	)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -296,7 +312,7 @@ func TestTransactionMethods_GetExternalTransactions_EmptyBlock(t *testing.T) {
 
 	returnedTxs, ok := result.([]apptypes.ExternalTransaction)
 	require.True(t, ok)
-	assert.Len(t, returnedTxs, 0)
+	assert.Empty(t, returnedTxs)
 }
 
 func TestTransactionMethods_GetTransactionStatus_Processed(t *testing.T) {
@@ -315,6 +331,7 @@ func TestTransactionMethods_GetTransactionStatus_Processed(t *testing.T) {
 		if marshalErr != nil {
 			return marshalErr
 		}
+
 		return tx.Put(receipt.ReceiptBucket, testHash[:], receiptData)
 	})
 	require.NoError(t, err)
@@ -347,6 +364,7 @@ func TestTransactionMethods_GetTransactionStatus_Failed(t *testing.T) {
 		if marshalErr != nil {
 			return marshalErr
 		}
+
 		return tx.Put(receipt.ReceiptBucket, testHash[:], receiptData)
 	})
 	require.NoError(t, err)
@@ -399,7 +417,7 @@ func TestTransactionMethods_AddTransactionMethods(t *testing.T) {
 	server := NewStandardRPCServer(nil)
 
 	// Add all transaction methods to server
-	AddTransactionMethods[TestTransaction[TestReceipt], TestReceipt](server, pool, appchainDB)
+	AddTransactionMethods(server, pool, appchainDB)
 
 	// Verify that all methods were registered
 	_, sendTxExists := server.methods["sendTransaction"]
@@ -438,7 +456,7 @@ func TestTransactionMethods_SendTransaction_Success(t *testing.T) {
 	// Result should be a hex string
 	hashStr, ok := result.(string)
 	require.True(t, ok)
-	assert.True(t, len(hashStr) > 2)
+	assert.Greater(t, len(hashStr), 2)
 	assert.Equal(t, "0x", hashStr[:2])
 
 	// Verify the hash matches the transaction
@@ -453,15 +471,15 @@ func TestTransactionMethods_SendTransaction_WrongParamsCount(t *testing.T) {
 
 	// No parameters
 	result, err := methods.SendTransaction(context.Background(), []any{})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
-	assert.ErrorIs(t, err, ErrSendTransactionRequires1Param)
+	require.ErrorIs(t, err, ErrSendTransactionRequires1Param)
 
 	// Too many parameters
 	result, err = methods.SendTransaction(context.Background(), []any{"tx1", "tx2"})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
-	assert.ErrorIs(t, err, ErrSendTransactionRequires1Param)
+	require.ErrorIs(t, err, ErrSendTransactionRequires1Param)
 }
 
 func TestTransactionMethods_SendTransaction_InvalidData(t *testing.T) {
@@ -486,7 +504,7 @@ func TestTransactionMethods_SendTransaction_InvalidData(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := methods.SendTransaction(context.Background(), []any{tt.txData})
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Nil(t, result)
 		})
 	}
@@ -503,7 +521,7 @@ func TestTransactionMethods_GetPendingTransactions_Empty(t *testing.T) {
 	if result != nil {
 		txs, ok := result.([]TestTransaction[TestReceipt])
 		require.True(t, ok)
-		assert.Len(t, txs, 0)
+		assert.Empty(t, txs)
 	}
 }
 
@@ -553,7 +571,7 @@ func TestTransactionMethods_GetPendingTransactions_IgnoresParams(t *testing.T) {
 	if result != nil {
 		txs, ok := result.([]TestTransaction[TestReceipt])
 		require.True(t, ok)
-		assert.Len(t, txs, 0)
+		assert.Empty(t, txs)
 	}
 }
 

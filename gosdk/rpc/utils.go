@@ -1,7 +1,6 @@
 package rpc
 
 import (
-	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"math"
@@ -126,11 +125,4 @@ func parseBlockNumber(v any) (uint64, error) {
 	default:
 		return 0, ErrInvalidBlockNumber
 	}
-}
-
-// uint64ToBytes converts a uint64 to big-endian byte representation
-func uint64ToBytes(n uint64) []byte {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, n)
-	return b
 }
