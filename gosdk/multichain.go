@@ -133,7 +133,12 @@ func (sa *MultichainStateAccess) EthBlock(
 		})
 		if err != nil {
 			log.Ctx(ctx).Error().Err(err).Msg("Failed to unmarshal block")
-			time.Sleep(50 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+				time.Sleep(50 * time.Millisecond)
+			}
 
 			continue
 		}
