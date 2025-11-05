@@ -53,6 +53,7 @@ func setupReceiptTestEnvironment(t *testing.T) (
 
 func TestReceiptMethods_GetTransactionReceipt_Success(t *testing.T) {
 	t.Parallel()
+
 	methods, appchainDB, cleanup := setupReceiptTestEnvironment(t)
 	defer cleanup()
 
@@ -89,6 +90,7 @@ func TestReceiptMethods_GetTransactionReceipt_Success(t *testing.T) {
 
 func TestReceiptMethods_GetTransactionReceipt_NotFound(t *testing.T) {
 	t.Parallel()
+
 	methods, _, cleanup := setupReceiptTestEnvironment(t)
 	defer cleanup()
 
@@ -105,6 +107,7 @@ func TestReceiptMethods_GetTransactionReceipt_NotFound(t *testing.T) {
 
 func TestReceiptMethods_GetTransactionReceipt_WrongParamsCount(t *testing.T) {
 	t.Parallel()
+
 	methods, _, cleanup := setupReceiptTestEnvironment(t)
 	defer cleanup()
 
@@ -123,6 +126,7 @@ func TestReceiptMethods_GetTransactionReceipt_WrongParamsCount(t *testing.T) {
 
 func TestReceiptMethods_GetTransactionReceipt_InvalidHashType(t *testing.T) {
 	t.Parallel()
+
 	methods, _, cleanup := setupReceiptTestEnvironment(t)
 	defer cleanup()
 
@@ -135,6 +139,7 @@ func TestReceiptMethods_GetTransactionReceipt_InvalidHashType(t *testing.T) {
 
 func TestReceiptMethods_GetTransactionReceipt_InvalidHashFormat(t *testing.T) {
 	t.Parallel()
+
 	methods, _, cleanup := setupReceiptTestEnvironment(t)
 	defer cleanup()
 
@@ -173,6 +178,7 @@ func TestReceiptMethods_GetTransactionReceipt_InvalidHashFormat(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			result, err := methods.GetTransactionReceipt(t.Context(), []any{tt.hashStr})
 			if tt.wantErr {
 				require.Error(t, err)
@@ -187,6 +193,7 @@ func TestReceiptMethods_GetTransactionReceipt_InvalidHashFormat(t *testing.T) {
 
 func TestReceiptMethods_GetTransactionReceipt_FailedStatus(t *testing.T) {
 	t.Parallel()
+
 	methods, appchainDB, cleanup := setupReceiptTestEnvironment(t)
 	defer cleanup()
 
@@ -223,6 +230,7 @@ func TestReceiptMethods_GetTransactionReceipt_FailedStatus(t *testing.T) {
 
 func TestReceiptMethods_AddReceiptMethods(t *testing.T) {
 	t.Parallel()
+
 	_, appchainDB, cleanup := setupReceiptTestEnvironment(t)
 	defer cleanup()
 

@@ -53,6 +53,7 @@ func setupBlockTestEnvironment(t *testing.T) (
 
 func TestBlockMethods_GetBlock_Success(t *testing.T) {
 	t.Parallel()
+
 	methods, appchainDB, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
@@ -90,6 +91,7 @@ func TestBlockMethods_GetBlock_Success(t *testing.T) {
 
 func TestBlockMethods_GetBlock_NotFound(t *testing.T) {
 	t.Parallel()
+
 	methods, _, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
@@ -103,6 +105,7 @@ func TestBlockMethods_GetBlock_NotFound(t *testing.T) {
 
 func TestBlockMethods_GetBlock_WrongParamsCount(t *testing.T) {
 	t.Parallel()
+
 	methods, _, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
@@ -115,6 +118,7 @@ func TestBlockMethods_GetBlock_WrongParamsCount(t *testing.T) {
 
 func TestBlockMethods_GetBlock_InvalidBlockNumber(t *testing.T) {
 	t.Parallel()
+
 	methods, _, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
@@ -143,6 +147,7 @@ func TestBlockMethods_GetBlock_InvalidBlockNumber(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			result, err := methods.GetBlock(t.Context(), []any{tt.blockNumber})
 			if tt.wantErr {
 				require.Error(t, err)
@@ -156,6 +161,7 @@ func TestBlockMethods_GetBlock_InvalidBlockNumber(t *testing.T) {
 
 func TestBlockMethods_GetBlock_MultipleBlocks(t *testing.T) {
 	t.Parallel()
+
 	methods, appchainDB, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
@@ -213,6 +219,7 @@ func TestBlockMethods_GetBlock_MultipleBlocks(t *testing.T) {
 
 func TestBlockMethods_GetBlock_ZeroBlock(t *testing.T) {
 	t.Parallel()
+
 	methods, appchainDB, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
@@ -247,6 +254,7 @@ func TestBlockMethods_GetBlock_ZeroBlock(t *testing.T) {
 
 func TestBlockMethods_GetBlock_LargeBlockNumber(t *testing.T) {
 	t.Parallel()
+
 	methods, appchainDB, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
@@ -281,6 +289,7 @@ func TestBlockMethods_GetBlock_LargeBlockNumber(t *testing.T) {
 
 func TestBlockMethods_AddBlockMethods(t *testing.T) {
 	t.Parallel()
+
 	_, appchainDB, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
@@ -299,6 +308,7 @@ func TestBlockMethods_AddBlockMethods(t *testing.T) {
 
 func TestBlockMethods_GetBlock_CorruptedData(t *testing.T) {
 	t.Parallel()
+
 	methods, appchainDB, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
@@ -321,6 +331,7 @@ func TestBlockMethods_GetBlock_CorruptedData(t *testing.T) {
 
 func TestBlockMethods_GetBlock_LatestBlock(t *testing.T) {
 	t.Parallel()
+
 	methods, appchainDB, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
@@ -375,6 +386,7 @@ func TestBlockMethods_GetBlock_LatestBlock(t *testing.T) {
 
 func TestBlockMethods_GetBlock_LatestBlock_NoBlocks(t *testing.T) {
 	t.Parallel()
+
 	methods, _, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 

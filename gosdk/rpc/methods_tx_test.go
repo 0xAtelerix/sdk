@@ -78,6 +78,7 @@ func setupTransactionTestEnvironment(t *testing.T) (
 
 func TestTransactionMethods_GetTransaction_FromTxPool(t *testing.T) {
 	t.Parallel()
+
 	methods, pool, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -109,6 +110,7 @@ func TestTransactionMethods_GetTransaction_FromTxPool(t *testing.T) {
 
 func TestTransactionMethods_GetTransaction_FromBlocks(t *testing.T) {
 	t.Parallel()
+
 	methods, _, appchainDB, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -161,6 +163,7 @@ func TestTransactionMethods_GetTransaction_FromBlocks(t *testing.T) {
 
 func TestTransactionMethods_GetTransaction_NotFound(t *testing.T) {
 	t.Parallel()
+
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -177,6 +180,7 @@ func TestTransactionMethods_GetTransaction_NotFound(t *testing.T) {
 
 func TestTransactionMethods_GetTransaction_WrongParamsCount(t *testing.T) {
 	t.Parallel()
+
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -195,6 +199,7 @@ func TestTransactionMethods_GetTransaction_WrongParamsCount(t *testing.T) {
 
 func TestTransactionMethods_GetTransaction_InvalidHashType(t *testing.T) {
 	t.Parallel()
+
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -207,6 +212,7 @@ func TestTransactionMethods_GetTransaction_InvalidHashType(t *testing.T) {
 
 func TestTransactionMethods_GetTransactionsByBlockNumber_Success(t *testing.T) {
 	t.Parallel()
+
 	methods, _, appchainDB, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -250,6 +256,7 @@ func TestTransactionMethods_GetTransactionsByBlockNumber_Success(t *testing.T) {
 
 func TestTransactionMethods_GetTransactionsByBlockNumber_EmptyBlock(t *testing.T) {
 	t.Parallel()
+
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -266,6 +273,7 @@ func TestTransactionMethods_GetTransactionsByBlockNumber_EmptyBlock(t *testing.T
 
 func TestTransactionMethods_GetExternalTransactions_Success(t *testing.T) {
 	t.Parallel()
+
 	methods, _, appchainDB, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -310,6 +318,7 @@ func TestTransactionMethods_GetExternalTransactions_Success(t *testing.T) {
 
 func TestTransactionMethods_GetExternalTransactions_EmptyBlock(t *testing.T) {
 	t.Parallel()
+
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -326,6 +335,7 @@ func TestTransactionMethods_GetExternalTransactions_EmptyBlock(t *testing.T) {
 
 func TestTransactionMethods_GetTransactionStatus_Processed(t *testing.T) {
 	t.Parallel()
+
 	methods, _, appchainDB, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -360,6 +370,7 @@ func TestTransactionMethods_GetTransactionStatus_Processed(t *testing.T) {
 
 func TestTransactionMethods_GetTransactionStatus_Failed(t *testing.T) {
 	t.Parallel()
+
 	methods, _, appchainDB, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -394,6 +405,7 @@ func TestTransactionMethods_GetTransactionStatus_Failed(t *testing.T) {
 
 func TestTransactionMethods_GetTransactionStatus_Pending(t *testing.T) {
 	t.Parallel()
+
 	methods, pool, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -424,6 +436,7 @@ func TestTransactionMethods_GetTransactionStatus_Pending(t *testing.T) {
 
 func TestTransactionMethods_AddTransactionMethods(t *testing.T) {
 	t.Parallel()
+
 	_, pool, appchainDB, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -453,6 +466,7 @@ func TestTransactionMethods_AddTransactionMethods(t *testing.T) {
 
 func TestTransactionMethods_SendTransaction_Success(t *testing.T) {
 	t.Parallel()
+
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -481,6 +495,7 @@ func TestTransactionMethods_SendTransaction_Success(t *testing.T) {
 
 func TestTransactionMethods_SendTransaction_WrongParamsCount(t *testing.T) {
 	t.Parallel()
+
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -499,6 +514,7 @@ func TestTransactionMethods_SendTransaction_WrongParamsCount(t *testing.T) {
 
 func TestTransactionMethods_SendTransaction_InvalidData(t *testing.T) {
 	t.Parallel()
+
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -529,6 +545,7 @@ func TestTransactionMethods_SendTransaction_InvalidData(t *testing.T) {
 
 func TestTransactionMethods_GetPendingTransactions_Empty(t *testing.T) {
 	t.Parallel()
+
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -545,6 +562,7 @@ func TestTransactionMethods_GetPendingTransactions_Empty(t *testing.T) {
 
 func TestTransactionMethods_GetPendingTransactions_WithTransactions(t *testing.T) {
 	t.Parallel()
+
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -580,6 +598,7 @@ func TestTransactionMethods_GetPendingTransactions_WithTransactions(t *testing.T
 
 func TestTransactionMethods_GetPendingTransactions_IgnoresParams(t *testing.T) {
 	t.Parallel()
+
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -597,6 +616,7 @@ func TestTransactionMethods_GetPendingTransactions_IgnoresParams(t *testing.T) {
 
 func TestTransactionMethods_SendAndRetrieve_Integration(t *testing.T) {
 	t.Parallel()
+
 	methods, pool, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -634,6 +654,7 @@ func TestTransactionMethods_SendAndRetrieve_Integration(t *testing.T) {
 
 func TestTransactionMethods_SendTransaction_DuplicateTransaction(t *testing.T) {
 	t.Parallel()
+
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
