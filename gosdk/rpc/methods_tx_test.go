@@ -140,11 +140,7 @@ func TestTransactionMethods_GetTransaction_FromBlocks(t *testing.T) {
 		binary.BigEndian.PutUint64(lookupEntry[0:8], blockNumber)
 		binary.BigEndian.PutUint32(lookupEntry[8:12], txIndex)
 
-		if err := rwTx.Put(gosdk.TxLookupBucket, txHash[:], lookupEntry); err != nil {
-			return err
-		}
-
-		return nil
+		return rwTx.Put(gosdk.TxLookupBucket, txHash[:], lookupEntry)
 	})
 	require.NoError(t, err)
 

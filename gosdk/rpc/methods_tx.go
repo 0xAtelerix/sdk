@@ -127,13 +127,16 @@ func (m *TransactionMethods[appTx, R]) GetTransaction(
 		txIndex := binary.BigEndian.Uint32(lookupData[8:12])
 
 		// Get block transactions
-		txsBytes, getErr := tx.GetOne(gosdk.BlockTransactionsBucket, utility.Uint64ToBytes(blockNumber))
+		txsBytes, getErr := tx.GetOne(
+			gosdk.BlockTransactionsBucket,
+			utility.Uint64ToBytes(blockNumber),
+		)
 		if getErr != nil {
 			return fmt.Errorf("get block transactions: %w", getErr)
 		}
 
 		if len(txsBytes) == 0 {
-			return fmt.Errorf("block %d has no transactions", blockNumber)
+			return fmt.Errorf("%w: block %d", ErrBlockHasNoTransactions, blockNumber)
 		}
 
 		// Unmarshal transactions array
@@ -144,7 +147,12 @@ func (m *TransactionMethods[appTx, R]) GetTransaction(
 
 		// Bounds check
 		if txIndex >= uint32(len(txs)) {
-			return fmt.Errorf("tx index %d out of bounds (block has %d txs)", txIndex, len(txs))
+			return fmt.Errorf(
+				"%w: index %d, block has %d txs",
+				ErrTransactionIndexOutOfBounds,
+				txIndex,
+				len(txs),
+			)
 		}
 
 		// Get the specific transaction

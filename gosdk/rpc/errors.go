@@ -16,4 +16,6 @@ var (
 	ErrWrongParamsCount               = errors.New("wrong number of parameters")
 	ErrBlockNotFound                  = errors.New("block not found")
 	ErrInvalidBlockNumber             = errors.New("invalid block number")
+	ErrBlockHasNoTransactions         = errors.New("block has no transactions")
+	ErrTransactionIndexOutOfBounds    = errors.New("transaction index out of bounds")
 )
