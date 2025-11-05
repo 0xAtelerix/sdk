@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 
@@ -86,7 +87,7 @@ func (m *TransactionMethods[appTx, R]) GetPendingTransactions(
 }
 
 // GetTransaction retrieves a transaction by hash from either finalized blocks or txpool.
-// Searches in this order: 1) Finalized blocks (direct TxLookupBucket lookup), 2) Txpool (pending)
+// Searches in this order: 1) Finalized blocks (via TxLookupBucket index), 2) Txpool (pending)
 // Params: [txHash]
 // Returns: Transaction object
 func (m *TransactionMethods[appTx, R]) GetTransaction(
@@ -111,20 +112,43 @@ func (m *TransactionMethods[appTx, R]) GetTransaction(
 	var transaction appTx
 
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
-		// Direct lookup: txHash -> transaction
-		txBytes, getErr := tx.GetOne(gosdk.TxLookupBucket, txHash[:])
+		// Lookup index: txHash -> (blockNumber, txIndex)
+		lookupData, getErr := tx.GetOne(gosdk.TxLookupBucket, txHash[:])
 		if getErr != nil {
 			return ErrTransactionNotFound
 		}
 
-		if len(txBytes) == 0 {
-			return ErrTransactionNotFound // Not in blocks
+		if len(lookupData) != 12 {
+			return ErrTransactionNotFound // Not in blocks or corrupted entry
 		}
 
-		// Unmarshal the transaction
-		if unmarshalErr := cbor.Unmarshal(txBytes, &transaction); unmarshalErr != nil {
-			return fmt.Errorf("decode transaction: %w", unmarshalErr)
+		// Decode lookup entry: blockNumber (8 bytes) + txIndex (4 bytes)
+		blockNumber := binary.BigEndian.Uint64(lookupData[0:8])
+		txIndex := binary.BigEndian.Uint32(lookupData[8:12])
+
+		// Get block transactions
+		txsBytes, getErr := tx.GetOne(gosdk.BlockTransactionsBucket, utility.Uint64ToBytes(blockNumber))
+		if getErr != nil {
+			return fmt.Errorf("get block transactions: %w", getErr)
 		}
+
+		if len(txsBytes) == 0 {
+			return fmt.Errorf("block %d has no transactions", blockNumber)
+		}
+
+		// Unmarshal transactions array
+		var txs []appTx
+		if unmarshalErr := cbor.Unmarshal(txsBytes, &txs); unmarshalErr != nil {
+			return fmt.Errorf("decode transactions: %w", unmarshalErr)
+		}
+
+		// Bounds check
+		if txIndex >= uint32(len(txs)) {
+			return fmt.Errorf("tx index %d out of bounds (block has %d txs)", txIndex, len(txs))
+		}
+
+		// Get the specific transaction
+		transaction = txs[txIndex]
 
 		return nil
 	})

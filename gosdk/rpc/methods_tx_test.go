@@ -15,6 +15,7 @@ package rpc
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"testing"
 
@@ -65,8 +66,8 @@ func setupTransactionTestEnvironment(t *testing.T) (
 		Open()
 	require.NoError(t, err)
 
-	pool = txpool.NewTxPool[TestTransaction[TestReceipt], TestReceipt](localDB)
-	methods = NewTransactionMethods[TestTransaction[TestReceipt], TestReceipt](pool, appchainDB)
+	pool = txpool.NewTxPool[TestTransaction[TestReceipt]](localDB)
+	methods = NewTransactionMethods(pool, appchainDB)
 
 	cleanup = func() {
 		localDB.Close()
@@ -118,28 +119,32 @@ func TestTransactionMethods_GetTransaction_FromBlocks(t *testing.T) {
 	}
 	txHash := tx.Hash()
 	blockNumber := uint64(10)
+	txIndex := uint32(0)
 
 	err := appchainDB.Update(context.Background(), func(rwTx kv.RwTx) error {
-		// Store transaction lookup (direct tx storage)
-		txBytes, marshalErr := cbor.Marshal(tx)
+		// Store block transactions (primary storage)
+		blockNumBytes := utility.Uint64ToBytes(blockNumber)
+		txs := []TestTransaction[TestReceipt]{tx}
+
+		txsBytes, marshalErr := cbor.Marshal(txs)
 		if marshalErr != nil {
 			return marshalErr
 		}
 
-		if err := rwTx.Put(gosdk.TxLookupBucket, txHash[:], txBytes); err != nil {
+		if err := rwTx.Put(gosdk.BlockTransactionsBucket, blockNumBytes, txsBytes); err != nil {
 			return err
 		}
 
-		// Store block transactions
-		blockNumBytes := utility.Uint64ToBytes(blockNumber)
-		txs := []TestTransaction[TestReceipt]{tx}
+		// Store transaction lookup index: blockNumber (8 bytes) + txIndex (4 bytes)
+		lookupEntry := make([]byte, 12)
+		binary.BigEndian.PutUint64(lookupEntry[0:8], blockNumber)
+		binary.BigEndian.PutUint32(lookupEntry[8:12], txIndex)
 
-		txsBytes, err := cbor.Marshal(txs)
-		if err != nil {
+		if err := rwTx.Put(gosdk.TxLookupBucket, txHash[:], lookupEntry); err != nil {
 			return err
 		}
 
-		return rwTx.Put(gosdk.BlockTransactionsBucket, blockNumBytes, txsBytes)
+		return nil
 	})
 	require.NoError(t, err)
 

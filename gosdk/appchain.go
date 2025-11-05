@@ -554,7 +554,9 @@ func WriteBlock(rwtx kv.RwTx, blockNumber uint64, blockBytes []byte) error {
 	return rwtx.Put(BlocksBucket, number, blockBytes)
 }
 
-// WriteBlockTransactions stores the transactions for a block in CBOR format
+// WriteBlockTransactions stores the transactions for a block in CBOR format.
+// Storage strategy: Transactions are stored once in BlockTransactionsBucket,
+// while TxLookupBucket maintains a lightweight index (txHash -> blockNumber + txIndex).
 func WriteBlockTransactions[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	rwtx kv.RwTx,
 	blockNumber uint64,
@@ -562,27 +564,27 @@ func WriteBlockTransactions[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 ) error {
 	blockNumBytes := utility.Uint64ToBytes(blockNumber)
 
-	// Marshal transactions to CBOR
+	// Marshal transactions to CBOR - this is the only place we store full transaction data
 	txsBytes, err := cbor.Marshal(txs)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrTransactionsMarshalling, err)
 	}
 
-	// Store in BlockTransactionsBucket
+	// Store in BlockTransactionsBucket (primary storage)
 	if err := rwtx.Put(BlockTransactionsBucket, blockNumBytes, txsBytes); err != nil {
 		return fmt.Errorf("%w: %w", ErrBlockTransactionsWrite, err)
 	}
 
-	// Create lookup entries: txHash -> transaction (CBOR encoded)
-	for _, tx := range txs {
+	// Create lookup entries: txHash -> (blockNumber, txIndex)
+	for i, tx := range txs {
 		txHash := tx.Hash()
 
-		txBytes, marshalErr := cbor.Marshal(tx)
-		if marshalErr != nil {
-			return fmt.Errorf("%w (tx %x): %w", ErrTransactionMarshalling, txHash[:4], marshalErr)
-		}
+		// Encode: blockNumber (8 bytes) + txIndex (4 bytes)
+		lookupEntry := make([]byte, 12)
+		binary.BigEndian.PutUint64(lookupEntry[0:8], blockNumber)
+		binary.BigEndian.PutUint32(lookupEntry[8:12], uint32(i))
 
-		if err := rwtx.Put(TxLookupBucket, txHash[:], txBytes); err != nil {
+		if err := rwtx.Put(TxLookupBucket, txHash[:], lookupEntry); err != nil {
 			return fmt.Errorf("%w (tx %x): %w", ErrTransactionLookupWrite, txHash[:4], err)
 		}
 	}
