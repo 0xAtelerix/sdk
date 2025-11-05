@@ -369,31 +369,21 @@ func TestRPCServer_GetReceipt(t *testing.T) {
 
 ## Architecture
 
-### File Structure
+### Package Organization
 
-```
-rpc/
-├── rpc.go                    # Core RPC server + schema discovery
-├── types.go                  # Server types and interfaces
-├── errors.go                 # Error definitions
-├── utils.go                  # Utility functions
-├── methods_receipt.go        # Receipt RPC methods
-├── methods_tx.go             # All transaction RPC methods (submit, pending, queries, status)
-├── methods_block.go          # Block query RPC methods
-├── rpc_test.go               # All tests (integration + unit)
-├── methods_receipt_test.go   # Receipt unit tests
-├── methods_tx_test.go        # Transaction unit tests
-├── methods_block_test.go     # Block unit tests
-└── README.md                 # This file
-```
+The RPC package is organized into logical components:
+
+- **Core Server**: JSON-RPC server implementation with middleware and CORS support
+- **Method Sets**: Modular method handlers for transactions, receipts, blocks, and schema discovery
+- **Tests**: Unit tests for individual method handlers and integration tests for the full HTTP/JSON-RPC stack
 
 ### Design Principles
 
-1. **Modularity**: Method sets are independent and can be added separately
-2. **Type Safety**: Leverages Go generics for compile-time type checking
-3. **Separation of Concerns**: Clear separation between HTTP layer, JSON-RPC protocol, and business logic
-4. **Testability**: Both unit and integration test coverage
-5. **Extensibility**: Easy to add custom methods and middleware
+- **Modular method sets** - Add only what you need (transactions, receipts, blocks, schema)
+- **Type-safe generics** - Catch type errors at compile time
+- **Layered architecture** - HTTP handling, JSON-RPC protocol, and business logic are separate
+- **Unit and integration tests** - Test handlers directly or through the full HTTP stack
+- **Easy to extend** - Add custom methods and middleware without modifying core code
 
 ### Request Flow
 

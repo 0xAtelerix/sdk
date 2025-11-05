@@ -7,7 +7,6 @@ package rpc
 // see rpc_test.go (TestStandardRPCServer_* functions).
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"testing"
@@ -53,6 +52,7 @@ func setupReceiptTestEnvironment(t *testing.T) (
 }
 
 func TestReceiptMethods_GetTransactionReceipt_Success(t *testing.T) {
+	t.Parallel()
 	methods, appchainDB, cleanup := setupReceiptTestEnvironment(t)
 	defer cleanup()
 
@@ -64,7 +64,7 @@ func TestReceiptMethods_GetTransactionReceipt_Success(t *testing.T) {
 	}
 
 	// Store receipt in database
-	err := appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
+	err := appchainDB.Update(t.Context(), func(tx kv.RwTx) error {
 		receiptData, marshalErr := cbor.Marshal(testReceipt)
 		if marshalErr != nil {
 			return marshalErr
@@ -76,7 +76,7 @@ func TestReceiptMethods_GetTransactionReceipt_Success(t *testing.T) {
 
 	// Test GetTransactionReceipt
 	hashStr := "0x" + hex.EncodeToString(testHash[:])
-	result, err := methods.GetTransactionReceipt(context.Background(), []any{hashStr})
+	result, err := methods.GetTransactionReceipt(t.Context(), []any{hashStr})
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -88,6 +88,7 @@ func TestReceiptMethods_GetTransactionReceipt_Success(t *testing.T) {
 }
 
 func TestReceiptMethods_GetTransactionReceipt_NotFound(t *testing.T) {
+	t.Parallel()
 	methods, _, cleanup := setupReceiptTestEnvironment(t)
 	defer cleanup()
 
@@ -95,7 +96,7 @@ func TestReceiptMethods_GetTransactionReceipt_NotFound(t *testing.T) {
 	nonExistentHash := sha256.Sum256([]byte("non-existent"))
 	hashStr := "0x" + hex.EncodeToString(nonExistentHash[:])
 
-	result, err := methods.GetTransactionReceipt(context.Background(), []any{hashStr})
+	result, err := methods.GetTransactionReceipt(t.Context(), []any{hashStr})
 
 	require.Error(t, err)
 	assert.Nil(t, result)
@@ -103,34 +104,37 @@ func TestReceiptMethods_GetTransactionReceipt_NotFound(t *testing.T) {
 }
 
 func TestReceiptMethods_GetTransactionReceipt_WrongParamsCount(t *testing.T) {
+	t.Parallel()
 	methods, _, cleanup := setupReceiptTestEnvironment(t)
 	defer cleanup()
 
 	// Test with no parameters
-	result, err := methods.GetTransactionReceipt(context.Background(), []any{})
+	result, err := methods.GetTransactionReceipt(t.Context(), []any{})
 	require.Error(t, err)
 	assert.Nil(t, result)
 	require.ErrorIs(t, err, ErrWrongParamsCount)
 
 	// Test with too many parameters
-	result, err = methods.GetTransactionReceipt(context.Background(), []any{"hash1", "hash2"})
+	result, err = methods.GetTransactionReceipt(t.Context(), []any{"hash1", "hash2"})
 	require.Error(t, err)
 	assert.Nil(t, result)
 	require.ErrorIs(t, err, ErrWrongParamsCount)
 }
 
 func TestReceiptMethods_GetTransactionReceipt_InvalidHashType(t *testing.T) {
+	t.Parallel()
 	methods, _, cleanup := setupReceiptTestEnvironment(t)
 	defer cleanup()
 
 	// Test with non-string parameter
-	result, err := methods.GetTransactionReceipt(context.Background(), []any{12345})
+	result, err := methods.GetTransactionReceipt(t.Context(), []any{12345})
 	require.Error(t, err)
 	assert.Nil(t, result)
 	require.ErrorIs(t, err, ErrHashParameterMustBeString)
 }
 
 func TestReceiptMethods_GetTransactionReceipt_InvalidHashFormat(t *testing.T) {
+	t.Parallel()
 	methods, _, cleanup := setupReceiptTestEnvironment(t)
 	defer cleanup()
 
@@ -168,7 +172,8 @@ func TestReceiptMethods_GetTransactionReceipt_InvalidHashFormat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := methods.GetTransactionReceipt(context.Background(), []any{tt.hashStr})
+			t.Parallel()
+			result, err := methods.GetTransactionReceipt(t.Context(), []any{tt.hashStr})
 			if tt.wantErr {
 				require.Error(t, err)
 				assert.Nil(t, result)
@@ -181,6 +186,7 @@ func TestReceiptMethods_GetTransactionReceipt_InvalidHashFormat(t *testing.T) {
 }
 
 func TestReceiptMethods_GetTransactionReceipt_FailedStatus(t *testing.T) {
+	t.Parallel()
 	methods, appchainDB, cleanup := setupReceiptTestEnvironment(t)
 	defer cleanup()
 
@@ -192,7 +198,7 @@ func TestReceiptMethods_GetTransactionReceipt_FailedStatus(t *testing.T) {
 	}
 
 	// Store receipt in database
-	err := appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
+	err := appchainDB.Update(t.Context(), func(tx kv.RwTx) error {
 		receiptData, marshalErr := cbor.Marshal(testReceipt)
 		if marshalErr != nil {
 			return marshalErr
@@ -204,7 +210,7 @@ func TestReceiptMethods_GetTransactionReceipt_FailedStatus(t *testing.T) {
 
 	// Test GetTransactionReceipt
 	hashStr := "0x" + hex.EncodeToString(testHash[:])
-	result, err := methods.GetTransactionReceipt(context.Background(), []any{hashStr})
+	result, err := methods.GetTransactionReceipt(t.Context(), []any{hashStr})
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -216,6 +222,7 @@ func TestReceiptMethods_GetTransactionReceipt_FailedStatus(t *testing.T) {
 }
 
 func TestReceiptMethods_AddReceiptMethods(t *testing.T) {
+	t.Parallel()
 	_, appchainDB, cleanup := setupReceiptTestEnvironment(t)
 	defer cleanup()
 

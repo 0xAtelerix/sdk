@@ -183,6 +183,7 @@ func makeJSONRPCRequest(
 // see the dedicated methods_*_test.go files:
 
 func TestStandardRPCServer_sendTransaction(t *testing.T) {
+	t.Parallel()
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -214,6 +215,7 @@ func TestStandardRPCServer_sendTransaction(t *testing.T) {
 }
 
 func TestStandardRPCServer_getTransaction(t *testing.T) {
+	t.Parallel()
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -252,6 +254,7 @@ func TestStandardRPCServer_getTransaction(t *testing.T) {
 }
 
 func TestStandardRPCServer_getTransactionStatus(t *testing.T) {
+	t.Parallel()
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -297,6 +300,7 @@ func TestStandardRPCServer_getTransactionStatus(t *testing.T) {
 }
 
 func TestStandardRPCServer_getPendingTransactions(t *testing.T) {
+	t.Parallel()
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -332,6 +336,7 @@ func TestStandardRPCServer_getPendingTransactions(t *testing.T) {
 }
 
 func TestStandardRPCServer_getTransactionReceipt(t *testing.T) {
+	t.Parallel()
 	server, appchainDB, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -344,7 +349,7 @@ func TestStandardRPCServer_getTransactionReceipt(t *testing.T) {
 	hash := sha256.Sum256([]byte("test-receipt"))
 
 	// Store receipt in database
-	err = appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
+	err = appchainDB.Update(t.Context(), func(tx kv.RwTx) error {
 		return tx.Put(receipt.ReceiptBucket, hash[:], receiptData)
 	})
 	require.NoError(t, err)
@@ -366,6 +371,7 @@ func TestStandardRPCServer_getTransactionReceipt(t *testing.T) {
 }
 
 func TestStandardRPCServer_customMethod(t *testing.T) {
+	t.Parallel()
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -396,6 +402,7 @@ func TestStandardRPCServer_customMethod(t *testing.T) {
 }
 
 func TestStandardRPCServer_invalidMethod(t *testing.T) {
+	t.Parallel()
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -414,6 +421,7 @@ func TestStandardRPCServer_invalidMethod(t *testing.T) {
 }
 
 func TestStandardRPCServer_invalidJSONRPC(t *testing.T) {
+	t.Parallel()
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -436,6 +444,7 @@ func TestStandardRPCServer_invalidJSONRPC(t *testing.T) {
 }
 
 func TestStandardRPCServer_wrongHTTPMethod(t *testing.T) {
+	t.Parallel()
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -449,6 +458,7 @@ func TestStandardRPCServer_wrongHTTPMethod(t *testing.T) {
 // ============= HEALTH ENDPOINT =============
 
 func TestStandardRPCServer_healthEndpoint(t *testing.T) {
+	t.Parallel()
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -482,11 +492,12 @@ func TestStandardRPCServer_healthEndpoint(t *testing.T) {
 }
 
 func TestStandardRPCServer_healthEndpoint_wrongMethod(t *testing.T) {
+	t.Parallel()
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
 	// Test with POST method (should fail)
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "/health", nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, "/health", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -498,6 +509,7 @@ func TestStandardRPCServer_healthEndpoint_wrongMethod(t *testing.T) {
 // ============= BATCH REQUESTS =============
 
 func TestStandardRPCServer_batchRequests(t *testing.T) {
+	t.Parallel()
 	server := NewStandardRPCServer(nil)
 
 	// Add test methods
@@ -569,6 +581,7 @@ func TestStandardRPCServer_batchRequests(t *testing.T) {
 }
 
 func TestStandardRPCServer_batchRequestsWithErrors(t *testing.T) {
+	t.Parallel()
 	server := NewStandardRPCServer(nil)
 
 	// Add only one method
@@ -646,6 +659,7 @@ func TestStandardRPCServer_batchRequestsWithErrors(t *testing.T) {
 }
 
 func TestStandardRPCServer_emptyBatchRequest(t *testing.T) {
+	t.Parallel()
 	server := NewStandardRPCServer(nil)
 
 	// Test empty batch request
@@ -737,6 +751,7 @@ func (m *failingResponseMiddleware) ProcessResponse(
 // ============= MIDDLEWARE =============
 
 func TestStandardRPCServer_middleware(t *testing.T) {
+	t.Parallel()
 	mw := &testMiddleware{
 		contextKey:   "test_key",
 		contextValue: "test_value",
@@ -774,6 +789,7 @@ func TestStandardRPCServer_middleware(t *testing.T) {
 }
 
 func TestStandardRPCServer_middlewareBlocksRequest(t *testing.T) {
+	t.Parallel()
 	mw := &testMiddleware{shouldError: true}
 	server := NewStandardRPCServer(nil)
 	server.middlewares = []Middleware{mw}
@@ -807,6 +823,7 @@ func TestStandardRPCServer_middlewareBlocksRequest(t *testing.T) {
 }
 
 func TestStandardRPCServer_middlewareBatch(t *testing.T) {
+	t.Parallel()
 	mw := &testMiddleware{
 		contextKey:   "batch_test",
 		contextValue: "batch_value",
@@ -850,6 +867,7 @@ func TestStandardRPCServer_middlewareBatch(t *testing.T) {
 }
 
 func TestStandardRPCServer_middlewareBatchPartialFailure(t *testing.T) {
+	t.Parallel()
 	server := NewStandardRPCServer(nil)
 	server.middlewares = []Middleware{&failingResponseMiddleware{failID: float64(2)}}
 
@@ -905,6 +923,7 @@ func TestStandardRPCServer_middlewareBatchPartialFailure(t *testing.T) {
 }
 
 func TestStandardRPCServer_middlewareRequestBlocksBatch(t *testing.T) {
+	t.Parallel()
 	mw := &testMiddleware{shouldError: true}
 	server := NewStandardRPCServer(nil)
 	server.middlewares = []Middleware{mw}
@@ -943,6 +962,7 @@ func TestStandardRPCServer_middlewareRequestBlocksBatch(t *testing.T) {
 }
 
 func TestStandardRPCServer_middlewareMultipleResponseFailures(t *testing.T) {
+	t.Parallel()
 	server := NewStandardRPCServer(nil)
 	server.middlewares = []Middleware{
 		&failingResponseMiddleware{failID: float64(2)},
@@ -1010,6 +1030,7 @@ func TestStandardRPCServer_middlewareMultipleResponseFailures(t *testing.T) {
 // ============= CORS TESTS =============
 
 func TestStandardRPCServer_corsHeaders(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name            string
 		corsConfig      *CORSConfig
@@ -1066,6 +1087,7 @@ func TestStandardRPCServer_corsHeaders(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			server := NewStandardRPCServer(tt.corsConfig)
 
 			// Test RPC endpoint
@@ -1089,6 +1111,7 @@ func TestStandardRPCServer_corsHeaders(t *testing.T) {
 }
 
 func TestStandardRPCServer_corsOptionsPreflight(t *testing.T) {
+	t.Parallel()
 	server := NewStandardRPCServer(&CORSConfig{
 		AllowOrigin:  "https://example.com",
 		AllowMethods: "GET, POST, PUT, OPTIONS",
@@ -1111,6 +1134,7 @@ func TestStandardRPCServer_corsOptionsPreflight(t *testing.T) {
 }
 
 func TestStandardRPCServer_corsHealthEndpoint(t *testing.T) {
+	t.Parallel()
 	server := NewStandardRPCServer(&CORSConfig{
 		AllowOrigin:  "https://health.example.com",
 		AllowMethods: "GET, HEAD",
@@ -1132,6 +1156,7 @@ func TestStandardRPCServer_corsHealthEndpoint(t *testing.T) {
 // ============= SCHEMA DISCOVERY TESTS =============
 
 func TestSchemaMethod_AddAndCall(t *testing.T) {
+	t.Parallel()
 	server := NewStandardRPCServer(nil)
 	chainID := uint64(42)
 
@@ -1144,7 +1169,7 @@ func TestSchemaMethod_AddAndCall(t *testing.T) {
 
 	// Call the method via the server
 	method := server.methods["getAppchainSchema"]
-	result, err := method(context.Background(), []any{})
+	result, err := method(t.Context(), []any{})
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -1171,15 +1196,17 @@ func TestSchemaMethod_AddAndCall(t *testing.T) {
 }
 
 func TestSchemaMethod_DifferentChainIDs(t *testing.T) {
+	t.Parallel()
 	chainIDs := []uint64{1, 42, 100, 999}
 
 	for _, chainID := range chainIDs {
 		t.Run("chainID_"+string(rune(chainID)), func(t *testing.T) {
+			t.Parallel()
 			server := NewStandardRPCServer(nil)
 			AddSchemaMethod[TestTransaction[TestReceipt], TestReceipt, TestBlock](server, chainID)
 
 			method := server.methods["getAppchainSchema"]
-			result, err := method(context.Background(), []any{})
+			result, err := method(t.Context(), []any{})
 
 			require.NoError(t, err)
 

@@ -8,7 +8,6 @@ package rpc
 // see rpc_test.go (TestStandardRPCServer_* functions).
 
 import (
-	"context"
 	"crypto/sha256"
 	"testing"
 
@@ -53,6 +52,7 @@ func setupBlockTestEnvironment(t *testing.T) (
 }
 
 func TestBlockMethods_GetBlock_Success(t *testing.T) {
+	t.Parallel()
 	methods, appchainDB, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
@@ -65,7 +65,7 @@ func TestBlockMethods_GetBlock_Success(t *testing.T) {
 	}
 
 	// Store block in database using CBOR marshaling
-	err := appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
+	err := appchainDB.Update(t.Context(), func(tx kv.RwTx) error {
 		blockBytes, marshalErr := cbor.Marshal(testBlock)
 		if marshalErr != nil {
 			return marshalErr
@@ -76,7 +76,7 @@ func TestBlockMethods_GetBlock_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get the block
-	result, err := methods.GetBlock(context.Background(), []any{float64(blockNumber)})
+	result, err := methods.GetBlock(t.Context(), []any{float64(blockNumber)})
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -89,11 +89,12 @@ func TestBlockMethods_GetBlock_Success(t *testing.T) {
 }
 
 func TestBlockMethods_GetBlock_NotFound(t *testing.T) {
+	t.Parallel()
 	methods, _, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
 	// Try to get a non-existent block
-	result, err := methods.GetBlock(context.Background(), []any{float64(999)})
+	result, err := methods.GetBlock(t.Context(), []any{float64(999)})
 
 	require.Error(t, err)
 	assert.Nil(t, result)
@@ -101,17 +102,19 @@ func TestBlockMethods_GetBlock_NotFound(t *testing.T) {
 }
 
 func TestBlockMethods_GetBlock_WrongParamsCount(t *testing.T) {
+	t.Parallel()
 	methods, _, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
 	// Too many parameters
-	result, err := methods.GetBlock(context.Background(), []any{float64(1), float64(2)})
+	result, err := methods.GetBlock(t.Context(), []any{float64(1), float64(2)})
 	require.Error(t, err)
 	assert.Nil(t, result)
 	require.ErrorIs(t, err, ErrWrongParamsCount)
 }
 
 func TestBlockMethods_GetBlock_InvalidBlockNumber(t *testing.T) {
+	t.Parallel()
 	methods, _, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
@@ -139,7 +142,8 @@ func TestBlockMethods_GetBlock_InvalidBlockNumber(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := methods.GetBlock(context.Background(), []any{tt.blockNumber})
+			t.Parallel()
+			result, err := methods.GetBlock(t.Context(), []any{tt.blockNumber})
 			if tt.wantErr {
 				require.Error(t, err)
 				assert.Nil(t, result)
@@ -151,6 +155,7 @@ func TestBlockMethods_GetBlock_InvalidBlockNumber(t *testing.T) {
 }
 
 func TestBlockMethods_GetBlock_MultipleBlocks(t *testing.T) {
+	t.Parallel()
 	methods, appchainDB, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
@@ -173,7 +178,7 @@ func TestBlockMethods_GetBlock_MultipleBlocks(t *testing.T) {
 		},
 	}
 
-	err := appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
+	err := appchainDB.Update(t.Context(), func(tx kv.RwTx) error {
 		for _, block := range blocks {
 			blockBytes, marshalErr := cbor.Marshal(block)
 			if marshalErr != nil {
@@ -192,7 +197,7 @@ func TestBlockMethods_GetBlock_MultipleBlocks(t *testing.T) {
 	// Retrieve each block and verify
 	for _, expectedBlock := range blocks {
 		result, err := methods.GetBlock(
-			context.Background(),
+			t.Context(),
 			[]any{float64(expectedBlock.BlockNumber)},
 		)
 		require.NoError(t, err)
@@ -207,6 +212,7 @@ func TestBlockMethods_GetBlock_MultipleBlocks(t *testing.T) {
 }
 
 func TestBlockMethods_GetBlock_ZeroBlock(t *testing.T) {
+	t.Parallel()
 	methods, appchainDB, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
@@ -217,7 +223,7 @@ func TestBlockMethods_GetBlock_ZeroBlock(t *testing.T) {
 		Root:        sha256.Sum256([]byte("genesis-root")),
 	}
 
-	err := appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
+	err := appchainDB.Update(t.Context(), func(tx kv.RwTx) error {
 		blockBytes, marshalErr := cbor.Marshal(genesisBlock)
 		if marshalErr != nil {
 			return marshalErr
@@ -228,7 +234,7 @@ func TestBlockMethods_GetBlock_ZeroBlock(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get block 0
-	result, err := methods.GetBlock(context.Background(), []any{float64(0)})
+	result, err := methods.GetBlock(t.Context(), []any{float64(0)})
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -240,6 +246,7 @@ func TestBlockMethods_GetBlock_ZeroBlock(t *testing.T) {
 }
 
 func TestBlockMethods_GetBlock_LargeBlockNumber(t *testing.T) {
+	t.Parallel()
 	methods, appchainDB, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
@@ -251,7 +258,7 @@ func TestBlockMethods_GetBlock_LargeBlockNumber(t *testing.T) {
 		Root:        sha256.Sum256([]byte("large-root")),
 	}
 
-	err := appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
+	err := appchainDB.Update(t.Context(), func(tx kv.RwTx) error {
 		blockBytes, marshalErr := cbor.Marshal(largeBlock)
 		if marshalErr != nil {
 			return marshalErr
@@ -262,7 +269,7 @@ func TestBlockMethods_GetBlock_LargeBlockNumber(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get the large block
-	result, err := methods.GetBlock(context.Background(), []any{float64(largeBlockNumber)})
+	result, err := methods.GetBlock(t.Context(), []any{float64(largeBlockNumber)})
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -273,6 +280,7 @@ func TestBlockMethods_GetBlock_LargeBlockNumber(t *testing.T) {
 }
 
 func TestBlockMethods_AddBlockMethods(t *testing.T) {
+	t.Parallel()
 	_, appchainDB, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
@@ -290,13 +298,14 @@ func TestBlockMethods_AddBlockMethods(t *testing.T) {
 }
 
 func TestBlockMethods_GetBlock_CorruptedData(t *testing.T) {
+	t.Parallel()
 	methods, appchainDB, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
 	blockNumber := uint64(50)
 
 	// Store corrupted (non-CBOR) data
-	err := appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
+	err := appchainDB.Update(t.Context(), func(tx kv.RwTx) error {
 		corruptedData := []byte{0xFF, 0xFE, 0xFD, 0xFC}
 
 		return gosdk.WriteBlock(tx, blockNumber, corruptedData)
@@ -304,13 +313,14 @@ func TestBlockMethods_GetBlock_CorruptedData(t *testing.T) {
 	require.NoError(t, err)
 
 	// Try to get the block - should fail to unmarshal
-	result, err := methods.GetBlock(context.Background(), []any{float64(blockNumber)})
+	result, err := methods.GetBlock(t.Context(), []any{float64(blockNumber)})
 
 	require.Error(t, err)
 	assert.Nil(t, result)
 }
 
 func TestBlockMethods_GetBlock_LatestBlock(t *testing.T) {
+	t.Parallel()
 	methods, appchainDB, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
@@ -334,7 +344,7 @@ func TestBlockMethods_GetBlock_LatestBlock(t *testing.T) {
 	}
 
 	// Store blocks and update last block pointer
-	err := appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
+	err := appchainDB.Update(t.Context(), func(tx kv.RwTx) error {
 		for _, block := range blocks {
 			blockBytes, marshalErr := cbor.Marshal(block)
 			if marshalErr != nil {
@@ -351,7 +361,7 @@ func TestBlockMethods_GetBlock_LatestBlock(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get latest block (no params)
-	result, err := methods.GetBlock(context.Background(), []any{})
+	result, err := methods.GetBlock(t.Context(), []any{})
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -364,11 +374,12 @@ func TestBlockMethods_GetBlock_LatestBlock(t *testing.T) {
 }
 
 func TestBlockMethods_GetBlock_LatestBlock_NoBlocks(t *testing.T) {
+	t.Parallel()
 	methods, _, cleanup := setupBlockTestEnvironment(t)
 	defer cleanup()
 
 	// Try to get latest block when no blocks exist
-	result, err := methods.GetBlock(context.Background(), []any{})
+	result, err := methods.GetBlock(t.Context(), []any{})
 
 	require.Error(t, err)
 	assert.Nil(t, result)

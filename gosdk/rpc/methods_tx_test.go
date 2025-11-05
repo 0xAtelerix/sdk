@@ -13,7 +13,6 @@ package rpc
 // see rpc_test.go (TestStandardRPCServer_* functions).
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -78,6 +77,7 @@ func setupTransactionTestEnvironment(t *testing.T) (
 }
 
 func TestTransactionMethods_GetTransaction_FromTxPool(t *testing.T) {
+	t.Parallel()
 	methods, pool, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -88,14 +88,14 @@ func TestTransactionMethods_GetTransaction_FromTxPool(t *testing.T) {
 		Value: 100,
 	}
 
-	err := pool.AddTransaction(context.Background(), tx)
+	err := pool.AddTransaction(t.Context(), tx)
 	require.NoError(t, err)
 
 	// Get transaction by hash
 	txHash := tx.Hash()
 	hashStr := "0x" + hex.EncodeToString(txHash[:])
 
-	result, err := methods.GetTransaction(context.Background(), []any{hashStr})
+	result, err := methods.GetTransaction(t.Context(), []any{hashStr})
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -108,6 +108,7 @@ func TestTransactionMethods_GetTransaction_FromTxPool(t *testing.T) {
 }
 
 func TestTransactionMethods_GetTransaction_FromBlocks(t *testing.T) {
+	t.Parallel()
 	methods, _, appchainDB, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -121,7 +122,7 @@ func TestTransactionMethods_GetTransaction_FromBlocks(t *testing.T) {
 	blockNumber := uint64(10)
 	txIndex := uint32(0)
 
-	err := appchainDB.Update(context.Background(), func(rwTx kv.RwTx) error {
+	err := appchainDB.Update(t.Context(), func(rwTx kv.RwTx) error {
 		// Store block transactions (primary storage)
 		blockNumBytes := utility.Uint64ToBytes(blockNumber)
 		txs := []TestTransaction[TestReceipt]{tx}
@@ -146,7 +147,7 @@ func TestTransactionMethods_GetTransaction_FromBlocks(t *testing.T) {
 
 	// Get transaction by hash
 	hashStr := "0x" + hex.EncodeToString(txHash[:])
-	result, err := methods.GetTransaction(context.Background(), []any{hashStr})
+	result, err := methods.GetTransaction(t.Context(), []any{hashStr})
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -159,6 +160,7 @@ func TestTransactionMethods_GetTransaction_FromBlocks(t *testing.T) {
 }
 
 func TestTransactionMethods_GetTransaction_NotFound(t *testing.T) {
+	t.Parallel()
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -166,7 +168,7 @@ func TestTransactionMethods_GetTransaction_NotFound(t *testing.T) {
 	nonExistentHash := sha256.Sum256([]byte("non-existent-tx"))
 	hashStr := "0x" + hex.EncodeToString(nonExistentHash[:])
 
-	result, err := methods.GetTransaction(context.Background(), []any{hashStr})
+	result, err := methods.GetTransaction(t.Context(), []any{hashStr})
 
 	require.Error(t, err)
 	assert.Nil(t, result)
@@ -174,34 +176,37 @@ func TestTransactionMethods_GetTransaction_NotFound(t *testing.T) {
 }
 
 func TestTransactionMethods_GetTransaction_WrongParamsCount(t *testing.T) {
+	t.Parallel()
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
 	// No parameters
-	result, err := methods.GetTransaction(context.Background(), []any{})
+	result, err := methods.GetTransaction(t.Context(), []any{})
 	require.Error(t, err)
 	assert.Nil(t, result)
 	require.ErrorIs(t, err, ErrWrongParamsCount)
 
 	// Too many parameters
-	result, err = methods.GetTransaction(context.Background(), []any{"hash1", "hash2"})
+	result, err = methods.GetTransaction(t.Context(), []any{"hash1", "hash2"})
 	require.Error(t, err)
 	assert.Nil(t, result)
 	require.ErrorIs(t, err, ErrWrongParamsCount)
 }
 
 func TestTransactionMethods_GetTransaction_InvalidHashType(t *testing.T) {
+	t.Parallel()
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
 	// Non-string parameter
-	result, err := methods.GetTransaction(context.Background(), []any{12345})
+	result, err := methods.GetTransaction(t.Context(), []any{12345})
 	require.Error(t, err)
 	assert.Nil(t, result)
 	require.ErrorIs(t, err, ErrHashParameterMustBeString)
 }
 
 func TestTransactionMethods_GetTransactionsByBlockNumber_Success(t *testing.T) {
+	t.Parallel()
 	methods, _, appchainDB, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -213,7 +218,7 @@ func TestTransactionMethods_GetTransactionsByBlockNumber_Success(t *testing.T) {
 	}
 
 	// Store transactions in block
-	err := appchainDB.Update(context.Background(), func(rwTx kv.RwTx) error {
+	err := appchainDB.Update(t.Context(), func(rwTx kv.RwTx) error {
 		txsBytes, marshalErr := cbor.Marshal(txs)
 		if marshalErr != nil {
 			return marshalErr
@@ -225,7 +230,7 @@ func TestTransactionMethods_GetTransactionsByBlockNumber_Success(t *testing.T) {
 
 	// Get transactions by block number
 	result, err := methods.GetTransactionsByBlockNumber(
-		context.Background(),
+		t.Context(),
 		[]any{float64(blockNumber)},
 	)
 
@@ -244,11 +249,12 @@ func TestTransactionMethods_GetTransactionsByBlockNumber_Success(t *testing.T) {
 }
 
 func TestTransactionMethods_GetTransactionsByBlockNumber_EmptyBlock(t *testing.T) {
+	t.Parallel()
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
 	// Get transactions from non-existent block
-	result, err := methods.GetTransactionsByBlockNumber(context.Background(), []any{float64(999)})
+	result, err := methods.GetTransactionsByBlockNumber(t.Context(), []any{float64(999)})
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -259,6 +265,7 @@ func TestTransactionMethods_GetTransactionsByBlockNumber_EmptyBlock(t *testing.T
 }
 
 func TestTransactionMethods_GetExternalTransactions_Success(t *testing.T) {
+	t.Parallel()
 	methods, _, appchainDB, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -275,7 +282,7 @@ func TestTransactionMethods_GetExternalTransactions_Success(t *testing.T) {
 	}
 
 	// Store external transactions
-	err := appchainDB.Update(context.Background(), func(rwTx kv.RwTx) error {
+	err := appchainDB.Update(t.Context(), func(rwTx kv.RwTx) error {
 		_, writeErr := gosdk.WriteExternalTransactions(rwTx, blockNumber, externalTxs)
 
 		return writeErr
@@ -284,7 +291,7 @@ func TestTransactionMethods_GetExternalTransactions_Success(t *testing.T) {
 
 	// Get external transactions
 	result, err := methods.GetExternalTransactions(
-		context.Background(),
+		t.Context(),
 		[]any{float64(blockNumber)},
 	)
 
@@ -302,11 +309,12 @@ func TestTransactionMethods_GetExternalTransactions_Success(t *testing.T) {
 }
 
 func TestTransactionMethods_GetExternalTransactions_EmptyBlock(t *testing.T) {
+	t.Parallel()
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
 	// Get external transactions from non-existent block
-	result, err := methods.GetExternalTransactions(context.Background(), []any{float64(999)})
+	result, err := methods.GetExternalTransactions(t.Context(), []any{float64(999)})
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -317,6 +325,7 @@ func TestTransactionMethods_GetExternalTransactions_EmptyBlock(t *testing.T) {
 }
 
 func TestTransactionMethods_GetTransactionStatus_Processed(t *testing.T) {
+	t.Parallel()
 	methods, _, appchainDB, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -327,7 +336,7 @@ func TestTransactionMethods_GetTransactionStatus_Processed(t *testing.T) {
 		TransactionHash: testHash,
 	}
 
-	err := appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
+	err := appchainDB.Update(t.Context(), func(tx kv.RwTx) error {
 		receiptData, marshalErr := cbor.Marshal(testReceipt)
 		if marshalErr != nil {
 			return marshalErr
@@ -339,7 +348,7 @@ func TestTransactionMethods_GetTransactionStatus_Processed(t *testing.T) {
 
 	// Get transaction status
 	hashStr := "0x" + hex.EncodeToString(testHash[:])
-	result, err := methods.GetTransactionStatus(context.Background(), []any{hashStr})
+	result, err := methods.GetTransactionStatus(t.Context(), []any{hashStr})
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -350,6 +359,7 @@ func TestTransactionMethods_GetTransactionStatus_Processed(t *testing.T) {
 }
 
 func TestTransactionMethods_GetTransactionStatus_Failed(t *testing.T) {
+	t.Parallel()
 	methods, _, appchainDB, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -360,7 +370,7 @@ func TestTransactionMethods_GetTransactionStatus_Failed(t *testing.T) {
 		TransactionHash: testHash,
 	}
 
-	err := appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
+	err := appchainDB.Update(t.Context(), func(tx kv.RwTx) error {
 		receiptData, marshalErr := cbor.Marshal(testReceipt)
 		if marshalErr != nil {
 			return marshalErr
@@ -372,7 +382,7 @@ func TestTransactionMethods_GetTransactionStatus_Failed(t *testing.T) {
 
 	// Get transaction status
 	hashStr := "0x" + hex.EncodeToString(testHash[:])
-	result, err := methods.GetTransactionStatus(context.Background(), []any{hashStr})
+	result, err := methods.GetTransactionStatus(t.Context(), []any{hashStr})
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -383,6 +393,7 @@ func TestTransactionMethods_GetTransactionStatus_Failed(t *testing.T) {
 }
 
 func TestTransactionMethods_GetTransactionStatus_Pending(t *testing.T) {
+	t.Parallel()
 	methods, pool, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -393,14 +404,14 @@ func TestTransactionMethods_GetTransactionStatus_Pending(t *testing.T) {
 		Value: 999,
 	}
 
-	err := pool.AddTransaction(context.Background(), tx)
+	err := pool.AddTransaction(t.Context(), tx)
 	require.NoError(t, err)
 
 	// Get transaction status
 	txHash := tx.Hash()
 	hashStr := "0x" + hex.EncodeToString(txHash[:])
 
-	result, err := methods.GetTransactionStatus(context.Background(), []any{hashStr})
+	result, err := methods.GetTransactionStatus(t.Context(), []any{hashStr})
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -412,6 +423,7 @@ func TestTransactionMethods_GetTransactionStatus_Pending(t *testing.T) {
 }
 
 func TestTransactionMethods_AddTransactionMethods(t *testing.T) {
+	t.Parallel()
 	_, pool, appchainDB, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -440,6 +452,7 @@ func TestTransactionMethods_AddTransactionMethods(t *testing.T) {
 // These tests were migrated from methods_txpool_test.go
 
 func TestTransactionMethods_SendTransaction_Success(t *testing.T) {
+	t.Parallel()
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -449,7 +462,7 @@ func TestTransactionMethods_SendTransaction_Success(t *testing.T) {
 		Value: 100,
 	}
 
-	result, err := methods.SendTransaction(context.Background(), []any{tx})
+	result, err := methods.SendTransaction(t.Context(), []any{tx})
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -467,23 +480,25 @@ func TestTransactionMethods_SendTransaction_Success(t *testing.T) {
 }
 
 func TestTransactionMethods_SendTransaction_WrongParamsCount(t *testing.T) {
+	t.Parallel()
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
 	// No parameters
-	result, err := methods.SendTransaction(context.Background(), []any{})
+	result, err := methods.SendTransaction(t.Context(), []any{})
 	require.Error(t, err)
 	assert.Nil(t, result)
 	require.ErrorIs(t, err, ErrWrongParamsCount)
 
 	// Too many parameters
-	result, err = methods.SendTransaction(context.Background(), []any{"tx1", "tx2"})
+	result, err = methods.SendTransaction(t.Context(), []any{"tx1", "tx2"})
 	require.Error(t, err)
 	assert.Nil(t, result)
 	require.ErrorIs(t, err, ErrWrongParamsCount)
 }
 
 func TestTransactionMethods_SendTransaction_InvalidData(t *testing.T) {
+	t.Parallel()
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -504,7 +519,8 @@ func TestTransactionMethods_SendTransaction_InvalidData(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := methods.SendTransaction(context.Background(), []any{tt.txData})
+			t.Parallel()
+			result, err := methods.SendTransaction(t.Context(), []any{tt.txData})
 			require.Error(t, err)
 			assert.Nil(t, result)
 		})
@@ -512,10 +528,11 @@ func TestTransactionMethods_SendTransaction_InvalidData(t *testing.T) {
 }
 
 func TestTransactionMethods_GetPendingTransactions_Empty(t *testing.T) {
+	t.Parallel()
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
-	result, err := methods.GetPendingTransactions(context.Background(), []any{})
+	result, err := methods.GetPendingTransactions(t.Context(), []any{})
 
 	require.NoError(t, err)
 	// Result can be nil or an empty array depending on implementation
@@ -527,6 +544,7 @@ func TestTransactionMethods_GetPendingTransactions_Empty(t *testing.T) {
 }
 
 func TestTransactionMethods_GetPendingTransactions_WithTransactions(t *testing.T) {
+	t.Parallel()
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -538,12 +556,12 @@ func TestTransactionMethods_GetPendingTransactions_WithTransactions(t *testing.T
 	}
 
 	for _, tx := range txs {
-		_, err := methods.SendTransaction(context.Background(), []any{tx})
+		_, err := methods.SendTransaction(t.Context(), []any{tx})
 		require.NoError(t, err)
 	}
 
 	// Get pending transactions
-	result, err := methods.GetPendingTransactions(context.Background(), []any{})
+	result, err := methods.GetPendingTransactions(t.Context(), []any{})
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -561,11 +579,12 @@ func TestTransactionMethods_GetPendingTransactions_WithTransactions(t *testing.T
 }
 
 func TestTransactionMethods_GetPendingTransactions_IgnoresParams(t *testing.T) {
+	t.Parallel()
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
 	// GetPendingTransactions should ignore any parameters
-	result, err := methods.GetPendingTransactions(context.Background(), []any{"ignored", 123})
+	result, err := methods.GetPendingTransactions(t.Context(), []any{"ignored", 123})
 
 	require.NoError(t, err)
 	// Result can be nil or an empty array depending on implementation
@@ -577,6 +596,7 @@ func TestTransactionMethods_GetPendingTransactions_IgnoresParams(t *testing.T) {
 }
 
 func TestTransactionMethods_SendAndRetrieve_Integration(t *testing.T) {
+	t.Parallel()
 	methods, pool, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -587,11 +607,11 @@ func TestTransactionMethods_SendAndRetrieve_Integration(t *testing.T) {
 	}
 
 	// Send transaction
-	hashStr, err := methods.SendTransaction(context.Background(), []any{tx})
+	hashStr, err := methods.SendTransaction(t.Context(), []any{tx})
 	require.NoError(t, err)
 
 	// Get pending transactions
-	result, err := methods.GetPendingTransactions(context.Background(), []any{})
+	result, err := methods.GetPendingTransactions(t.Context(), []any{})
 	require.NoError(t, err)
 
 	pendingTxs, ok := result.([]TestTransaction[TestReceipt])
@@ -607,12 +627,13 @@ func TestTransactionMethods_SendAndRetrieve_Integration(t *testing.T) {
 	assert.Equal(t, expectedHashStr, hashStr)
 
 	// Verify transaction can be retrieved from pool directly
-	retrievedTx, err := pool.GetTransaction(context.Background(), expectedHash[:])
+	retrievedTx, err := pool.GetTransaction(t.Context(), expectedHash[:])
 	require.NoError(t, err)
 	assert.Equal(t, tx.Value, retrievedTx.Value)
 }
 
 func TestTransactionMethods_SendTransaction_DuplicateTransaction(t *testing.T) {
+	t.Parallel()
 	methods, _, _, cleanup := setupTransactionTestEnvironment(t)
 	defer cleanup()
 
@@ -623,12 +644,12 @@ func TestTransactionMethods_SendTransaction_DuplicateTransaction(t *testing.T) {
 	}
 
 	// Send transaction first time
-	hash1, err := methods.SendTransaction(context.Background(), []any{tx})
+	hash1, err := methods.SendTransaction(t.Context(), []any{tx})
 	require.NoError(t, err)
 	require.NotNil(t, hash1)
 
 	// Send same transaction again - should succeed (txpool handles duplicates)
-	hash2, err := methods.SendTransaction(context.Background(), []any{tx})
+	hash2, err := methods.SendTransaction(t.Context(), []any{tx})
 	require.NoError(t, err)
 	require.NotNil(t, hash2)
 
@@ -636,7 +657,7 @@ func TestTransactionMethods_SendTransaction_DuplicateTransaction(t *testing.T) {
 	assert.Equal(t, hash1, hash2)
 
 	// Should still only have one transaction in pending
-	result, err := methods.GetPendingTransactions(context.Background(), []any{})
+	result, err := methods.GetPendingTransactions(t.Context(), []any{})
 	require.NoError(t, err)
 
 	pendingTxs, ok := result.([]TestTransaction[TestReceipt])
