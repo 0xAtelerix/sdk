@@ -18,7 +18,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
@@ -267,7 +266,7 @@ runFor:
 		logger.Debug().Int("batches num", len(batches)).Msg("received new batches")
 
 		for i, batch := range batches {
-			logger.Debug().Int("batch", i).Int("tx", len(batches[i].Transactions)).Int("blocks", len(batches[i].ExternalBlocks)).Msg("received new batch")
+			logger.Debug().Int("batch", i).Int("tx", len(batch.Transactions)).Int("blocks", len(batch.ExternalBlocks)).Msg("received new batch")
 
 			start := time.Now() // метка начала
 
@@ -324,10 +323,24 @@ runFor:
 				logger.Debug().Uint64("block_number", blockNumber).
 					Msg("Write block")
 
-				if err = WriteBlock(rwtx, block.Number(), block.Bytes()); err != nil {
+				blockBytes, marshalErr := cbor.Marshal(block)
+				if marshalErr != nil {
+					logger.Error().Err(marshalErr).Msg("Failed to marshal block")
+
+					return fmt.Errorf("%w: %w", ErrBlockMarshalling, marshalErr)
+				}
+
+				if err = WriteBlock(rwtx, blockNumber, blockBytes); err != nil {
 					logger.Error().Err(err).Msg("Failed to write block")
 
-					return fmt.Errorf("failed to write block: %w", err)
+					return fmt.Errorf("%w: %w", ErrBlockWrite, err)
+				}
+
+				// Store transactions with relation to the block
+				if err = WriteBlockTransactions(rwtx, blockNumber, batch.Transactions); err != nil {
+					logger.Error().Err(err).Msg("Failed to write block transactions")
+
+					return fmt.Errorf("%w: %w", ErrBlockTransactionsWrite, err)
 				}
 
 				blockHash := block.Hash()
@@ -416,7 +429,7 @@ runFor:
 					Set(float64(batch.EndOffset))
 				BlockExternalTxs.WithLabelValues(vid, cid).Observe(float64(len(extTxs)))
 				BlockInternalTxs.WithLabelValues(vid, cid).Observe(float64(len(batch.Transactions)))
-				BlockBytes.WithLabelValues(vid, cid).Observe(float64(len(block.Bytes())))
+				BlockBytes.WithLabelValues(vid, cid).Observe(float64(len(blockBytes)))
 
 				previousBlockNumber = blockNumber
 				previousBlockHash = block.Hash()
@@ -542,6 +555,45 @@ func WriteBlock(rwtx kv.RwTx, blockNumber uint64, blockBytes []byte) error {
 	return rwtx.Put(BlocksBucket, number, blockBytes)
 }
 
+// WriteBlockTransactions stores the transactions for a block in CBOR format.
+// Storage strategy: Transactions are stored once in BlockTransactionsBucket,
+// while TxLookupBucket maintains a lightweight index (txHash -> blockNumber + txIndex).
+func WriteBlockTransactions[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
+	rwtx kv.RwTx,
+	blockNumber uint64,
+	txs []appTx,
+) error {
+	blockNumBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(blockNumBytes, blockNumber)
+
+	// Marshal transactions to CBOR - this is the only place we store full transaction data
+	txsBytes, err := cbor.Marshal(txs)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrTransactionsMarshalling, err)
+	}
+
+	// Store in BlockTransactionsBucket (primary storage)
+	if err := rwtx.Put(BlockTransactionsBucket, blockNumBytes, txsBytes); err != nil {
+		return fmt.Errorf("%w: %w", ErrBlockTransactionsWrite, err)
+	}
+
+	// Create lookup entries: txHash -> (blockNumber, txIndex)
+	for i, tx := range txs {
+		txHash := tx.Hash()
+
+		// Encode: blockNumber (8 bytes) + txIndex (4 bytes)
+		lookupEntry := make([]byte, 12)
+		binary.BigEndian.PutUint64(lookupEntry[0:8], blockNumber)
+		binary.BigEndian.PutUint32(lookupEntry[8:12], uint32(i))
+
+		if err := rwtx.Put(TxLookupBucket, txHash[:], lookupEntry); err != nil {
+			return fmt.Errorf("%w (tx %x): %w", ErrTransactionLookupWrite, txHash[:4], err)
+		}
+	}
+
+	return nil
+}
+
 func WriteLastBlock(rwtx kv.RwTx, number uint64, hash [32]byte) error {
 	value := make([]byte, 8+32)
 	binary.BigEndian.PutUint64(value[:8], number)
@@ -565,8 +617,7 @@ func GetLastBlock(tx kv.Tx) (uint64, [32]byte, error) {
 	return number, ([32]byte)(value[8:]), err
 }
 
-// Функция записи внешней транзакции в MDBX
-// todo ответственность за взаимодействия с валидатором на стороне AppchainEmitterServer
+// WriteExternalTransactions writes external transactions to the database in CBOR format.
 // Should be called strictly once per block
 func WriteExternalTransactions(
 	dbTx kv.RwTx,
@@ -575,14 +626,15 @@ func WriteExternalTransactions(
 ) ([32]byte, error) {
 	root := Merklize(txs)
 
-	value, err := proto.Marshal(TransactionToProto(txs, blockNumber, root))
+	// Marshal to CBOR (used by both validators and explorer)
+	value, err := cbor.Marshal(txs)
 	if err != nil {
 		log.Error().Err(err).Msg("Transaction serialization failed")
 
 		return [32]byte{}, fmt.Errorf("transaction serialization failed: %w", err)
 	}
 
-	// Записываем в базу
+	// Write to database
 	key := make([]byte, 8)
 	binary.BigEndian.PutUint64(key, blockNumber)
 
@@ -594,25 +646,30 @@ func WriteExternalTransactions(
 	return root, nil
 }
 
-func TransactionToProto(
-	txs []apptypes.ExternalTransaction,
+// ReadExternalTransactions reads external transactions from the database.
+// This is used by both the validator/emitter API and the block explorer RPC.
+func ReadExternalTransactions(
+	tx kv.Tx,
 	blockNumber uint64,
-	root [32]byte,
-) *emitterproto.GetExternalTransactionsResponse_BlockTransactions {
-	protoTxs := make([]*emitterproto.ExternalTransaction, len(txs))
+) ([]apptypes.ExternalTransaction, error) {
+	key := make([]byte, 8)
+	binary.BigEndian.PutUint64(key, blockNumber)
 
-	for i, tx := range txs {
-		protoTxs[i] = &emitterproto.ExternalTransaction{
-			ChainId: uint64(tx.ChainID),
-			Tx:      tx.Tx,
-		}
+	value, err := tx.GetOne(ExternalTxBucket, key)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrExternalTransactionsGet, err)
 	}
 
-	return &emitterproto.GetExternalTransactionsResponse_BlockTransactions{
-		BlockNumber:          blockNumber,
-		TransactionsRootHash: root[:],
-		ExternalTransactions: protoTxs,
+	if len(value) == 0 {
+		return []apptypes.ExternalTransaction{}, nil
 	}
+
+	var txs []apptypes.ExternalTransaction
+	if err := cbor.Unmarshal(value, &txs); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrExternalTransactionsUnmarshal, err)
+	}
+
+	return txs, nil
 }
 
 func CheckpointToProto(cp apptypes.Checkpoint) *emitterproto.CheckpointResponse_Checkpoint {

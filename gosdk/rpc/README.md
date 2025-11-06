@@ -1,7 +1,6 @@
 # Atelerix RPC Server
 
-A lightweight, composable JSON-RPC 2.0 server for blockchain applications with HTTP middleware support.
-standard methods/headers)
+A lightweight, composable JSON-RPC 2.0 server for blockchain applications with HTTP middleware support, CORS configuration, and modular method sets for transactions, receipts, blocks, and schema discovery.
 ## Table of Contents
 
 - [Quick Start](#quick-start)
@@ -16,6 +15,7 @@ standard methods/headers)
 - [API Reference](#api-reference)
 - [Error Handling](#error-handling)
 - [Testing](#testing)
+- [Architecture](#architecture)
 
 ## Quick Start
 
@@ -35,8 +35,8 @@ func main() {
     // Add middleware (optional)
     server.AddMiddleware(&LoggingMiddleware{})
 
-    // Add standard blockchain methods
-    rpc.AddStandardMethods[MyTransaction, MyReceipt](server, appchainDB, txpool)
+    // Add standard methods (transactions, receipts, blocks, schema)
+    rpc.AddStandardMethods[MyTransaction, MyReceipt, MyBlock](server, appchainDB, txpool, chainID)
 
     // Start server
     log.Println("RPC server starting on :8080")
@@ -116,22 +116,37 @@ server.AddMiddleware(&AuthMiddleware{})
 ### Standard Methods (Recommended)
 
 ```go
-rpc.AddStandardMethods[MyTransaction, MyReceipt](server, appchainDB, txpool)
+rpc.AddStandardMethods[MyTransaction, MyReceipt, MyBlock](
+    server,
+    appchainDB,
+    txpool,
+    chainID,
+)
 ```
 
-Includes: transaction submission, status queries, receipts, and txpool operations.
+Includes: transaction submission, status queries, receipts, txpool operations, block queries, and schema discovery.
 
 ### Individual Method Sets
 
+Add only the method sets you need:
+
 ```go
-// Transaction operations
+// Transaction operations (all transaction-related methods)
 rpc.AddTransactionMethods[MyTransaction, MyReceipt](server, txpool, appchainDB)
+// Provides: sendTransaction, getPendingTransactions, getTransaction,
+//           getTransactionStatus, getTransactionsByBlockNumber, getExternalTransactions
 
-// TxPool operations
-rpc.AddTxPoolMethods[MyTransaction, MyReceipt](server, txpool)
-
-// Receipt queries
+// Receipt queries (finalized transaction receipts)
 rpc.AddReceiptMethods[MyReceipt](server, appchainDB)
+// Provides: getTransactionReceipt
+
+// Block queries
+rpc.AddBlockMethods[MyTransaction, MyReceipt, MyBlock](server, appchainDB, chainID)
+// Provides: getBlock
+
+// Schema discovery (JSON Schema for types)
+rpc.AddSchemaMethod[MyTransaction, MyReceipt, MyBlock](server, chainID)
+// Provides: getAppchainSchema
 ```
 
 ## Custom Methods
@@ -157,6 +172,30 @@ curl -X POST http://localhost:8080/rpc \
     {"jsonrpc": "2.0", "method": "getTransactionStatus", "params": ["0x123"], "id": 1},
     {"jsonrpc": "2.0", "method": "getPendingTransactions", "params": [], "id": 2}
   ]'
+```
+
+## Usage Examples
+
+### Get Latest Block
+
+```bash
+# Get the latest block (no params)
+curl -X POST http://localhost:8080/rpc \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "method": "getBlock", "params": [], "id": 1}'
+
+# Get a specific block by number
+curl -X POST http://localhost:8080/rpc \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "method": "getBlock", "params": [100], "id": 1}'
+```
+
+### Query Transaction Status
+
+```bash
+curl -X POST http://localhost:8080/rpc \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "method": "getTransactionStatus", "params": ["0xabc..."], "id": 1}'
 ```
 
 ## Health Check
@@ -205,7 +244,7 @@ func main() {
     server.AddMiddleware(&LoggingMiddleware{})
 
     // Add standard methods
-    rpc.AddStandardMethods[MyTransaction, MyReceipt](server, db, txpool)
+    rpc.AddStandardMethods[MyTransaction, MyReceipt, MyBlock](server, db, txpool, chainID)
 
     // Add custom method
     server.AddMethod("ping", func(ctx context.Context, params []any) (any, error) {
@@ -227,20 +266,25 @@ func main() {
 
 ### Method Sets
 
-- `AddStandardMethods[T, R](server, db, txpool)` - All methods
-- `AddTransactionMethods[T, R](server, txpool, db)` - Transaction status during lifecycle
-- `AddTxPoolMethods[T, R](server, txpool)` - Submit/query transactions to/from pool
-- `AddReceiptMethods[R](server, db)` - Receipt queries once processed/failed
+- `AddStandardMethods[T, R, Block](server, db, txpool, chainID)` - All methods including transactions, receipts, blocks, and schema discovery
+- `AddTransactionMethods[T, R](server, txpool, db)` - All transaction-related methods (submit, query pending/finalized, status)
+- `AddReceiptMethods[R](server, db)` - Query transaction receipts (finalized only)
+- `AddBlockMethods[T, R, Block](server, db, chainID)` - Block query methods
+- `AddSchemaMethod[T, R, Block](server, chainID)` - Schema discovery (JSON Schema for appchain types for explorer integration)
 
 ### Available RPC Methods
 
-| Method | Description |
-|--------|-------------|
-| `sendTransaction` | Submit transaction to pool |
-| `getTransactionByHash` | Get transaction from pool |
-| `getTransactionStatus` | Get comprehensive status |
-| `getPendingTransactions` | List pending transactions |
-| `getTransactionReceipt` | Get transaction receipt |
+| Method | Category | Description |
+|--------|----------|-------------|
+| `sendTransaction` | Transactions | Submit transaction to pool |
+| `getPendingTransactions` | Transactions | List pending transactions |
+| `getTransaction` | Transactions | Get transaction by hash (checks finalized blocks + pending txpool) |
+| `getTransactionsByBlockNumber` | Transactions | Get all transactions in a block |
+| `getExternalTransactions` | Transactions | Get cross-chain transactions from a block |
+| `getTransactionStatus` | Transactions | Get comprehensive transaction status (finalized + pending) |
+| `getTransactionReceipt` | Receipts | Get transaction receipt |
+| `getBlock` | Blocks | Get block by number (omit params to get latest block) |
+| `getAppchainSchema` | Schema | Discover appchain block/transaction/receipt structure (JSON Schema) |
 
 ### Middleware Interface
 
@@ -259,16 +303,121 @@ type Middleware interface {
 
 ## Testing
 
-```go
-// Test with middleware
-server := rpc.NewStandardRPCServer(nil)
-server.AddMiddleware(&MyMiddleware{})
-server.AddMethod("test", func(ctx context.Context, params []any) (any, error) {
-    return "ok", nil
-})
+The RPC package includes comprehensive test coverage with both unit and integration tests.
 
-// Test request
-req := httptest.NewRequest("POST", "/rpc", strings.NewReader(`{"jsonrpc":"2.0","method":"test","id":1}`))
-w := httptest.NewRecorder()
-server.handleRPC(w, req)
+### Test Organization
+
+**Unit Tests** (`methods_*_test.go`):
+- Test method handlers directly without HTTP overhead
+- Fast execution and easy debugging
+- Focus on edge cases and error conditions
+- Files:
+  - `methods_receipt_test.go` - Receipt methods
+  - `methods_tx_test.go` - All transaction methods (submit, pending, queries, status)
+  - `methods_block_test.go` - Block methods
+  - `methods_schema_test.go` - Schema discovery methods
+
+**Integration Tests** (`rpc_test.go`):
+- Test full HTTP/JSON-RPC stack
+- Verify protocol compliance
+- Test middleware, CORS, batch requests
+- Ensure end-to-end functionality
+
+### Running Tests
+
+```bash
+# Run all tests
+go test ./gosdk/rpc -v
+
+# Run specific test suite
+go test ./gosdk/rpc -v -run TestReceiptMethods
+go test ./gosdk/rpc -v -run TestTransactionMethods
+go test ./gosdk/rpc -v -run TestBlockMethods
+go test ./gosdk/rpc -v -run TestSchemaMethods
+
+# Run integration tests only
+go test ./gosdk/rpc -v -run TestStandardRPCServer
 ```
+
+### Example Test
+
+```go
+// Unit test - direct method testing
+func TestGetTransactionReceipt(t *testing.T) {
+    methods := NewReceiptMethods[MyReceipt](appchainDB)
+
+    result, err := methods.GetTransactionReceipt(context.Background(), []any{txHash})
+
+    require.NoError(t, err)
+    assert.NotNil(t, result)
+}
+
+// Integration test - HTTP/JSON-RPC testing
+func TestRPCServer_GetReceipt(t *testing.T) {
+    server := NewStandardRPCServer(nil)
+    AddReceiptMethods[MyReceipt](server, appchainDB)
+
+    req := httptest.NewRequest("POST", "/rpc",
+        strings.NewReader(`{"jsonrpc":"2.0","method":"getTransactionReceipt","params":["0x123"],"id":1}`))
+    w := httptest.NewRecorder()
+
+    server.handleRPC(w, req)
+
+    assert.Equal(t, http.StatusOK, w.Code)
+}
+```
+
+## Architecture
+
+### Package Organization
+
+The RPC package is organized into logical components:
+
+- **Core Server**: JSON-RPC server implementation with middleware and CORS support
+- **Method Sets**: Modular method handlers for transactions, receipts, blocks, and schema discovery
+- **Tests**: Unit tests for individual method handlers and integration tests for the full HTTP/JSON-RPC stack
+
+### Design Principles
+
+- **Modular method sets** - Add only what you need (transactions, receipts, blocks, schema)
+- **Type-safe generics** - Catch type errors at compile time
+- **Layered architecture** - HTTP handling, JSON-RPC protocol, and business logic are separate
+- **Unit and integration tests** - Test handlers directly or through the full HTTP stack
+- **Easy to extend** - Add custom methods and middleware without modifying core code
+
+### Request Flow
+
+```
+HTTP Request
+    ↓
+CORS Headers Applied
+    ↓
+Request Middleware (auth, logging, etc.)
+    ↓
+JSON-RPC Parsing
+    ↓
+Method Router
+    ↓
+Method Handler (your business logic)
+    ↓
+Response Middleware
+    ↓
+JSON-RPC Response
+    ↓
+HTTP Response
+```
+
+### Method Organization
+
+Methods are organized by their data source and purpose:
+
+- **Transaction Methods**: All transaction operations (submit to pool, query pending, query finalized, get status)
+- **Receipt Methods**: Query finalized transaction results
+- **Block Methods**: Query blockchain blocks
+- **Schema Methods**: Discover type structures
+
+This organization ensures:
+- Clear responsibility boundaries
+- Single place for all transaction-related operations
+- Efficient data access patterns
+- Easy maintenance and testing

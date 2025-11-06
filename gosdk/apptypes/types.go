@@ -75,10 +75,8 @@ type ExternalID struct {
 
 // For DAG it represents an interval between two Atroposes
 type AppchainBlock interface {
-	Number() uint64
 	Hash() [32]byte
 	StateRoot() [32]byte
-	Bytes() []byte
 }
 
 type StoredAppchainBlock[appBlock AppchainBlock] struct {
