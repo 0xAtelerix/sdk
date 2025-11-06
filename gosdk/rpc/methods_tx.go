@@ -48,7 +48,7 @@ func (m *TransactionMethods[appTx, R]) SendTransaction(
 		return nil, ErrWrongParamsCount
 	}
 
-	// Convert params to transaction
+	// Convert params to transaction (this will need type-specific handling)
 	txData, err := json.Marshal(params[0])
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidTransactionData, err)
@@ -126,12 +126,9 @@ func (m *TransactionMethods[appTx, R]) GetTransaction(
 		txIndex := binary.BigEndian.Uint32(lookupData[8:12])
 
 		// Get block transactions
-		var blockNumKey [8]byte
-		binary.BigEndian.PutUint64(blockNumKey[:], blockNumber)
-
 		txsBytes, getErr := tx.GetOne(
 			gosdk.BlockTransactionsBucket,
-			blockNumKey[:],
+			lookupData[0:8],
 		)
 		if getErr != nil {
 			return fmt.Errorf("get block transactions: %w", getErr)
