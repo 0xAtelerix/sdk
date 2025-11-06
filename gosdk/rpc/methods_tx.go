@@ -13,7 +13,6 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/receipt"
-	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
 // TransactionMethods provides comprehensive transaction-related RPC methods.
@@ -127,9 +126,12 @@ func (m *TransactionMethods[appTx, R]) GetTransaction(
 		txIndex := binary.BigEndian.Uint32(lookupData[8:12])
 
 		// Get block transactions
+		var blockNumKey [8]byte
+		binary.BigEndian.PutUint64(blockNumKey[:], blockNumber)
+
 		txsBytes, getErr := tx.GetOne(
 			gosdk.BlockTransactionsBucket,
-			utility.Uint64ToBytes(blockNumber),
+			blockNumKey[:],
 		)
 		if getErr != nil {
 			return fmt.Errorf("get block transactions: %w", getErr)
@@ -198,9 +200,12 @@ func (m *TransactionMethods[appTx, R]) GetTransactionsByBlockNumber(
 	var txs []appTx
 
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
+		var blockNumKey [8]byte
+		binary.BigEndian.PutUint64(blockNumKey[:], blockNumber)
+
 		payload, getErr := tx.GetOne(
 			gosdk.BlockTransactionsBucket,
-			utility.Uint64ToBytes(blockNumber),
+			blockNumKey[:],
 		)
 		if getErr != nil {
 			return getErr

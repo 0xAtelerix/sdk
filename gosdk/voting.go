@@ -12,7 +12,6 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
-	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
 // Voting is not thread-safe
@@ -349,8 +348,8 @@ func cmpSigners(s1, s2 Signer) int {
 func VotingKey(chainID uint64, blockNum uint64, blockHash [32]byte) []byte {
 	// Key: 8 bytes chainID | 8 bytes blockNum | 32 bytes hash
 	var key [8 + 8 + 32]byte
-	copy(key[0:8], utility.Uint64ToBytes(chainID))
-	copy(key[8:16], utility.Uint64ToBytes(blockNum))
+	binary.BigEndian.PutUint64(key[0:8], chainID)
+	binary.BigEndian.PutUint64(key[8:16], blockNum)
 	copy(key[16:], blockHash[:])
 
 	return key[:]

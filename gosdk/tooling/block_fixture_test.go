@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -27,7 +28,6 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
-	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
 // --- minimal test fixture writer matching your read-side keying ---
@@ -41,7 +41,7 @@ func (w *testFixtureWriter) putEthBlock(t *testing.T, blk *gethtypes.Block) {
 	h := blk.Hash()
 
 	key := make([]byte, 8+32)
-	copy(key[:8], utility.Uint64ToBytes(num))
+	binary.BigEndian.PutUint64(key[:8], num)
 	copy(key[8:], h[:])
 
 	enc, err := json.Marshal(blk)
@@ -59,7 +59,7 @@ func (w *testFixtureWriter) putEthereumBlock(t *testing.T, blk *gosdk.EthereumBl
 	h := blk.Header.Hash()
 
 	key := make([]byte, 8+32)
-	copy(key[:8], utility.Uint64ToBytes(num))
+	binary.BigEndian.PutUint64(key[:8], num)
 	copy(key[8:], h[:])
 
 	enc, err := json.Marshal(blk)
@@ -110,13 +110,15 @@ func (w *testFixtureWriter) putSolBlock(t *testing.T, blk *client.Block) {
 	t.Helper()
 
 	require.NotNil(t, blk.BlockHeight)
-	key := utility.Uint64ToBytes(uint64(*blk.BlockHeight))
+
+	var key [8]byte
+	binary.BigEndian.PutUint64(key[:], uint64(*blk.BlockHeight))
 
 	enc, err := json.Marshal(blk)
 	require.NoError(t, err)
 
 	require.NoError(t, w.db.Update(t.Context(), func(tx kv.RwTx) error {
-		return tx.Put(gosdk.SolanaBlocks, key, enc)
+		return tx.Put(gosdk.SolanaBlocks, key[:], enc)
 	}))
 }
 

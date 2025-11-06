@@ -29,7 +29,6 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/receipt"
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
-	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
 // setupTransactionTestEnvironment creates a test environment for transaction methods
@@ -126,7 +125,9 @@ func TestTransactionMethods_GetTransaction_FromBlocks(t *testing.T) {
 
 	err := appchainDB.Update(t.Context(), func(rwTx kv.RwTx) error {
 		// Store block transactions (primary storage)
-		blockNumBytes := utility.Uint64ToBytes(blockNumber)
+		var blockNumBytes [8]byte
+		binary.BigEndian.PutUint64(blockNumBytes[:], blockNumber)
+
 		txs := []TestTransaction[TestReceipt]{tx}
 
 		txsBytes, marshalErr := cbor.Marshal(txs)
@@ -134,7 +135,7 @@ func TestTransactionMethods_GetTransaction_FromBlocks(t *testing.T) {
 			return marshalErr
 		}
 
-		if err := rwTx.Put(gosdk.BlockTransactionsBucket, blockNumBytes, txsBytes); err != nil {
+		if err := rwTx.Put(gosdk.BlockTransactionsBucket, blockNumBytes[:], txsBytes); err != nil {
 			return err
 		}
 
@@ -230,7 +231,10 @@ func TestTransactionMethods_GetTransactionsByBlockNumber_Success(t *testing.T) {
 			return marshalErr
 		}
 
-		return rwTx.Put(gosdk.BlockTransactionsBucket, utility.Uint64ToBytes(blockNumber), txsBytes)
+		var blockNumKey [8]byte
+		binary.BigEndian.PutUint64(blockNumKey[:], blockNumber)
+
+		return rwTx.Put(gosdk.BlockTransactionsBucket, blockNumKey[:], txsBytes)
 	})
 	require.NoError(t, err)
 

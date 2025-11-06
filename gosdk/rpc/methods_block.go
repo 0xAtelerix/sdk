@@ -2,13 +2,13 @@ package rpc
 
 import (
 	"context"
+	"encoding/binary"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
 
 	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
-	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
 // BlockMethods provides RPC methods to query blocks from the appchain.
@@ -75,9 +75,10 @@ func (m *BlockMethods[appTx, R, Block]) GetBlock(
 
 	err = m.appchainDB.View(ctx, func(tx kv.Tx) error {
 		// Use the same key format as WriteBlock in appchain.go
-		number := utility.Uint64ToBytes(blockNumber)
+		var number [8]byte
+		binary.BigEndian.PutUint64(number[:], blockNumber)
 
-		payload, err = tx.GetOne(gosdk.BlocksBucket, number)
+		payload, err = tx.GetOne(gosdk.BlocksBucket, number[:])
 		if err != nil {
 			return err
 		}
