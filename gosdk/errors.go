@@ -26,7 +26,6 @@ const (
 	ErrBlockWrite                    = SDKError("failed to write block")
 	ErrBlockTransactionsWrite        = SDKError("failed to write block transactions")
 	ErrTransactionsMarshalling       = SDKError("failed to marshal transactions")
-	ErrTransactionMarshalling        = SDKError("failed to marshal transaction")
 	ErrTransactionLookupWrite        = SDKError("failed to write transaction lookup")
 	ErrExternalTransactionsGet       = SDKError("failed to get external transactions")
 	ErrExternalTransactionsUnmarshal = SDKError("failed to unmarshal external transactions")

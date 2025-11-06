@@ -549,10 +549,10 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Shutdown() {
 }
 
 func WriteBlock(rwtx kv.RwTx, blockNumber uint64, blockBytes []byte) error {
-	var number [8]byte
-	binary.BigEndian.PutUint64(number[:], blockNumber)
+	number := make([]byte, 8)
+	binary.BigEndian.PutUint64(number, blockNumber)
 
-	return rwtx.Put(BlocksBucket, number[:], blockBytes)
+	return rwtx.Put(BlocksBucket, number, blockBytes)
 }
 
 // WriteBlockTransactions stores the transactions for a block in CBOR format.
@@ -563,8 +563,8 @@ func WriteBlockTransactions[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 	blockNumber uint64,
 	txs []appTx,
 ) error {
-	var blockNumBytes [8]byte
-	binary.BigEndian.PutUint64(blockNumBytes[:], blockNumber)
+	blockNumBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(blockNumBytes, blockNumber)
 
 	// Marshal transactions to CBOR - this is the only place we store full transaction data
 	txsBytes, err := cbor.Marshal(txs)
@@ -573,7 +573,7 @@ func WriteBlockTransactions[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 	}
 
 	// Store in BlockTransactionsBucket (primary storage)
-	if err := rwtx.Put(BlockTransactionsBucket, blockNumBytes[:], txsBytes); err != nil {
+	if err := rwtx.Put(BlockTransactionsBucket, blockNumBytes, txsBytes); err != nil {
 		return fmt.Errorf("%w: %w", ErrBlockTransactionsWrite, err)
 	}
 
@@ -635,10 +635,10 @@ func WriteExternalTransactions(
 	}
 
 	// Write to database
-	var key [8]byte
-	binary.BigEndian.PutUint64(key[:], blockNumber)
+	key := make([]byte, 8)
+	binary.BigEndian.PutUint64(key, blockNumber)
 
-	if err = dbTx.Put(ExternalTxBucket, key[:], value); err != nil {
+	if err = dbTx.Put(ExternalTxBucket, key, value); err != nil {
 		return [32]byte{}, fmt.Errorf("can't write external transactions to the DB: error %w", err)
 	}
 
@@ -652,10 +652,10 @@ func ReadExternalTransactions(
 	tx kv.Tx,
 	blockNumber uint64,
 ) ([]apptypes.ExternalTransaction, error) {
-	var key [8]byte
-	binary.BigEndian.PutUint64(key[:], blockNumber)
+	key := make([]byte, 8)
+	binary.BigEndian.PutUint64(key, blockNumber)
 
-	value, err := tx.GetOne(ExternalTxBucket, key[:])
+	value, err := tx.GetOne(ExternalTxBucket, key)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrExternalTransactionsGet, err)
 	}
@@ -709,8 +709,8 @@ func WriteCheckpoint(ctx context.Context, dbTx kv.RwTx, checkpoint apptypes.Chec
 	logger := log.Ctx(ctx)
 
 	// Генерируем ключ из LatestBlockNumber (8 байт)
-	var key [8]byte
-	binary.BigEndian.PutUint64(key[:], checkpoint.BlockNumber)
+	key := make([]byte, 8)
+	binary.BigEndian.PutUint64(key, checkpoint.BlockNumber)
 
 	// Сериализуем чекпоинт
 	value, err := cbor.Marshal(checkpoint)
@@ -721,17 +721,17 @@ func WriteCheckpoint(ctx context.Context, dbTx kv.RwTx, checkpoint apptypes.Chec
 	}
 
 	// Записываем в базу
-	return dbTx.Put(CheckpointBucket, key[:], value)
+	return dbTx.Put(CheckpointBucket, key, value)
 }
 
 func WriteSnapshotPosition(rwtx kv.RwTx, epoch uint32, pos int64) error {
 	key := make([]byte, 4)
 	binary.BigEndian.PutUint32(key, epoch)
 
-	var val [8]byte
-	binary.BigEndian.PutUint64(val[:], uint64(pos))
+	val := make([]byte, 8)
+	binary.BigEndian.PutUint64(val, uint64(pos))
 
-	return rwtx.Put(Snapshot, key, val[:])
+	return rwtx.Put(Snapshot, key, val)
 }
 
 func ReadSnapshotPosition(tx kv.Tx, epoch uint32) (int64, error) {

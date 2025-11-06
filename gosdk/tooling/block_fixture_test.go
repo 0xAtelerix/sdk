@@ -109,16 +109,16 @@ func (w *testFixtureWriter) putEthReceipts(
 func (w *testFixtureWriter) putSolBlock(t *testing.T, blk *client.Block) {
 	t.Helper()
 
-	require.NotNil(t, blk.BlockHeight)
+	key := make([]byte, 8)
 
-	var key [8]byte
-	binary.BigEndian.PutUint64(key[:], uint64(*blk.BlockHeight))
+	require.NotNil(t, blk.BlockHeight)
+	binary.BigEndian.PutUint64(key, uint64(*blk.BlockHeight))
 
 	enc, err := json.Marshal(blk)
 	require.NoError(t, err)
 
 	require.NoError(t, w.db.Update(t.Context(), func(tx kv.RwTx) error {
-		return tx.Put(gosdk.SolanaBlocks, key[:], enc)
+		return tx.Put(gosdk.SolanaBlocks, key, enc)
 	}))
 }
 

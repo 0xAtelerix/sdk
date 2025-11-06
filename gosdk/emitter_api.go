@@ -86,11 +86,11 @@ func (s *AppchainEmitterServer[appTx, R]) GetCheckpoints(
 	}
 
 	// Начинаем поиск с блока >= LatestPreviousCheckpointBlockNumber
-	var startKey [8]byte
-	binary.BigEndian.PutUint64(startKey[:], req.GetLatestPreviousCheckpointBlockNumber())
+	startKey := make([]byte, 8)
+	binary.BigEndian.PutUint64(startKey, req.GetLatestPreviousCheckpointBlockNumber())
 
 	count := uint32(0)
-	for k, v, err := cursor.Seek(startKey[:]); err == nil && count < limit; k, v, err = cursor.Next() {
+	for k, v, err := cursor.Seek(startKey); err == nil && count < limit; k, v, err = cursor.Next() {
 		if len(k) == 0 {
 			break // Дошли до конца
 		}
