@@ -41,6 +41,8 @@ const (
 	GnosisChiadoChainID    = apptypes.ChainType(10200)    // Gnosis Chiado Testnet
 	FantomTestnetChainID   = apptypes.ChainType(4002)     // Fantom Testnet
 
+	StavangerTestnetChainID = apptypes.ChainType(50591822) // Stavanger Testnet
+
 	SolanaDevnetChainID  = apptypes.ChainType(123231)
 	SolanaTestnetChainID = apptypes.ChainType(123234)
 	SolanaChainID        = apptypes.ChainType(1232342)
@@ -48,20 +50,21 @@ const (
 
 func EVMChains() map[apptypes.ChainType]struct{} {
 	return map[apptypes.ChainType]struct{}{
-		EthereumChainID:        {},
-		PolygonChainID:         {},
-		BNBChainID:             {},
-		AvalancheChainID:       {},
-		GnosisChainID:          {},
-		FantomChainID:          {},
-		BaseChainID:            {},
-		EthereumSepoliaChainID: {},
-		PolygonMumbaiChainID:   {},
-		PolygonAmoyChainID:     {},
-		BNBTestnetChainID:      {},
-		AvalancheFujiChainID:   {},
-		GnosisChiadoChainID:    {},
-		FantomTestnetChainID:   {},
+		EthereumChainID:         {},
+		PolygonChainID:          {},
+		BNBChainID:              {},
+		AvalancheChainID:        {},
+		GnosisChainID:           {},
+		FantomChainID:           {},
+		BaseChainID:             {},
+		EthereumSepoliaChainID:  {},
+		PolygonMumbaiChainID:    {},
+		PolygonAmoyChainID:      {},
+		BNBTestnetChainID:       {},
+		AvalancheFujiChainID:    {},
+		GnosisChiadoChainID:     {},
+		FantomTestnetChainID:    {},
+		StavangerTestnetChainID: {},
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 
 	"github.com/blocto/solana-go-sdk/client"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/goccy/go-json"
@@ -28,17 +29,18 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/evmtypes"
 )
 
 // --- minimal test fixture writer matching your read-side keying ---
 
 type testFixtureWriter struct{ db kv.RwDB }
 
-func (w *testFixtureWriter) putEthBlock(t *testing.T, blk *gethtypes.Block) {
+func (w *testFixtureWriter) putEVMBlock(t *testing.T, blk *evmtypes.Block) {
 	t.Helper()
 
-	num := blk.NumberU64()
-	h := blk.Hash()
+	num := blk.Number.ToInt().Uint64()
+	h := blk.Hash
 
 	key := make([]byte, 8+32)
 	binary.BigEndian.PutUint64(key[:8], num)
@@ -48,55 +50,28 @@ func (w *testFixtureWriter) putEthBlock(t *testing.T, blk *gethtypes.Block) {
 	require.NoError(t, err)
 
 	require.NoError(t, w.db.Update(t.Context(), func(tx kv.RwTx) error {
-		return tx.Put(gosdk.EthBlocks, key, enc)
+		return tx.Put(gosdk.EvmBlocks, key, enc)
 	}))
 }
 
-func (w *testFixtureWriter) putEthereumBlock(t *testing.T, blk *gosdk.EthereumBlock) {
-	t.Helper()
-
-	num := blk.Header.Number.Uint64()
-	h := blk.Header.Hash()
-
-	key := make([]byte, 8+32)
-	binary.BigEndian.PutUint64(key[:8], num)
-	copy(key[8:], h[:])
-
-	enc, err := json.Marshal(blk)
-	require.NoError(t, err)
-
-	require.NoError(t, w.db.Update(t.Context(), func(tx kv.RwTx) error {
-		return tx.Put(gosdk.EthBlocks, key, enc)
-	}))
-}
-
-func (w *testFixtureWriter) putEthReceipts(
+func (w *testFixtureWriter) putEvmReceipts(
 	t *testing.T,
 	blockNum uint64,
 	blockHash common.Hash,
-	recs []*gethtypes.Receipt,
+	recs []*evmtypes.Receipt,
 ) {
 	t.Helper()
 	err := w.db.Update(t.Context(), func(tx kv.RwTx) error {
 		for i, r := range recs {
-			// ensure fields are set in case caller forgot
-			if r.BlockNumber == nil {
-				r.BlockNumber = new(big.Int).SetUint64(blockNum)
-			}
-
-			r.BlockHash = blockHash
-			r.TransactionIndex = uint(i)
-
-			// encode
-			// BEWARE: RLP encode gives same empty response for some reason.
+			// evmtypes.Receipt already has all the fields we need in RPC format
 			enc, err := json.Marshal(r)
 			if err != nil {
 				return err
 			}
 
-			key := gosdk.EthReceiptKey(blockNum, blockHash, uint32(i))
+			key := gosdk.EVMReceiptKey(blockNum, blockHash, uint32(i))
 
-			if err = tx.Put(gosdk.EthReceipts, key, enc); err != nil {
+			if err = tx.Put(gosdk.EvmReceipts, key, enc); err != nil {
 				return err
 			}
 		}
@@ -136,7 +111,7 @@ func openMDBXAt(t *testing.T, path string, tables kv.TableCfg) kv.RwDB {
 	return db
 }
 
-func makeEthBlock(t *testing.T, num uint64) *gosdk.EthereumBlock {
+func makeEvmBlock(t *testing.T, num uint64) *evmtypes.Block {
 	t.Helper()
 
 	// canonical empty trie root used by Ethereum
@@ -144,12 +119,16 @@ func makeEthBlock(t *testing.T, num uint64) *gosdk.EthereumBlock {
 		"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
 	)
 
-	// Derive canonical roots for “no txs / no receipts” blocks.
+	// Derive canonical roots for "no txs / no receipts" blocks.
 	emptyTxRoot := gethtypes.DeriveSha(gethtypes.Transactions{}, trie.NewStackTrie(nil))
 	emptyReceiptsRoot := gethtypes.DeriveSha(gethtypes.Receipts{}, trie.NewStackTrie(nil))
 	uncleHash := gethtypes.CalcUncleHash(nil) // same as EmptyUncleHash on recent geth
 
-	h := gethtypes.Header{
+	// Create gethtypes.Header to compute hash.
+	// Block hash = keccak256(RLP(header)). The field order changes by hard fork
+	// (London added BaseFee, Shanghai added WithdrawalsRoot, etc.), so we rely
+	// on gethtypes.Header.Hash() which handles all variants automatically.
+	gethHeader := gethtypes.Header{
 		ParentHash:  common.BytesToHash([]byte(fmt.Sprintf("parent-%d", num-1))),
 		UncleHash:   uncleHash,
 		Coinbase:    common.Address{}, // 0x000... miner
@@ -163,52 +142,67 @@ func makeEthBlock(t *testing.T, num uint64) *gosdk.EthereumBlock {
 		GasUsed:     0,
 		Time:        uint64(time.Now().Unix()),
 		Extra:       []byte("test"),
-		// Post-London blocks typically have BaseFee; keep it non-nil to mimic real chain
-		BaseFee: big.NewInt(7),
-		// Optional post-Shanghai/Cancun fields may stay nil:
-		// WithdrawalsHash, BlobGasUsed, ExcessBlobGas, ParentBeaconRoot, RequestsHash
+		BaseFee:     big.NewInt(7),
 	}
 
-	return &gosdk.EthereumBlock{
-		Header: h,
+	blockHash := gethHeader.Hash()
+
+	// Create evmtypes.Header with all fields in RPC format
+	header := &evmtypes.Header{
+		Number:           (*hexutil.Big)(gethHeader.Number),
+		Hash:             blockHash,
+		ParentHash:       gethHeader.ParentHash,
+		Nonce:            gethHeader.Nonce,
+		Sha3Uncles:       gethHeader.UncleHash,
+		LogsBloom:        gethHeader.Bloom,
+		TransactionsRoot: gethHeader.TxHash,
+		StateRoot:        gethHeader.Root,
+		ReceiptsRoot:     gethHeader.ReceiptHash,
+		Miner:            gethHeader.Coinbase,
+		Difficulty:       (*hexutil.Big)(gethHeader.Difficulty),
+		ExtraData:        hexutil.Bytes(gethHeader.Extra),
+		GasLimit:         hexutil.Uint64(gethHeader.GasLimit),
+		GasUsed:          hexutil.Uint64(gethHeader.GasUsed),
+		Time:             hexutil.Uint64(gethHeader.Time),
+		MixHash:          gethHeader.MixDigest,
+		BaseFeePerGas:    (*hexutil.Big)(gethHeader.BaseFee),
 	}
+
+	return evmtypes.NewBlock(header, []evmtypes.Transaction{})
 }
 
-func makeEthReceipts(
+func makeEvmReceipts(
 	t *testing.T,
-	blockNumber *big.Int,
+	blockNumber uint64,
 	blockHash common.Hash,
-	ethTransactions gethtypes.Transactions,
+	transactions []evmtypes.Transaction,
 	n int,
-) []*gethtypes.Receipt {
+) []*evmtypes.Receipt {
 	t.Helper()
 
-	recs := make([]*gethtypes.Receipt, n)
+	recs := make([]*evmtypes.Receipt, n)
 	for i := range n {
-		r := &gethtypes.Receipt{
-			// minimally set fields:
+		var txHash common.Hash
+		if i < len(transactions) {
+			txHash = transactions[i].Hash
+		} else {
+			// deterministic dummy if you didn't populate transactions
+			txHash[0] = byte(i)
+		}
+
+		r := &evmtypes.Receipt{
 			Status:            1,
-			CumulativeGasUsed: 21000,
-			GasUsed:           21000,
-			BlockNumber:       new(big.Int).Set(blockNumber),
+			CumulativeGasUsed: hexutil.Uint64(21000),
+			GasUsed:           hexutil.Uint64(21000),
+			BlockNumber:       hexutil.Uint64(blockNumber),
 			BlockHash:         blockHash,
-			TransactionIndex:  uint(i),
+			TransactionIndex:  hexutil.Uint64(i),
+			TxHash:            txHash,
 			Logs: []*gethtypes.Log{
 				{
 					Topics: []common.Hash{{}},
 				},
 			},
-		}
-
-		// TxHash: if your block has real txs:
-		if txs := ethTransactions; i < txs.Len() {
-			r.TxHash = txs[i].Hash()
-		} else {
-			// deterministic dummy if you didn’t populate transactions
-			var h common.Hash
-
-			h[0] = byte(i)
-			r.TxHash = h
 		}
 
 		recs[i] = r
@@ -241,11 +235,11 @@ func TestEthereum_BlockAndReceipts_RoundTrip(t *testing.T) {
 
 	blockNum := uint64(100)
 
-	blk := makeEthBlock(t, blockNum)
-	fw.putEthereumBlock(t, blk)
+	blk := makeEvmBlock(t, blockNum)
+	fw.putEVMBlock(t, blk)
 
-	recs := makeEthReceipts(t, blk.Header.Number, blk.Header.Hash(), blk.Body.Transactions, 3)
-	fw.putEthReceipts(t, blockNum, blk.Header.Hash(), recs)
+	recs := makeEvmReceipts(t, blockNum, blk.Hash, blk.Transactions, 3)
+	fw.putEvmReceipts(t, blockNum, blk.Hash, recs)
 
 	writerDB.Close()
 
@@ -260,25 +254,25 @@ func TestEthereum_BlockAndReceipts_RoundTrip(t *testing.T) {
 
 	ctx := context.Background()
 
-	outBlk, err := mc.EthBlock(
+	outBlk, err := mc.EVMBlock(
 		ctx,
-		apptypes.MakeExternalBlock(chainID, blockNum, blk.Header.Hash()),
+		apptypes.MakeExternalBlock(chainID, blockNum, blk.Hash),
 	)
 	require.NoError(t, err)
-	require.Equal(t, blockNum, outBlk.Header.Number.Uint64())
-	require.Equal(t, blk.Header.Hash(), outBlk.Header.Hash())
+	require.Equal(t, blockNum, outBlk.Number.ToInt().Uint64())
+	require.Equal(t, blk.Hash, outBlk.Hash)
 
-	outRecs, err := mc.EthReceipts(
+	outRecs, err := mc.EVMReceipts(
 		ctx,
-		apptypes.MakeExternalBlock(chainID, blockNum, blk.Header.Hash()),
+		apptypes.MakeExternalBlock(chainID, blockNum, blk.Hash),
 	)
 
 	require.NoError(t, err)
 	require.Len(t, outRecs, len(recs))
 
 	for _, r := range outRecs {
-		require.Equal(t, blk.Header.Hash(), r.BlockHash)
-		require.Equal(t, blk.Header.Number.Uint64(), r.BlockNumber.Uint64())
+		require.Equal(t, blk.Hash, r.BlockHash)
+		require.Equal(t, blk.Number.ToInt().Uint64(), uint64(r.BlockNumber))
 	}
 }
 
@@ -331,7 +325,7 @@ func TestSolana_Block_RoundTrip(t *testing.T) {
 
 // Iterators
 
-func TestEthBlockFileIterator_Pipeline(t *testing.T) {
+func TestEVMBlockFileIterator_Pipeline(t *testing.T) {
 	t.Parallel()
 
 	// --- Arrange: create file with raw json blocks (one per line)
@@ -351,22 +345,22 @@ func TestEthBlockFileIterator_Pipeline(t *testing.T) {
 	require.NoError(t, err)
 
 	for n := start; n <= end; n++ {
-		blk := makeEthBlock(t, n)
+		blk := makeEvmBlock(t, n)
 
 		var b []byte
 
 		b, err = json.Marshal(blk)
 		require.NoError(t, err)
 
-		var ethBlock gosdk.EthereumBlock
+		var evmBlock evmtypes.Block
 
-		err = json.Unmarshal(b, &ethBlock)
+		err = json.Unmarshal(b, &evmBlock)
 		require.NoError(t, err)
 
 		_, err = f.Write(append(b, '\n'))
 		require.NoError(t, err)
 
-		want = append(want, rec{num: n, hash: blk.Header.Hash()})
+		want = append(want, rec{num: n, hash: blk.Hash})
 	}
 
 	require.NoError(t, f.Close())
@@ -376,15 +370,15 @@ func TestEthBlockFileIterator_Pipeline(t *testing.T) {
 	writerDB := openMDBXAt(t, evmDBPath, gosdk.EvmTables())
 
 	// --- Act: iterate file -> write via FixtureWriter.writeOne
-	it, err := NewEthBlockFileIterator(path)
+	it, err := NewEVMBlockFileIterator(path)
 	require.NoError(t, err)
 
-	fw := &FixtureWriter[*gosdk.EthereumBlock]{DB: writerDB}
+	fw := &FixtureWriter[*evmtypes.Block]{DB: writerDB}
 
 	ctx := t.Context()
 
 	for {
-		var blk *gosdk.EthereumBlock
+		var blk *evmtypes.Block
 
 		blk, err = it.Next(ctx)
 		if errors.Is(err, io.EOF) {
@@ -411,14 +405,14 @@ func TestEthBlockFileIterator_Pipeline(t *testing.T) {
 	defer mc.Close()
 
 	for _, w := range want {
-		out, err := mc.EthBlock(ctx, apptypes.MakeExternalBlock(1, w.num, w.hash))
+		out, err := mc.EVMBlock(ctx, apptypes.MakeExternalBlock(1, w.num, w.hash))
 		require.NoError(t, err)
-		require.Equal(t, w.num, out.Header.Number.Uint64())
-		require.Equal(t, w.hash, out.Header.Hash())
+		require.Equal(t, w.num, out.Number.ToInt().Uint64())
+		require.Equal(t, w.hash, out.Hash)
 	}
 }
 
-func TestEthReceiptsFileIterator_Pipeline(t *testing.T) {
+func TestEVMReceiptsFileIterator_Pipeline(t *testing.T) {
 	t.Parallel()
 
 	// --- Arrange: create file with json-encoded [][]byte of RLP receipts per line
@@ -442,23 +436,25 @@ func TestEthReceiptsFileIterator_Pipeline(t *testing.T) {
 		bh[0], bh[1], bh[2], bh[3] = byte(n), 0xAA, 0xBB, 0xCC
 		nTx := 3
 
-		// Build receipts with required fields, then RLP-encode each
-		entries := make([]gethtypes.Receipt, 0, nTx)
+		// Build receipts with required fields
+		entries := make([]*evmtypes.Receipt, 0, nTx)
 		for i := range nTx {
-			rc := gethtypes.Receipt{
+			txHash := common.Hash{}
+			txHash[0] = byte(i)
+			txHash[1] = byte(n)
+
+			rc := &evmtypes.Receipt{
 				Status:            1,
-				CumulativeGasUsed: 21000 * uint64(i+1),
-				GasUsed:           21000,
-				BlockNumber:       new(big.Int).SetUint64(n),
+				CumulativeGasUsed: hexutil.Uint64(21000 * uint64(i+1)),
+				GasUsed:           hexutil.Uint64(21000),
+				BlockNumber:       hexutil.Uint64(n),
 				BlockHash:         bh,
-				TransactionIndex:  uint(i),
+				TransactionIndex:  hexutil.Uint64(i),
+				TxHash:            txHash,
 				Logs: []*gethtypes.Log{
 					{Topics: []common.Hash{{}}},
 				},
 			}
-			// deterministic TxHash
-			rc.TxHash[0] = byte(i)
-			rc.TxHash[1] = byte(n)
 
 			entries = append(entries, rc)
 		}
@@ -487,16 +483,16 @@ func TestEthReceiptsFileIterator_Pipeline(t *testing.T) {
 	defer writerDB.Close()
 
 	// --- Act: iterate file -> write via FixtureWriter.writeOne
-	it, err := NewEthReceiptsFileIterator(path)
+	it, err := NewEVMReceiptsFileIterator(path)
 	require.NoError(t, err)
 
-	fw := &FixtureWriter[[]gethtypes.Receipt]{DB: writerDB}
+	fw := &FixtureWriter[[]*evmtypes.Receipt]{DB: writerDB}
 	ctx := t.Context()
 
 	i := 0
 
 	for {
-		var recs []gethtypes.Receipt
+		var recs []*evmtypes.Receipt
 
 		recs, err = it.Next(ctx)
 		if errors.Is(err, io.EOF) {
@@ -524,14 +520,14 @@ func TestEthReceiptsFileIterator_Pipeline(t *testing.T) {
 	defer mc.Close()
 
 	for _, b := range blocks {
-		out, err := mc.EthReceipts(ctx, apptypes.MakeExternalBlock(1, b.num, b.hash))
+		out, err := mc.EVMReceipts(ctx, apptypes.MakeExternalBlock(1, b.num, b.hash))
 		require.NoError(t, err)
 		require.Len(t, out, b.nTx)
 
 		for i, r := range out {
 			require.Equal(t, b.hash, r.BlockHash)
-			require.Equal(t, b.num, r.BlockNumber.Uint64())
-			require.Equal(t, uint(i), r.TransactionIndex)
+			require.Equal(t, b.num, uint64(r.BlockNumber))
+			require.Equal(t, uint64(i), uint64(r.TransactionIndex))
 		}
 	}
 }
