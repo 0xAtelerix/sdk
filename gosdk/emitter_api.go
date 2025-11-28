@@ -80,7 +80,7 @@ func (s *AppchainEmitterServer[appTx, R]) GetCheckpoints(
 
 	var checkpoints []*emitterproto.CheckpointResponse_Checkpoint
 
-	limit := uint32(10)
+	limit := uint32(100)
 	if req.Limit != nil {
 		limit = req.GetLimit()
 	}
@@ -155,7 +155,7 @@ func (s *AppchainEmitterServer[appTx, R]) GetExternalTransactions(
 
 	defer cursor.Close()
 
-	limit := uint32(10)
+	limit := uint32(100)
 	if req.Limit != nil {
 		limit = req.GetLimit()
 	}
