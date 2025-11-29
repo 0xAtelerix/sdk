@@ -25,7 +25,7 @@ import (
 const (
 	ChainIDBucket = "chainid"
 	EvmBlocks     = "blocks"
-	EvmReceipts   = "ethereum_receipts"
+	EvmReceipts   = "evm_receipts"
 	SolanaBlocks  = "solana_blocks"
 )
 

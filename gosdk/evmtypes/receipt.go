@@ -17,6 +17,7 @@ type Receipt struct {
 	ContractAddress   *common.Address `json:"contractAddress"` // nil for non-contract-creation txs
 	TxHash            common.Hash     `json:"transactionHash"`
 	GasUsed           hexutil.Uint64  `json:"gasUsed"`
+	EffectiveGasPrice *hexutil.Big    `json:"effectiveGasPrice"` // EIP-1559: baseFee + min(maxFee-baseFee, priorityFee)
 	BlockNumber       hexutil.Uint64  `json:"blockNumber"`
 	BlockHash         common.Hash     `json:"blockHash"`
 	TransactionIndex  hexutil.Uint64  `json:"transactionIndex"`

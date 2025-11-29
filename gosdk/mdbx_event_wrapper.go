@@ -282,38 +282,20 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 		waitStart := time.Now()
 
+		const pollInterval = 50 * time.Millisecond
+
 		var notFoundCycle uint64
 
+		ticker := time.NewTicker(pollInterval)
+
 		for numOfFound := 0; numOfFound < len(txBatches); {
+			// Check for context cancellation
 			select {
 			case <-ctx.Done():
+				ticker.Stop()
+
 				return nil, ctx.Err()
 			default:
-			}
-
-			if numOfFound != 0 {
-				time.Sleep(time.Millisecond * 50)
-
-				notFoundCycle++
-
-				var s []string
-				for i := range txBatches {
-					s = append(s, hex.EncodeToString(i[:]))
-				}
-
-				ews.logger.Debug().
-					Int("numOfFound", numOfFound).
-					Int("len(txBatches)", len(txBatches)).
-					Strs("batches", s).
-					Msg("timed out waiting for batches")
-
-				if notFoundCycle%(1000/50) == 0 {
-					ews.logger.Warn().
-						Int("numOfFound", numOfFound).
-						Int("len(txBatches)", len(txBatches)).
-						Strs("batches", s).
-						Msg("timed out waiting for batches")
-				}
 			}
 
 			processErr := func(ctx context.Context) error {
@@ -357,10 +339,50 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 			}(ctx)
 			if processErr != nil {
 				ews.logger.Error().Err(processErr).Msg("got tx batches from mdbx")
+				ticker.Stop()
 
 				return nil, processErr
 			}
+
+			// If not all batches found, wait before next poll
+			if numOfFound < len(txBatches) {
+				notFoundCycle++
+
+				// Log progress periodically
+				if notFoundCycle%20 == 0 { // Every ~1 second (20 * 50ms)
+					var s []string
+					for i := range txBatches {
+						s = append(s, hex.EncodeToString(i[:]))
+					}
+
+					ews.logger.Debug().
+						Int("numOfFound", numOfFound).
+						Int("len(txBatches)", len(txBatches)).
+						Strs("batches", s).
+						Msg("waiting for batches")
+
+					if notFoundCycle%200 == 0 { // Every ~10 seconds
+						ews.logger.Warn().
+							Int("numOfFound", numOfFound).
+							Int("len(txBatches)", len(txBatches)).
+							Strs("batches", s).
+							Msg("still waiting for batches")
+					}
+				}
+
+				// Wait for next poll interval or context cancellation
+				select {
+				case <-ctx.Done():
+					ticker.Stop()
+
+					return nil, ctx.Err()
+				case <-ticker.C:
+					// Continue to next iteration
+				}
+			}
 		}
+
+		ticker.Stop()
 
 		ews.logger.Debug().
 			Int("expectedTxBatches", len(expectedTxBatches)).
