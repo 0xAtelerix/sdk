@@ -10,11 +10,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/blocto/solana-go-sdk/client"
 	"github.com/goccy/go-json"
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/evmtypes"
 )
 
 func NewMultichainStateAccessSQLDB(
@@ -99,10 +100,10 @@ func NewMultichainStateAccessSQL(dbMap map[apptypes.ChainType]*sql.DB) *Multicha
 	}
 }
 
-func (sa *MultichainStateAccessSQL) EthBlock(
+func (sa *MultichainStateAccessSQL) EVMBlock(
 	ctx context.Context,
 	block apptypes.ExternalBlock,
-) (*EthereumBlock, error) {
+) (*evmtypes.Block, error) {
 	sa.mu.RLock()
 	defer sa.mu.RUnlock()
 
@@ -154,30 +155,30 @@ func (sa *MultichainStateAccessSQL) EthBlock(
 				ErrWrongBlock, num, block.BlockNumber)
 		}
 
-		var ethBlock EthereumBlock
-		if err := json.Unmarshal(rawBlock, &ethBlock); err != nil {
+		var evmBlock evmtypes.Block
+		if err := json.Unmarshal(rawBlock, &evmBlock); err != nil {
 			log.Error().Err(err).Msg("block not found")
 
-			return nil, fmt.Errorf("failed to unmarshal eth block: %w", err)
+			return nil, fmt.Errorf("failed to unmarshal evm block: %w", err)
 		}
 
-		ethBlockHash := ethBlock.Header.Hash()
-		if ethBlockHash != block.BlockHash {
+		evmBlockHash := evmBlock.Hash
+		if evmBlockHash != block.BlockHash {
 			log.Warn().
-				Str("hash", hex.EncodeToString(ethBlockHash[:])).
+				Str("hash", hex.EncodeToString(evmBlockHash[:])).
 				Str("block_hash", hex.EncodeToString(block.BlockHash[:])).
 				Int("len", len(rawBlock)).
 				Msg("block hash mismatch")
 		}
 
-		return &ethBlock, nil
+		return &evmBlock, nil
 	}
 }
 
-func (sa *MultichainStateAccessSQL) EthReceipts(
+func (sa *MultichainStateAccessSQL) EVMReceipts(
 	ctx context.Context,
 	block apptypes.ExternalBlock,
-) ([]types.Receipt, error) {
+) ([]evmtypes.Receipt, error) {
 	sa.mu.RLock()
 	defer sa.mu.RUnlock()
 
@@ -200,7 +201,7 @@ func (sa *MultichainStateAccessSQL) EthReceipts(
 	}
 	defer rows.Close()
 
-	var receipts []types.Receipt
+	var receipts []evmtypes.Receipt
 
 	for rows.Next() {
 		var raw []byte
@@ -212,7 +213,7 @@ func (sa *MultichainStateAccessSQL) EthReceipts(
 			continue
 		}
 
-		r := types.Receipt{}
+		r := evmtypes.Receipt{}
 
 		err := json.Unmarshal(raw, &r)
 		if err != nil {
@@ -230,15 +231,19 @@ func (sa *MultichainStateAccessSQL) EthReceipts(
 	return receipts, nil
 }
 
-func (sa *MultichainStateAccessSQL) Close() error {
+func (sa *MultichainStateAccessSQL) Close() {
 	for _, db := range sa.stateAccessDB {
-		err := db.Close()
-		if err != nil {
+		if err := db.Close(); err != nil {
 			log.Error().Err(err).Msg("failed to close db")
-
-			return err
 		}
 	}
+}
 
-	return nil
+// SolanaBlock retrieves a Solana block from SQLite
+// TODO: Implement when Solana support is needed
+func (*MultichainStateAccessSQL) SolanaBlock(
+	_ context.Context,
+	_ apptypes.ExternalBlock,
+) (*client.Block, error) {
+	return nil, ErrNotImplemented
 }

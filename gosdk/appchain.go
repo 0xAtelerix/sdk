@@ -72,7 +72,7 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 	config AppchainConfig,
 	appchainDB kv.RwDB,
 	subscriber *Subscriber,
-	multichain *MultichainStateAccess,
+	multichain MultichainStateAccessor,
 	txBatchDB kv.RoDB,
 	options ...func(a *Appchain[STI, AppTx, R, AppBlock]),
 ) Appchain[STI, AppTx, R, AppBlock] {
@@ -115,7 +115,7 @@ type Appchain[STI StateTransitionInterface[appTx, R], appTx apptypes.AppTransact
 	AppchainDB   kv.RwDB
 	TxBatchDB    kv.RoDB
 	config       AppchainConfig
-	multichainDB *MultichainStateAccess
+	multichainDB MultichainStateAccessor
 	subscriber   *Subscriber
 }
 

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/blocto/solana-go-sdk/client"
-	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/goccy/go-json"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
@@ -259,25 +258,6 @@ func (sa *MultichainStateAccess) ViewDB(
 	}
 
 	return db.View(ctx, fn)
-}
-
-// ReceiptLogs extracts just the logs from all receipts in a block.
-// This is a convenience method for appchains that only need to process event logs.
-func (sa *MultichainStateAccess) ReceiptLogs(
-	ctx context.Context,
-	block apptypes.ExternalBlock,
-) ([][]*gethtypes.Log, error) {
-	receipts, err := sa.EVMReceipts(ctx, block)
-	if err != nil {
-		return nil, err
-	}
-
-	allLogs := make([][]*gethtypes.Log, 0, len(receipts))
-	for _, receipt := range receipts {
-		allLogs = append(allLogs, receipt.Logs)
-	}
-
-	return allLogs, nil
 }
 
 func (sa *MultichainStateAccess) Close() {

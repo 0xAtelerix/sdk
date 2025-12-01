@@ -20,13 +20,13 @@ type StateTransitionInterface[appTx apptypes.AppTransaction[R], R apptypes.Recei
 type BatchProcesser[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	StateTransitionSimplified
 
-	MultiChain *MultichainStateAccess
+	MultiChain MultichainStateAccessor
 	Subscriber *Subscriber
 }
 
 func NewBatchProcesser[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	s StateTransitionSimplified,
-	m *MultichainStateAccess,
+	m MultichainStateAccessor,
 	sb *Subscriber,
 ) *BatchProcesser[appTx, R] {
 	return &BatchProcesser[appTx, R]{

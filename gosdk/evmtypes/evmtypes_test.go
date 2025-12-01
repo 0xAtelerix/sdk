@@ -12,7 +12,11 @@ import (
 )
 
 func TestHeader_GetCustomField(t *testing.T) {
+	t.Parallel()
+
 	t.Run("returns field when present", func(t *testing.T) {
+		t.Parallel()
+
 		raw := json.RawMessage(
 			`{"number":"0x100","hash":"0x1234","customField":"customValue","l1BlockNumber":"0x999"}`,
 		)
@@ -32,6 +36,8 @@ func TestHeader_GetCustomField(t *testing.T) {
 	})
 
 	t.Run("returns error when field not found", func(t *testing.T) {
+		t.Parallel()
+
 		raw := json.RawMessage(`{"number":"0x100"}`)
 		header := &Header{Raw: raw}
 
@@ -40,6 +46,8 @@ func TestHeader_GetCustomField(t *testing.T) {
 	})
 
 	t.Run("returns error when raw is nil", func(t *testing.T) {
+		t.Parallel()
+
 		header := &Header{}
 
 		_, err := header.GetCustomField("anyField")
@@ -48,7 +56,11 @@ func TestHeader_GetCustomField(t *testing.T) {
 }
 
 func TestBlock_GetCustomField(t *testing.T) {
+	t.Parallel()
+
 	t.Run("returns field when present", func(t *testing.T) {
+		t.Parallel()
+
 		raw := json.RawMessage(`{"withdrawalsRoot":"0xabc123","blobGasUsed":"0x20000"}`)
 		block := &Block{Raw: raw}
 
@@ -62,6 +74,8 @@ func TestBlock_GetCustomField(t *testing.T) {
 	})
 
 	t.Run("returns error when field not found", func(t *testing.T) {
+		t.Parallel()
+
 		raw := json.RawMessage(`{"number":"0x100"}`)
 		block := &Block{Raw: raw}
 
@@ -70,6 +84,8 @@ func TestBlock_GetCustomField(t *testing.T) {
 	})
 
 	t.Run("returns error when raw is nil", func(t *testing.T) {
+		t.Parallel()
+
 		block := &Block{}
 
 		_, err := block.GetCustomField("anyField")
@@ -78,7 +94,11 @@ func TestBlock_GetCustomField(t *testing.T) {
 }
 
 func TestReceipt_GetCustomField(t *testing.T) {
+	t.Parallel()
+
 	t.Run("returns field when present", func(t *testing.T) {
+		t.Parallel()
+
 		raw := json.RawMessage(`{"effectiveGasPrice":"0x3b9aca00","l1Fee":"0x12345"}`)
 		receipt := &Receipt{Raw: raw}
 
@@ -93,6 +113,8 @@ func TestReceipt_GetCustomField(t *testing.T) {
 	})
 
 	t.Run("returns error when field not found", func(t *testing.T) {
+		t.Parallel()
+
 		raw := json.RawMessage(`{"status":"0x1"}`)
 		receipt := &Receipt{Raw: raw}
 
@@ -101,6 +123,8 @@ func TestReceipt_GetCustomField(t *testing.T) {
 	})
 
 	t.Run("returns error when raw is nil", func(t *testing.T) {
+		t.Parallel()
+
 		receipt := &Receipt{}
 
 		_, err := receipt.GetCustomField("anyField")
@@ -109,7 +133,11 @@ func TestReceipt_GetCustomField(t *testing.T) {
 }
 
 func TestTransaction_GetCustomField(t *testing.T) {
+	t.Parallel()
+
 	t.Run("returns field when present", func(t *testing.T) {
+		t.Parallel()
+
 		raw := json.RawMessage(`{"maxFeePerBlobGas":"0x100","accessList":[]}`)
 		tx := &Transaction{Raw: raw}
 
@@ -123,6 +151,8 @@ func TestTransaction_GetCustomField(t *testing.T) {
 	})
 
 	t.Run("returns error when field not found", func(t *testing.T) {
+		t.Parallel()
+
 		raw := json.RawMessage(`{"hash":"0x123"}`)
 		tx := &Transaction{Raw: raw}
 
@@ -131,6 +161,8 @@ func TestTransaction_GetCustomField(t *testing.T) {
 	})
 
 	t.Run("returns error when raw is nil", func(t *testing.T) {
+		t.Parallel()
+
 		tx := &Transaction{}
 
 		_, err := tx.GetCustomField("anyField")
@@ -139,6 +171,8 @@ func TestTransaction_GetCustomField(t *testing.T) {
 }
 
 func TestNewHeader(t *testing.T) {
+	t.Parallel()
+
 	header := NewHeader(12345)
 
 	require.NotNil(t, header.Number)
@@ -146,7 +180,11 @@ func TestNewHeader(t *testing.T) {
 }
 
 func TestNewBlock(t *testing.T) {
+	t.Parallel()
+
 	t.Run("with header and transactions", func(t *testing.T) {
+		t.Parallel()
+
 		header := NewHeader(100)
 		txs := []Transaction{
 			{Hash: common.HexToHash("0x123")},
@@ -160,6 +198,8 @@ func TestNewBlock(t *testing.T) {
 	})
 
 	t.Run("with nil header", func(t *testing.T) {
+		t.Parallel()
+
 		block := NewBlock(nil, nil)
 
 		assert.NotNil(t, block)
@@ -167,6 +207,8 @@ func TestNewBlock(t *testing.T) {
 	})
 
 	t.Run("with nil transactions", func(t *testing.T) {
+		t.Parallel()
+
 		header := NewHeader(50)
 		block := NewBlock(header, nil)
 
@@ -176,6 +218,8 @@ func TestNewBlock(t *testing.T) {
 }
 
 func TestNewReceipt(t *testing.T) {
+	t.Parallel()
+
 	txHash := common.HexToHash("0xabc123")
 	receipt := NewReceipt(txHash, 1, 21000)
 
@@ -185,6 +229,8 @@ func TestNewReceipt(t *testing.T) {
 }
 
 func TestNewTransaction(t *testing.T) {
+	t.Parallel()
+
 	hash := common.HexToHash("0xdef456")
 	from := common.HexToAddress("0x742d35Cc6634C0532925a3b844Bc9e7595f")
 
