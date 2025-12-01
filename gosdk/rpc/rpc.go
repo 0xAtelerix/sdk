@@ -38,8 +38,9 @@ func (s *StandardRPCServer) AddMiddleware(middleware Middleware) {
 // StartHTTPServer starts the HTTP JSON-RPC server
 func (s *StandardRPCServer) StartHTTPServer(ctx context.Context, addr string) error {
 	s.logger = log.Ctx(ctx)
-	http.HandleFunc("/rpc", s.handleRPC)
-	http.HandleFunc("/health", s.healthcheck)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/rpc", s.handleRPC)
+	mux.HandleFunc("/health", s.healthcheck)
 
 	s.logger.Info().Msgf("Starting Standard RPC server on %s", addr)
 	s.logger.Info().Msgf("Available methods: %d methods registered", len(s.methods))
@@ -47,6 +48,7 @@ func (s *StandardRPCServer) StartHTTPServer(ctx context.Context, addr string) er
 
 	server := &http.Server{
 		Addr:         addr,
+		Handler:      mux,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
