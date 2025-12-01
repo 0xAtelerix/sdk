@@ -1,13 +1,12 @@
 package evmtypes
 
 import (
-	"encoding/json"
-	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/goccy/go-json"
 )
 
 // Header contains standard EVM header fields plus raw JSON for chain-specific fields.
@@ -42,19 +41,5 @@ func NewHeader(number uint64) *Header {
 
 // GetCustomField extracts a chain-specific field from raw JSON.
 func (h *Header) GetCustomField(fieldName string) (any, error) {
-	if h.Raw == nil {
-		return nil, ErrRawJSONNotAvailable
-	}
-
-	var data map[string]any
-	if err := json.Unmarshal(h.Raw, &data); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal raw header: %w", err)
-	}
-
-	value, exists := data[fieldName]
-	if !exists {
-		return nil, fmt.Errorf("%w: %s in header", ErrFieldNotFound, fieldName)
-	}
-
-	return value, nil
+	return GetCustomFieldFromRaw(h.Raw, fieldName)
 }

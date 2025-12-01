@@ -1,12 +1,10 @@
 package evmtypes
 
 import (
-	"encoding/json"
-	"fmt"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/goccy/go-json"
 )
 
 // Receipt contains standard EVM receipt fields.
@@ -39,19 +37,5 @@ func NewReceipt(txHash common.Hash, status uint64, gasUsed uint64) *Receipt {
 
 // GetCustomField extracts a chain-specific field from raw JSON.
 func (r *Receipt) GetCustomField(fieldName string) (any, error) {
-	if r.Raw == nil {
-		return nil, ErrRawJSONNotAvailable
-	}
-
-	var data map[string]any
-	if err := json.Unmarshal(r.Raw, &data); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal raw receipt: %w", err)
-	}
-
-	value, exists := data[fieldName]
-	if !exists {
-		return nil, fmt.Errorf("%w: %s in receipt", ErrFieldNotFound, fieldName)
-	}
-
-	return value, nil
+	return GetCustomFieldFromRaw(r.Raw, fieldName)
 }

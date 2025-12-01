@@ -1,10 +1,8 @@
 package evmtypes
 
 import (
-	"encoding/json"
-	"fmt"
-
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/goccy/go-json"
 )
 
 // Body contains the body fields of a block (transactions, uncles).
@@ -40,19 +38,5 @@ func NewBlock(header *Header, transactions []Transaction) *Block {
 
 // GetCustomField extracts a chain-specific field from raw JSON.
 func (b *Block) GetCustomField(fieldName string) (any, error) {
-	if b.Raw == nil {
-		return nil, ErrRawJSONNotAvailable
-	}
-
-	var data map[string]any
-	if err := json.Unmarshal(b.Raw, &data); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal raw block: %w", err)
-	}
-
-	value, exists := data[fieldName]
-	if !exists {
-		return nil, fmt.Errorf("%w: %s in block", ErrFieldNotFound, fieldName)
-	}
-
-	return value, nil
+	return GetCustomFieldFromRaw(b.Raw, fieldName)
 }

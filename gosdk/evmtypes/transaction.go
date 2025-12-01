@@ -1,11 +1,9 @@
 package evmtypes
 
 import (
-	"encoding/json"
-	"fmt"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/goccy/go-json"
 )
 
 // Transaction contains standard EVM transaction fields.
@@ -36,19 +34,5 @@ func NewTransaction(hash common.Hash, from common.Address) *Transaction {
 
 // GetCustomField extracts a chain-specific field from raw JSON.
 func (t *Transaction) GetCustomField(fieldName string) (any, error) {
-	if t.Raw == nil {
-		return nil, ErrRawJSONNotAvailable
-	}
-
-	var data map[string]any
-	if err := json.Unmarshal(t.Raw, &data); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal raw transaction: %w", err)
-	}
-
-	value, exists := data[fieldName]
-	if !exists {
-		return nil, fmt.Errorf("%w: %s in transaction", ErrFieldNotFound, fieldName)
-	}
-
-	return value, nil
+	return GetCustomFieldFromRaw(t.Raw, fieldName)
 }
