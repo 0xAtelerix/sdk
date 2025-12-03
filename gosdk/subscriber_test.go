@@ -393,6 +393,7 @@ func Test_Store_Persistency_WriteAndReadBack(t *testing.T) {
 	require.Contains(t, gotEth, apptypes.ChainType(1))
 	require.Len(t, gotEth[1], 2)
 	require.Empty(t, gotEth[1][eth1])
+
 	require.Empty(t, gotEth[1][eth2])
 
 	// chain 2 should have the Solana address

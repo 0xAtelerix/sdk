@@ -87,12 +87,10 @@ func (s *Subscriber) SubscribeEthContractWithTopics(
 	}
 
 	// zero topic means wildcard
-	for _, topic := range topics {
-		if topic == ([32]byte{}) {
-			s.ethTopics[chainID][contract] = nil
-			delete(s.deletedEthTopics[chainID], contract)
-			return
-		}
+	if len(topics) == 0 || topics[0] == ([32]byte{}) {
+		s.ethTopics[chainID][contract] = nil
+		delete(s.deletedEthTopics[chainID], contract)
+		return
 	}
 
 	if s.ethTopics[chainID][contract] == nil {
