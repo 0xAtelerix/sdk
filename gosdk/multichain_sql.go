@@ -162,13 +162,18 @@ func (sa *MultichainStateAccessSQL) EVMBlock(
 			return nil, fmt.Errorf("failed to unmarshal evm block: %w", err)
 		}
 
-		evmBlockHash := evmBlock.Hash
-		if evmBlockHash != block.BlockHash {
-			log.Warn().
-				Str("hash", hex.EncodeToString(evmBlockHash[:])).
-				Str("block_hash", hex.EncodeToString(block.BlockHash[:])).
-				Int("len", len(rawBlock)).
-				Msg("block hash mismatch")
+		// Verify block integrity by computing hash from header fields
+		// This ensures the block data hasn't been tampered with
+		computedHash := evmBlock.ComputeHash()
+		if computedHash != block.BlockHash {
+			return nil, fmt.Errorf(
+				"%w, chainID %d; block %d; computed hash %s does not match expected hash %s",
+				ErrHashMismatch,
+				block.ChainID,
+				block.BlockNumber,
+				hex.EncodeToString(computedHash[:]),
+				hex.EncodeToString(block.BlockHash[:]),
+			)
 		}
 
 		return &evmBlock, nil
@@ -227,7 +232,6 @@ func (sa *MultichainStateAccessSQL) EVMReceipts(
 		return nil, fmt.Errorf("rows err: %w", err)
 	}
 
-	// TODO: receipt root check
 	return receipts, nil
 }
 

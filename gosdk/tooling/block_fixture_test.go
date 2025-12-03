@@ -19,7 +19,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/trie"
 	"github.com/goccy/go-json"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
@@ -114,59 +113,32 @@ func openMDBXAt(t *testing.T, path string, tables kv.TableCfg) kv.RwDB {
 func makeEvmBlock(t *testing.T, num uint64) *evmtypes.Block {
 	t.Helper()
 
-	// canonical empty trie root used by Ethereum
-	emptyStateRoot := common.HexToHash(
+	// Canonical empty trie roots
+	emptyTrieRoot := common.HexToHash(
 		"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
 	)
+	emptyUnclesHash := common.HexToHash(
+		"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+	)
 
-	// Derive canonical roots for "no txs / no receipts" blocks.
-	emptyTxRoot := gethtypes.DeriveSha(gethtypes.Transactions{}, trie.NewStackTrie(nil))
-	emptyReceiptsRoot := gethtypes.DeriveSha(gethtypes.Receipts{}, trie.NewStackTrie(nil))
-	uncleHash := gethtypes.CalcUncleHash(nil) // same as EmptyUncleHash on recent geth
-
-	// Create gethtypes.Header to compute hash.
-	// Block hash = keccak256(RLP(header)). The field order changes by hard fork
-	// (London added BaseFee, Shanghai added WithdrawalsRoot, etc.), so we rely
-	// on gethtypes.Header.Hash() which handles all variants automatically.
-	gethHeader := gethtypes.Header{
-		ParentHash:  common.BytesToHash([]byte(fmt.Sprintf("parent-%d", num-1))),
-		UncleHash:   uncleHash,
-		Coinbase:    common.Address{}, // 0x000... miner
-		Root:        emptyStateRoot,
-		TxHash:      emptyTxRoot,
-		ReceiptHash: emptyReceiptsRoot,
-		Bloom:       gethtypes.Bloom{},
-		Difficulty:  big.NewInt(1),               // arbitrary non-zero
-		Number:      new(big.Int).SetUint64(num), // required
-		GasLimit:    30_000_000,
-		GasUsed:     0,
-		Time:        uint64(time.Now().Unix()),
-		Extra:       []byte("test"),
-		BaseFee:     big.NewInt(7),
-	}
-
-	blockHash := gethHeader.Hash()
-
-	// Create evmtypes.Header with all fields in RPC format
 	header := &evmtypes.Header{
-		Number:           (*hexutil.Big)(gethHeader.Number),
-		Hash:             blockHash,
-		ParentHash:       gethHeader.ParentHash,
-		Nonce:            gethHeader.Nonce,
-		Sha3Uncles:       gethHeader.UncleHash,
-		LogsBloom:        gethHeader.Bloom,
-		TransactionsRoot: gethHeader.TxHash,
-		StateRoot:        gethHeader.Root,
-		ReceiptsRoot:     gethHeader.ReceiptHash,
-		Miner:            gethHeader.Coinbase,
-		Difficulty:       (*hexutil.Big)(gethHeader.Difficulty),
-		ExtraData:        hexutil.Bytes(gethHeader.Extra),
-		GasLimit:         hexutil.Uint64(gethHeader.GasLimit),
-		GasUsed:          hexutil.Uint64(gethHeader.GasUsed),
-		Time:             hexutil.Uint64(gethHeader.Time),
-		MixHash:          gethHeader.MixDigest,
-		BaseFeePerGas:    (*hexutil.Big)(gethHeader.BaseFee),
+		Number:           (*hexutil.Big)(new(big.Int).SetUint64(num)),
+		ParentHash:       common.BytesToHash([]byte(fmt.Sprintf("parent-%d", num-1))),
+		Sha3Uncles:       emptyUnclesHash,
+		Miner:            common.Address{},
+		StateRoot:        emptyTrieRoot,
+		TransactionsRoot: emptyTrieRoot,
+		ReceiptsRoot:     emptyTrieRoot,
+		LogsBloom:        gethtypes.Bloom{},
+		Difficulty:       (*hexutil.Big)(big.NewInt(1)),
+		GasLimit:         30_000_000,
+		GasUsed:          0,
+		Time:             hexutil.Uint64(time.Now().Unix()),
+		ExtraData:        []byte("test"),
+		BaseFeePerGas:    (*hexutil.Big)(big.NewInt(7)),
 	}
+
+	header.Hash = header.ComputeHash()
 
 	return evmtypes.NewBlock(header, []evmtypes.Transaction{})
 }
@@ -421,22 +393,21 @@ func TestEVMReceiptsFileIterator_Pipeline(t *testing.T) {
 
 	start, end := uint64(200), uint64(201)
 
-	var blocks []struct {
+	type blockInfo struct {
 		num  uint64
 		hash common.Hash
 		nTx  int
 	}
 
+	var blocks []blockInfo
+
 	f, err := os.Create(path)
 	require.NoError(t, err)
 
 	for n := start; n <= end; n++ {
-		var bh common.Hash
-
-		bh[0], bh[1], bh[2], bh[3] = byte(n), 0xAA, 0xBB, 0xCC
 		nTx := 3
 
-		// Build receipts with required fields
+		// Build receipts with required fields (initially with dummy block hash)
 		entries := make([]*evmtypes.Receipt, 0, nTx)
 		for i := range nTx {
 			txHash := common.Hash{}
@@ -448,7 +419,7 @@ func TestEVMReceiptsFileIterator_Pipeline(t *testing.T) {
 				CumulativeGasUsed: hexutil.Uint64(21000 * uint64(i+1)),
 				GasUsed:           hexutil.Uint64(21000),
 				BlockNumber:       hexutil.Uint64(n),
-				BlockHash:         bh,
+				BlockHash:         common.Hash{}, // Will be updated after block creation
 				TransactionIndex:  hexutil.Uint64(i),
 				TxHash:            txHash,
 				Logs: []*gethtypes.Log{
@@ -459,6 +430,14 @@ func TestEVMReceiptsFileIterator_Pipeline(t *testing.T) {
 			entries = append(entries, rc)
 		}
 
+		// Create block
+		blk := makeEvmBlock(t, n)
+
+		// Update receipts with the correct block hash
+		for _, r := range entries {
+			r.BlockHash = blk.Hash
+		}
+
 		var line []byte
 
 		line, err = json.Marshal(entries)
@@ -467,11 +446,11 @@ func TestEVMReceiptsFileIterator_Pipeline(t *testing.T) {
 		_, err = f.Write(append(line, '\n'))
 		require.NoError(t, err)
 
-		blocks = append(blocks, struct {
-			num  uint64
-			hash common.Hash
-			nTx  int
-		}{num: n, hash: bh, nTx: nTx})
+		blocks = append(blocks, blockInfo{
+			num:  n,
+			hash: blk.Hash,
+			nTx:  nTx,
+		})
 	}
 
 	require.NoError(t, f.Close())
@@ -482,12 +461,13 @@ func TestEVMReceiptsFileIterator_Pipeline(t *testing.T) {
 	writerDB := openMDBXAt(t, evmDBPath, gosdk.EvmTables())
 	defer writerDB.Close()
 
+	ctx := t.Context()
+
 	// --- Act: iterate file -> write via FixtureWriter.writeOne
 	it, err := NewEVMReceiptsFileIterator(path)
 	require.NoError(t, err)
 
 	fw := &FixtureWriter[[]*evmtypes.Receipt]{DB: writerDB}
-	ctx := t.Context()
 
 	i := 0
 

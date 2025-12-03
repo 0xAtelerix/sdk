@@ -239,3 +239,96 @@ func TestNewTransaction(t *testing.T) {
 	assert.Equal(t, hash, tx.Hash)
 	assert.Equal(t, from, tx.From)
 }
+
+func TestHeader_ComputeHash(t *testing.T) {
+	t.Parallel()
+
+	// Test constants for empty trie hashes
+	emptyUnclesHash := common.HexToHash(
+		"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+	)
+	emptyTrieRoot := common.HexToHash(
+		"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
+	)
+
+	t.Run("computes correct hash for basic header", func(t *testing.T) {
+		t.Parallel()
+
+		// Create a header and compute its hash
+		header := NewHeader(12345)
+		header.ParentHash = common.HexToHash(
+			"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+		)
+		header.Sha3Uncles = emptyUnclesHash
+		header.StateRoot = common.HexToHash("0xabcdef")
+		header.TransactionsRoot = emptyTrieRoot
+		header.ReceiptsRoot = emptyTrieRoot
+		header.GasLimit = 30000000
+		header.GasUsed = 21000
+		header.Time = 1700000000
+		header.Difficulty = (*hexutil.Big)(big.NewInt(1))
+
+		computedHash := header.ComputeHash()
+
+		// Hash should be deterministic
+		assert.Equal(t, computedHash, header.ComputeHash())
+
+		// Hash should not be zero
+		assert.NotEqual(t, common.Hash{}, computedHash)
+	})
+
+	t.Run("verify hash returns true for matching hash", func(t *testing.T) {
+		t.Parallel()
+
+		header := NewHeader(100)
+		header.ParentHash = common.HexToHash("0x1234")
+		header.Sha3Uncles = emptyUnclesHash
+		header.StateRoot = common.HexToHash("0xabcd")
+		header.TransactionsRoot = emptyTrieRoot
+		header.ReceiptsRoot = emptyTrieRoot
+		header.Difficulty = (*hexutil.Big)(big.NewInt(0))
+
+		// Set the hash to the computed value
+		header.Hash = header.ComputeHash()
+
+		assert.True(t, header.VerifyHash())
+	})
+
+	t.Run("verify hash returns false for mismatched hash", func(t *testing.T) {
+		t.Parallel()
+
+		header := NewHeader(100)
+		header.ParentHash = common.HexToHash("0x1234")
+		header.Sha3Uncles = emptyUnclesHash
+		header.StateRoot = common.HexToHash("0xabcd")
+		header.TransactionsRoot = emptyTrieRoot
+		header.ReceiptsRoot = emptyTrieRoot
+		header.Difficulty = (*hexutil.Big)(big.NewInt(0))
+
+		// Set a wrong hash
+		header.Hash = common.HexToHash("0xbadbadbadbadbadbadbadbadbadbadbad")
+
+		assert.False(t, header.VerifyHash())
+	})
+
+	t.Run("handles EIP-1559 baseFee", func(t *testing.T) {
+		t.Parallel()
+
+		header := NewHeader(15000000)
+		header.ParentHash = common.HexToHash("0x1234")
+		header.Sha3Uncles = emptyUnclesHash
+		header.StateRoot = common.HexToHash("0xabcd")
+		header.TransactionsRoot = emptyTrieRoot
+		header.ReceiptsRoot = emptyTrieRoot
+		header.Difficulty = (*hexutil.Big)(big.NewInt(0))
+		header.BaseFeePerGas = (*hexutil.Big)(big.NewInt(1000000000)) // 1 gwei
+
+		computedHash := header.ComputeHash()
+		assert.NotEqual(t, common.Hash{}, computedHash)
+
+		// Changing baseFee should change hash
+		header.BaseFeePerGas = (*hexutil.Big)(big.NewInt(2000000000))
+		newHash := header.ComputeHash()
+		assert.NotEqual(t, computedHash, newHash)
+	})
+}
