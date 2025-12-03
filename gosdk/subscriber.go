@@ -16,7 +16,8 @@ import (
 // A subscription is keyed by contract and an optional set of topic0 values.
 // If the topic set is nil/empty, the subscription matches all topics for that contract.
 type Subscriber struct {
-	ethTopics    map[apptypes.ChainType]map[EthereumAddress]map[[32]byte]struct{} // nil/empty topic set = wildcard  // chainID -> EthereumContractAddress -> topic
+	// nil/empty topic set = wildcard
+	ethTopics    map[apptypes.ChainType]map[EthereumAddress]map[[32]byte]struct{} // chainID -> EthereumContractAddress -> topic
 	solAddresses map[apptypes.ChainType]map[SolanaAddress]struct{}                // chainID -> SolanaAddress
 
 	deletedEthTopics map[apptypes.ChainType]map[EthereumAddress]map[[32]byte]struct{}
@@ -58,6 +59,7 @@ func (s *Subscriber) SubscribeEthContract(
 	if _, ok := s.ethTopics[chainID]; !ok {
 		s.ethTopics[chainID] = make(map[EthereumAddress]map[[32]byte]struct{})
 	}
+
 	if _, ok := s.deletedEthTopics[chainID]; !ok {
 		s.deletedEthTopics[chainID] = make(map[EthereumAddress]map[[32]byte]struct{})
 	}
@@ -90,6 +92,7 @@ func (s *Subscriber) SubscribeEthContractWithTopics(
 	if len(topics) == 0 || topics[0] == ([32]byte{}) {
 		s.ethTopics[chainID][contract] = nil
 		delete(s.deletedEthTopics[chainID], contract)
+
 		return
 	}
 
@@ -137,17 +140,25 @@ func (s *Subscriber) UnsubscribeEthTopics(
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	topicSet := s.ethTopics[chainID][contract]
-	if topicSet == nil {
-		return
-	}
-
 	if s.deletedEthTopics[chainID] == nil {
 		s.deletedEthTopics[chainID] = make(map[EthereumAddress]map[[32]byte]struct{})
 	}
 
 	if s.deletedEthTopics[chainID][contract] == nil {
 		s.deletedEthTopics[chainID][contract] = make(map[[32]byte]struct{})
+	}
+
+	topicSet, ok := s.ethTopics[chainID][contract]
+	if !ok {
+		return
+	}
+
+	// Wildcard existing: remove entirely.
+	if topicSet == nil {
+		delete(s.ethTopics[chainID], contract)
+		s.deletedEthTopics[chainID][contract] = nil
+
+		return
 	}
 
 	if len(topics) == 0 {
@@ -163,18 +174,24 @@ func (s *Subscriber) UnsubscribeEthTopics(
 		delete(topicSet, topic)
 		s.deletedEthTopics[chainID][contract][topic] = struct{}{}
 	}
+
+	if len(topicSet) == 0 {
+		delete(s.ethTopics[chainID], contract)
+		s.deletedEthTopics[chainID][contract] = nil
+	}
 }
 
 func (s *Subscriber) IsEthSubscription(chainID apptypes.ChainType, contract EthereumAddress) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// if there is no subscriptions, give all blocks
+	// if there are no subscriptions, treat as no match
 	if len(s.ethTopics[chainID]) == 0 {
-		return true
+		return false
 	}
 
 	_, ok := s.ethTopics[chainID][contract]
+
 	return ok
 }
 
@@ -188,13 +205,13 @@ func (s *Subscriber) IsEthTopicSubscription(
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// If there are no EVM subscriptions at all for the chain, treat as wildcard.
+	// If there are no EVM subscriptions at all for the chain, treat as no match.
 	if len(s.ethTopics[chainID]) == 0 {
-		return true
+		return false
 	}
 
 	topics := s.ethTopics[chainID][contract]
-	if topics == nil || len(topics) == 0 {
+	if len(topics) == 0 {
 		return true
 	}
 
@@ -289,16 +306,19 @@ func (s *Subscriber) Store(tx kv.RwTx) error {
 			curTopics[chainID] = make(map[EthereumAddress]map[[32]byte]struct{})
 		}
 	}
+
 	for chainID := range s.deletedEthTopics {
 		if curTopics[chainID] == nil {
 			curTopics[chainID] = make(map[EthereumAddress]map[[32]byte]struct{})
 		}
 	}
+
 	for chainID := range s.solAddresses {
 		if solSet[chainID] == nil {
 			solSet[chainID] = make(map[SolanaAddress]struct{})
 		}
 	}
+
 	for chainID := range s.deletedSolAddr {
 		if solSet[chainID] == nil {
 			solSet[chainID] = make(map[SolanaAddress]struct{})
@@ -309,14 +329,18 @@ func (s *Subscriber) Store(tx kv.RwTx) error {
 		for addr, topics := range delSet {
 			if topics == nil {
 				delete(curTopics[chainID], addr)
+
 				continue
 			}
+
 			if curTopics[chainID][addr] == nil {
 				continue
 			}
+
 			for topic := range topics {
 				delete(curTopics[chainID][addr], topic)
 			}
+
 			if len(curTopics[chainID][addr]) == 0 {
 				delete(curTopics[chainID], addr)
 			}
@@ -333,11 +357,14 @@ func (s *Subscriber) Store(tx kv.RwTx) error {
 		for addr, topics := range addSet {
 			if topics == nil {
 				curTopics[chainID][addr] = nil
+
 				continue
 			}
+
 			if curTopics[chainID][addr] == nil {
 				curTopics[chainID][addr] = make(map[[32]byte]struct{})
 			}
+
 			for topic := range topics {
 				curTopics[chainID][addr][topic] = struct{}{}
 			}
@@ -354,9 +381,11 @@ func (s *Subscriber) Store(tx kv.RwTx) error {
 	for chainID, addrMap := range curTopics {
 		if len(addrMap) == 0 {
 			var key [8]byte
+
 			const topicKeyMask uint64 = 1 << 63
 			binary.BigEndian.PutUint64(key[:], uint64(chainID)|topicKeyMask)
 			_ = tx.Delete(SubscriptionBucket, key[:])
+
 			delete(curTopics, chainID)
 		}
 	}
@@ -394,7 +423,9 @@ func loadAllSubscriptions(tx kv.Tx) (
 
 	err := tx.ForEach(SubscriptionBucket, nil, func(chainIDBytes, addrBytes []byte) error {
 		raw := binary.BigEndian.Uint64(chainIDBytes)
+
 		const topicKeyMask uint64 = 1 << 63
+
 		isTopicKey := (raw & topicKeyMask) != 0
 		chainID := apptypes.ChainType(raw &^ topicKeyMask)
 
@@ -404,7 +435,7 @@ func loadAllSubscriptions(tx kv.Tx) (
 			}
 
 			if isTopicKey {
-				var topicSlice []chainTopicAddresses
+				var topicSlice []ChainTopicAddresses
 				if err := cbor.Unmarshal(addrBytes, &topicSlice); err != nil {
 					return err
 				}
@@ -413,6 +444,7 @@ func loadAllSubscriptions(tx kv.Tx) (
 					if evm[chainID][entry.Address] == nil {
 						evm[chainID][entry.Address] = make(map[[32]byte]struct{})
 					}
+
 					for _, t := range entry.Topics {
 						evm[chainID][entry.Address][t] = struct{}{}
 					}
@@ -476,7 +508,7 @@ func putChainAddresses[T Address](tx kv.RwTx, chainID apptypes.ChainType, addrs 
 	return tx.Put(SubscriptionBucket, key[:], data)
 }
 
-type chainTopicAddresses struct {
+type ChainTopicAddresses struct {
 	Address EthereumAddress `cbor:"1,keyasint"`
 	Topics  [][32]byte      `cbor:"2,keyasint"`
 }
@@ -484,20 +516,18 @@ type chainTopicAddresses struct {
 // CollectChainTopicsGrouped converts nested maps into a stable slice per chain.
 func CollectChainTopicsGrouped(
 	src map[apptypes.ChainType]map[EthereumAddress]map[[32]byte]struct{},
-) map[apptypes.ChainType][]chainTopicAddresses {
-	out := make(map[apptypes.ChainType][]chainTopicAddresses)
+) map[apptypes.ChainType][]ChainTopicAddresses {
+	out := make(map[apptypes.ChainType][]ChainTopicAddresses)
 
 	for chainID, addrMap := range src {
 		for addr, topics := range addrMap {
-			item := chainTopicAddresses{
+			item := ChainTopicAddresses{
 				Address: addr,
 				Topics:  make([][32]byte, 0, len(topics)),
 			}
 
-			if topics != nil {
-				for t := range topics {
-					item.Topics = append(item.Topics, t)
-				}
+			for t := range topics {
+				item.Topics = append(item.Topics, t)
 			}
 
 			out[chainID] = append(out[chainID], item)
@@ -507,7 +537,7 @@ func CollectChainTopicsGrouped(
 	return out
 }
 
-func putChainTopics(tx kv.RwTx, chainID apptypes.ChainType, entries []chainTopicAddresses) error {
+func putChainTopics(tx kv.RwTx, chainID apptypes.ChainType, entries []ChainTopicAddresses) error {
 	if len(entries) == 0 {
 		return nil
 	}
@@ -518,6 +548,7 @@ func putChainTopics(tx kv.RwTx, chainID apptypes.ChainType, entries []chainTopic
 	}
 
 	var key [8]byte
+
 	const topicKeyMask uint64 = 1 << 63
 	binary.BigEndian.PutUint64(key[:], uint64(chainID)|topicKeyMask)
 

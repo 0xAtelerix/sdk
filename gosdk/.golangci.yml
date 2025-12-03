@@ -263,7 +263,7 @@ issues:
   whole-files: true
   # Fix found issues (if it's supported by the linter).
   # Default: false
-  fix: false
+  fix: true
 # Output configuration options.
 output:
   # The formats used to render issues.

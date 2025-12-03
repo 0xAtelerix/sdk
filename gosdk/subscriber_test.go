@@ -173,7 +173,7 @@ func Test_SubscribeEthContract_And_IsEthSubscription(t *testing.T) {
 	chainID := apptypes.ChainType(1)
 	contract := mkEth(0x11)
 
-	require.True(t, s.IsEthSubscription(chainID, contract))
+	require.False(t, s.IsEthSubscription(chainID, contract))
 
 	s.SubscribeEthContract(chainID, contract)
 	require.True(t, s.IsEthSubscription(chainID, contract))
@@ -190,8 +190,8 @@ func Test_UnsubscribeEthContract_RemovesFromActive_And_MarksDeleted(t *testing.T
 	chainID := apptypes.ChainType(2)
 	contract := mkEth(0x22)
 
-	// precondition: no subscriptions, listen to all chains
-	require.True(t, s.IsEthSubscription(chainID, contract))
+	// precondition: no subscriptions
+	require.False(t, s.IsEthSubscription(chainID, contract))
 
 	// subscribe -> present
 	s.SubscribeEthContract(chainID, contract)
@@ -201,7 +201,7 @@ func Test_UnsubscribeEthContract_RemovesFromActive_And_MarksDeleted(t *testing.T
 	s.UnsubscribeEthContract(chainID, contract)
 
 	// removed from active - no subscriptions
-	require.True(t, s.IsEthSubscription(chainID, contract))
+	require.False(t, s.IsEthSubscription(chainID, contract))
 
 	// and marked as deleted
 	require.NotNil(t, s.deletedEthTopics[chainID])
@@ -297,7 +297,9 @@ func readAllSubscriptions(
 
 	err := tx.ForEach(SubscriptionBucket, nil, func(k, v []byte) error {
 		raw := binary.BigEndian.Uint64(k)
+
 		const topicKeyMask uint64 = 1 << 63
+
 		isTopicKey := (raw & topicKeyMask) != 0
 		chain := apptypes.ChainType(raw &^ topicKeyMask)
 
@@ -307,7 +309,8 @@ func readAllSubscriptions(
 			}
 
 			if isTopicKey {
-				var entries []chainTopicAddresses
+				var entries []ChainTopicAddresses
+
 				dbErr := cbor.Unmarshal(v, &entries)
 				require.NoError(t, dbErr)
 
@@ -315,12 +318,14 @@ func readAllSubscriptions(
 					if gotEth[chain][entry.Address] == nil {
 						gotEth[chain][entry.Address] = make(map[[32]byte]struct{})
 					}
+
 					for _, topic := range entry.Topics {
 						gotEth[chain][entry.Address][topic] = struct{}{}
 					}
 				}
 			} else {
 				var addrs []EthereumAddress
+
 				dbErr := cbor.Unmarshal(v, &addrs)
 				require.NoError(t, dbErr)
 
