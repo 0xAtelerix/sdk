@@ -42,7 +42,7 @@ func DefaultTables() kv.TableCfg {
 		StateBucket:               {},
 		Snapshot:                  {},
 		receipt.ReceiptBucket:     {},
-		EthReceipts:               {},
+		EvmReceipts:               {},
 		SubscriptionBucket:        {},
 		ValsetBucket:              {},
 		ExternalBlockVotingBucket: {},

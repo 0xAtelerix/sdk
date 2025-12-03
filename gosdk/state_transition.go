@@ -20,13 +20,13 @@ type StateTransitionInterface[appTx apptypes.AppTransaction[R], R apptypes.Recei
 type BatchProcesser[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	StateTransitionSimplified
 
-	MultiChain *MultichainStateAccess
+	MultiChain MultichainStateAccessor
 	Subscriber *Subscriber
 }
 
 func NewBatchProcesser[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	s StateTransitionSimplified,
-	m *MultichainStateAccess,
+	m MultichainStateAccessor,
 	sb *Subscriber,
 ) *BatchProcesser[appTx, R] {
 	return &BatchProcesser[appTx, R]{
@@ -62,19 +62,28 @@ blockLoop:
 		switch {
 		case IsEvmChain(apptypes.ChainType(blk.ChainID)):
 			// todo склоняестя ли наш вариант в сторону жесткого космос, где сильно ограничена модификация клиента?
-			ethReceipts, err := b.MultiChain.EthReceipts(ctx, *blk)
+			evmReceipts, err := b.MultiChain.EVMReceipts(ctx, *blk)
 			if err != nil {
 				logger.Debug().Err(err).Msg("failed to process batch external receipts")
 
 				continue
 			}
 
-			var ok bool
+			for _, rec := range evmReceipts {
+				// Check if sender is subscribed
+				if b.Subscriber.IsEthSubscription(apptypes.ChainType(blk.ChainID), EthereumAddress(rec.From)) {
+					ext, err := b.ProcessBlock(*blk, dbtx)
+					if err != nil {
+						return nil, nil, err
+					}
 
-			for _, rec := range ethReceipts {
-				ok = b.Subscriber.IsEthSubscription(apptypes.ChainType(blk.ChainID), EthereumAddress(rec.ContractAddress))
+					extTxs = append(extTxs, ext...)
 
-				if ok {
+					continue blockLoop
+				}
+
+				// Check if recipient is subscribed (To is nil for contract creation)
+				if rec.To != nil && b.Subscriber.IsEthSubscription(apptypes.ChainType(blk.ChainID), EthereumAddress(*rec.To)) {
 					ext, err := b.ProcessBlock(*blk, dbtx)
 					if err != nil {
 						return nil, nil, err

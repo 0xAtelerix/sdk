@@ -29,6 +29,8 @@ const (
 	ErrTransactionLookupWrite        = SDKError("failed to write transaction lookup")
 	ErrExternalTransactionsGet       = SDKError("failed to get external transactions")
 	ErrExternalTransactionsUnmarshal = SDKError("failed to unmarshal external transactions")
+
+	ErrNotImplemented = SDKError("not implemented")
 )
 
 //nolint:gochecknoglobals // read only
