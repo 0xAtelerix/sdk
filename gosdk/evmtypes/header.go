@@ -46,10 +46,14 @@ func (h *Header) GetCustomField(fieldName string) (any, error) {
 
 // ComputeHash computes the block hash from the header fields using RLP encoding and Keccak256.
 // This works for all standard EVM chains including:
-// - Ethereum (pre/post London, Shanghai, Dencun)
+// - Ethereum (pre/post London, Shanghai, Dencun, Pectra)
 // - Arbitrum (extra fields encoded in mixHash)
 // - Optimism/Base (standard header structure post-Bedrock)
 // - Polygon, BSC, and other EVM-compatible chains
+//
+// Supports EIP fields: EIP-1559 (baseFee), EIP-4895 (withdrawalsRoot),
+// EIP-4844 (blobGasUsed, excessBlobGas), EIP-4788 (parentBeaconBlockRoot),
+// EIP-7685 (requestsHash - Pectra upgrade)
 func (h *Header) ComputeHash() common.Hash {
 	gethHeader := h.toGethHeader()
 
@@ -129,6 +133,14 @@ func (h *Header) toGethHeader() *types.Header {
 			if hashStr, ok := val.(string); ok {
 				hash := common.HexToHash(hashStr)
 				gethHeader.ParentBeaconRoot = &hash
+			}
+		}
+
+		// RequestsHash (EIP-7685 - Pectra upgrade)
+		if val, err := h.GetCustomField("requestsHash"); err == nil && val != nil {
+			if hashStr, ok := val.(string); ok {
+				hash := common.HexToHash(hashStr)
+				gethHeader.RequestsHash = &hash
 			}
 		}
 	}

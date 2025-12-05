@@ -331,4 +331,41 @@ func TestHeader_ComputeHash(t *testing.T) {
 		newHash := header.ComputeHash()
 		assert.NotEqual(t, computedHash, newHash)
 	})
+
+	t.Run("handles EIP-7685 requestsHash (Pectra)", func(t *testing.T) {
+		t.Parallel()
+
+		header := NewHeader(20000000)
+		header.ParentHash = common.HexToHash("0x1234")
+		header.Sha3Uncles = emptyUnclesHash
+		header.StateRoot = common.HexToHash("0xabcd")
+		header.TransactionsRoot = emptyTrieRoot
+		header.ReceiptsRoot = emptyTrieRoot
+		header.Difficulty = (*hexutil.Big)(big.NewInt(0))
+		header.BaseFeePerGas = (*hexutil.Big)(big.NewInt(1000000000))
+
+		// Set Raw JSON with requestsHash field (simulates post-Pectra block)
+		header.Raw = json.RawMessage(`{
+			"withdrawalsRoot": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
+			"blobGasUsed": "0x0",
+			"excessBlobGas": "0x0",
+			"parentBeaconBlockRoot": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+			"requestsHash": "0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+		}`)
+
+		computedHash := header.ComputeHash()
+		assert.NotEqual(t, common.Hash{}, computedHash)
+
+		// Changing requestsHash should change the computed hash
+		header.Raw = json.RawMessage(`{
+			"withdrawalsRoot": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
+			"blobGasUsed": "0x0",
+			"excessBlobGas": "0x0",
+			"parentBeaconBlockRoot": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+			"requestsHash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+		}`)
+
+		newHash := header.ComputeHash()
+		assert.NotEqual(t, computedHash, newHash, "requestsHash should affect computed hash")
+	})
 }
