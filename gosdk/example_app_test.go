@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"os"
-	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -24,12 +23,16 @@ import (
 func TestExampleAppchain(t *testing.T) {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
-	config := MakeAppchainConfig(42, map[apptypes.ChainType]string{
-		// EthereumChainID: args.EthereumBlocksPath, //TODO
-		// SolanaChainID:   args.SolBlocksPath, //TODO
-	})
-
 	tmp := t.TempDir()
+
+	config := AppchainConfig{
+		ChainID:           DefaultAppchainID,
+		EmitterPort:       DefaultEmitterPort,
+		AppchainDBPath:    AppchainDBPath(tmp, DefaultAppchainID),
+		EventStreamDir:    EventsPath(tmp),
+		TxStreamDir:       TxBatchPath(tmp, DefaultAppchainID),
+		MultichainStateDB: map[apptypes.ChainType]string{},
+	}
 
 	localDB, err := mdbx.NewMDBX(mdbxlog.New()).
 		InMem(tmp).
@@ -39,29 +42,23 @@ func TestExampleAppchain(t *testing.T) {
 		Open()
 	require.NoError(t, err)
 
-	txPool := txpool.NewTxPool[ExampleTransaction[ExampleReceipt], ExampleReceipt](localDB)
+	txPool := txpool.NewTxPool[ExampleTransaction[ExampleReceipt]](localDB)
 
-	// инициализируем базу на нашей стороне
-	appchainDBPath := filepath.Join(tmp, config.AppchainDBPath)
 	appchainDB, err := mdbx.NewMDBX(mdbxlog.New()).
-		Path(appchainDBPath).
+		Path(config.AppchainDBPath).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return DefaultTables()
 		}).
 		Open()
 	require.NoError(t, err)
 
-	txStreamDirPath := filepath.Join(tmp, config.TxStreamDir)
-
 	txBatchDB, err := mdbx.NewMDBX(mdbxlog.New()).
-		Path(txStreamDirPath).
+		Path(config.TxStreamDir).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return TxBucketsTables()
 		}).
 		Open()
-	if err != nil {
-		log.Panic().Err(err).Msg("Failed to tx batch mdbx database")
-	}
+	require.NoError(t, err)
 
 	subscriber, err := NewSubscriber(t.Context(), appchainDB)
 	require.NoError(t, err)
@@ -71,27 +68,29 @@ func TestExampleAppchain(t *testing.T) {
 
 	multichainDB := NewMultichainStateAccess(chainDBs)
 
-	require.NoError(t, err)
-
-	stateTransition := NewBatchProcesser[ExampleTransaction[ExampleReceipt], ExampleReceipt](
-		NewStateTransition(multichainDB),
-		multichainDB,
-		subscriber,
-	)
+	// Create InitResult manually for test
+	appInit := &InitResult{
+		Config:     config,
+		AppchainDB: appchainDB,
+		LocalDB:    localDB,
+		TxBatchDB:  txBatchDB,
+		Multichain: multichainDB,
+		Subscriber: subscriber,
+	}
 
 	log.Info().Msg("Creating appchain...")
 
 	appchainExample := NewAppchain(
-		stateTransition,
+		appInit,
+		NewDefaultBatchProcessor[ExampleTransaction[ExampleReceipt], ExampleReceipt](
+			NewExtBlockProcessor(multichainDB),
+			multichainDB,
+			subscriber,
+		),
 		func(_ uint64, _ [32]byte, _ [32]byte, _ apptypes.Batch[ExampleTransaction[ExampleReceipt], ExampleReceipt]) *ExampleBlock {
 			return &ExampleBlock{}
 		},
 		txPool,
-		config,
-		appchainDB,
-		subscriber,
-		multichainDB,
-		txBatchDB,
 	)
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
@@ -146,15 +145,6 @@ func (ExampleReceipt) Error() string {
 	return ""
 }
 
-type ExampleBatchProcesser[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct{}
-
-func (ExampleBatchProcesser[appTx, R]) ProcessBatch(
-	_ apptypes.Batch[appTx, R],
-	_ kv.RwTx,
-) ([]R, []apptypes.ExternalTransaction, error) {
-	return nil, nil, nil
-}
-
 type ExampleBlock struct{}
 
 func (*ExampleBlock) Number() uint64 {
@@ -173,18 +163,20 @@ func (*ExampleBlock) Bytes() []byte {
 	return []byte{}
 }
 
-type StateTransition struct {
+// Verify ExtBlockProcessor implements ExternalBlockProcessor interface.
+var _ ExternalBlockProcessor = &ExtBlockProcessor{}
+
+type ExtBlockProcessor struct {
 	MultiChain *MultichainStateAccess
 }
 
-func NewStateTransition(multiChain *MultichainStateAccess) *StateTransition {
-	return &StateTransition{
+func NewExtBlockProcessor(multiChain *MultichainStateAccess) *ExtBlockProcessor {
+	return &ExtBlockProcessor{
 		MultiChain: multiChain,
 	}
 }
 
-// how to external chains blocks
-func (*StateTransition) ProcessBlock(
+func (*ExtBlockProcessor) ProcessBlock(
 	_ apptypes.ExternalBlock,
 	_ kv.RwTx,
 ) ([]apptypes.ExternalTransaction, error) {

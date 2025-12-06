@@ -25,11 +25,10 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
-func WithRootCalculator[STI StateTransitionInterface[AppTx, R],
-	AppTx apptypes.AppTransaction[R],
+func WithRootCalculator[AppTx apptypes.AppTransaction[R],
 	R apptypes.Receipt,
-	AppBlock apptypes.AppchainBlock](rc apptypes.RootCalculator) func(a *Appchain[STI, AppTx, R, AppBlock]) {
-	return func(a *Appchain[STI, AppTx, R, AppBlock]) {
+	AppBlock apptypes.AppchainBlock](rc apptypes.RootCalculator) func(a *Appchain[AppTx, R, AppBlock]) {
+	return func(a *Appchain[AppTx, R, AppBlock]) {
 		a.rootCalculator = rc
 	}
 }
@@ -46,57 +45,36 @@ type AppchainConfig struct {
 	ValidatorID       string
 }
 
-// todo: it should be stored at the first run and checked on next
-func MakeAppchainConfig(
-	chainID uint64,
-	multichainStateDB map[apptypes.ChainType]string,
-) AppchainConfig {
-	return AppchainConfig{
-		ChainID:           chainID,
-		EmitterPort:       ":50051",
-		PrometheusPort:    "",
-		AppchainDBPath:    "chaindb",
-		EventStreamDir:    "epochs",
-		TxStreamDir:       strconv.FormatUint(chainID, 10),
-		MultichainStateDB: multichainStateDB,
-	}
-}
-
-func NewAppchain[STI StateTransitionInterface[AppTx, R],
-	AppTx apptypes.AppTransaction[R],
+func NewAppchain[AppTx apptypes.AppTransaction[R],
 	R apptypes.Receipt,
 	AppBlock apptypes.AppchainBlock](
-	sti STI,
+	appInit *InitResult,
+	batchProcessor BatchProcessor[AppTx, R],
 	blockBuilder apptypes.AppchainBlockConstructor[AppTx, R, AppBlock],
 	txpool apptypes.TxPoolInterface[AppTx, R],
-	config AppchainConfig,
-	appchainDB kv.RwDB,
-	subscriber *Subscriber,
-	multichain MultichainStateAccessor,
-	txBatchDB kv.RoDB,
-	options ...func(a *Appchain[STI, AppTx, R, AppBlock]),
-) Appchain[STI, AppTx, R, AppBlock] {
-	log.Info().Str("db_path", config.AppchainDBPath).Msg("Initializing appchain database")
+	options ...func(a *Appchain[AppTx, R, AppBlock]),
+) Appchain[AppTx, R, AppBlock] {
+	log.Info().Str("db_path", appInit.Config.AppchainDBPath).Msg("Initializing appchain database")
 
-	emiterAPI := NewServer(appchainDB, config.ChainID, txpool)
+	emiterAPI := NewServer(appInit.AppchainDB, appInit.Config.ChainID, txpool)
 
 	emiterAPI.logger = &log.Logger
-	if config.Logger != nil {
-		emiterAPI.logger = config.Logger
+	if appInit.Config.Logger != nil {
+		emiterAPI.logger = appInit.Config.Logger
 	}
 
 	log.Info().Msg("Appchain initialized successfully")
 
-	appchain := Appchain[STI, AppTx, R, AppBlock]{
-		appchainStateExecution: sti,
-		rootCalculator:         NewStubRootCalculator(),
-		blockBuilder:           blockBuilder,
-		emiterAPI:              emiterAPI,
-		AppchainDB:             appchainDB,
-		TxBatchDB:              txBatchDB,
-		config:                 config,
-		multichainDB:           multichain,
-		subscriber:             subscriber,
+	appchain := Appchain[AppTx, R, AppBlock]{
+		batchProcessor: batchProcessor,
+		rootCalculator: NewStubRootCalculator(),
+		blockBuilder:   blockBuilder,
+		emiterAPI:      emiterAPI,
+		AppchainDB:     appInit.AppchainDB,
+		TxBatchDB:      appInit.TxBatchDB,
+		config:         appInit.Config,
+		multichainDB:   appInit.Multichain,
+		subscriber:     appInit.Subscriber,
 	}
 
 	for _, option := range options {
@@ -106,10 +84,10 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 	return appchain
 }
 
-type Appchain[STI StateTransitionInterface[appTx, R], appTx apptypes.AppTransaction[R], R apptypes.Receipt, AppBlock apptypes.AppchainBlock] struct {
-	appchainStateExecution STI
-	rootCalculator         apptypes.RootCalculator
-	blockBuilder           apptypes.AppchainBlockConstructor[appTx, R, AppBlock]
+type Appchain[appTx apptypes.AppTransaction[R], R apptypes.Receipt, AppBlock apptypes.AppchainBlock] struct {
+	batchProcessor BatchProcessor[appTx, R]
+	rootCalculator apptypes.RootCalculator
+	blockBuilder   apptypes.AppchainBlockConstructor[appTx, R, AppBlock]
 
 	emiterAPI    emitterproto.EmitterServer
 	AppchainDB   kv.RwDB
@@ -119,7 +97,7 @@ type Appchain[STI StateTransitionInterface[appTx, R], appTx apptypes.AppTransact
 	subscriber   *Subscriber
 }
 
-func (a *Appchain[STI, appTx, R, AppBlock]) Run(
+func (a *Appchain[appTx, R, AppBlock]) Run(
 	ctx context.Context,
 ) error {
 	logger := log.Ctx(ctx)
@@ -289,7 +267,7 @@ runFor:
 					processedReceipts []R
 				)
 
-				processedReceipts, extTxs, err = a.appchainStateExecution.ProcessBatch(ctx, batch, rwtx)
+				processedReceipts, extTxs, err = a.batchProcessor.ProcessBatch(ctx, batch, rwtx)
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to process batch")
 
@@ -471,7 +449,7 @@ func WaitFile(ctx context.Context, filePath string, logger *zerolog.Logger) erro
 	return nil
 }
 
-func (a *Appchain[STI, appTx, R, AppBlock]) RunEmitterAPI(ctx context.Context, errCh chan error) {
+func (a *Appchain[appTx, R, AppBlock]) RunEmitterAPI(ctx context.Context, errCh chan error) {
 	logger := log.Ctx(ctx)
 
 	lis, err := (&net.ListenConfig{}).Listen(ctx, "tcp", a.config.EmitterPort)
@@ -534,7 +512,7 @@ func (a *Appchain[STI, appTx, R, AppBlock]) RunEmitterAPI(ctx context.Context, e
 	}
 }
 
-func (a *Appchain[STI, appTx, R, AppBlock]) Shutdown() {
+func (a *Appchain[appTx, R, AppBlock]) Shutdown() {
 	if a.multichainDB != nil {
 		a.multichainDB.Close()
 	}
