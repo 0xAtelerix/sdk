@@ -12,6 +12,7 @@ require (
 	github.com/invopop/jsonschema v0.13.0
 	github.com/ledgerwatch/erigon-lib v1.0.0
 	github.com/ledgerwatch/log/v3 v3.9.0
+	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/mr-tron/base58 v1.2.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rs/zerolog v1.34.0

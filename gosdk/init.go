@@ -133,6 +133,7 @@ func DiscoverMultichainDBsInDir(dir string) (MultichainConfig, error) {
 		sqliteFile := filepath.Join(dbPath, "sqlite")
 		if _, err := os.Stat(sqliteFile); err == nil {
 			config[apptypes.ChainType(chainID)] = dbPath
+
 			continue
 		}
 
@@ -140,6 +141,7 @@ func DiscoverMultichainDBsInDir(dir string) (MultichainConfig, error) {
 		mdbxFile := filepath.Join(dbPath, "mdbx.dat")
 		if _, err := os.Stat(mdbxFile); err == nil {
 			config[apptypes.ChainType(chainID)] = dbPath
+
 			continue
 		}
 
