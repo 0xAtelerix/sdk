@@ -162,6 +162,9 @@ func (sa *MultichainStateAccessSQL) EVMBlock(
 			return nil, fmt.Errorf("failed to unmarshal evm block: %w", err)
 		}
 
+		evmBlock.Raw = rawBlock
+		evmBlock.Header.Raw = rawBlock
+
 		// Verify block integrity by computing hash from header fields
 		// This ensures the block data hasn't been tampered with
 		computedHash := evmBlock.ComputeHash()
@@ -224,6 +227,8 @@ func (sa *MultichainStateAccessSQL) EVMReceipts(
 		if err != nil {
 			return nil, fmt.Errorf("decode receipt: %w", err)
 		}
+
+		r.Raw = raw
 
 		receipts = append(receipts, r)
 	}
