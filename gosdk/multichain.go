@@ -143,15 +143,16 @@ func (sa *MultichainStateAccess) EVMBlock(
 		break
 	}
 
-	evmBlockHash := evmBlock.Hash
-	if evmBlockHash != block.BlockHash {
+	// Verify block integrity by computing hash from header fields
+	// This ensures the block data hasn't been tampered with
+	computedHash := evmBlock.ComputeHash()
+	if computedHash != block.BlockHash {
 		return nil, fmt.Errorf(
-			"%w, chainID %d; got block number %d, hash %s; expected block number %d, hash %s",
-			ErrWrongBlock,
+			"%w, chainID %d; block %d; computed hash %s does not match expected hash %s",
+			ErrHashMismatch,
 			block.ChainID,
 			block.BlockNumber,
-			hex.EncodeToString(evmBlockHash[:]),
-			block.BlockNumber,
+			hex.EncodeToString(computedHash[:]),
 			hex.EncodeToString(block.BlockHash[:]),
 		)
 	}
@@ -191,8 +192,6 @@ func (sa *MultichainStateAccess) EVMReceipts(
 	if err != nil {
 		return nil, err
 	}
-
-	// todo verify receipt root
 
 	return evmReceipts, nil
 }

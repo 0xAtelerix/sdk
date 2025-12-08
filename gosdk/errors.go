@@ -14,7 +14,8 @@ const (
 	ErrMissingTxBatch = SDKError("missing tx batch")
 	ErrNoValidatorSet = SDKError("no valset")
 
-	ErrWrongBlock = SDKError("wrong block hash")
+	ErrWrongBlock   = SDKError("wrong block hash")
+	ErrHashMismatch = SDKError("block hash mismatch: stored hash does not match computed hash")
 
 	ErrEmptyTxBatchDB = SDKError("tx batch db is nil")
 
