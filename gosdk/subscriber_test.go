@@ -1,7 +1,6 @@
 package gosdk
 
 import (
-	"bytes"
 	"encoding/binary"
 	"testing"
 
@@ -56,10 +55,10 @@ func Test_cmpAddr_Solana(t *testing.T) {
 
 func newSubscriber() *Subscriber {
 	return &Subscriber{
-		ethContracts:        make(map[apptypes.ChainType]map[EthereumAddress]struct{}),
-		solAddresses:        make(map[apptypes.ChainType]map[SolanaAddress]struct{}),
-		deletedEthContracts: make(map[apptypes.ChainType]map[EthereumAddress]struct{}),
-		deletedSolAddresses: make(map[apptypes.ChainType]map[SolanaAddress]struct{}),
+		ethTopics:        make(map[apptypes.ChainType]map[EthereumAddress]map[[32]byte]struct{}),
+		solAddresses:     make(map[apptypes.ChainType]map[SolanaAddress]struct{}),
+		deletedEthTopics: make(map[apptypes.ChainType]map[EthereumAddress]map[[32]byte]struct{}),
+		deletedSolAddr:   make(map[apptypes.ChainType]map[SolanaAddress]struct{}),
 	}
 }
 
@@ -174,7 +173,7 @@ func Test_SubscribeEthContract_And_IsEthSubscription(t *testing.T) {
 	chainID := apptypes.ChainType(1)
 	contract := mkEth(0x11)
 
-	require.True(t, s.IsEthSubscription(chainID, contract))
+	require.False(t, s.IsEthSubscription(chainID, contract))
 
 	s.SubscribeEthContract(chainID, contract)
 	require.True(t, s.IsEthSubscription(chainID, contract))
@@ -191,8 +190,8 @@ func Test_UnsubscribeEthContract_RemovesFromActive_And_MarksDeleted(t *testing.T
 	chainID := apptypes.ChainType(2)
 	contract := mkEth(0x22)
 
-	// precondition: no subscriptions, listen to all chains
-	require.True(t, s.IsEthSubscription(chainID, contract))
+	// precondition: no subscriptions
+	require.False(t, s.IsEthSubscription(chainID, contract))
 
 	// subscribe -> present
 	s.SubscribeEthContract(chainID, contract)
@@ -202,19 +201,19 @@ func Test_UnsubscribeEthContract_RemovesFromActive_And_MarksDeleted(t *testing.T
 	s.UnsubscribeEthContract(chainID, contract)
 
 	// removed from active - no subscriptions
-	require.True(t, s.IsEthSubscription(chainID, contract))
+	require.False(t, s.IsEthSubscription(chainID, contract))
 
 	// and marked as deleted
-	require.NotNil(t, s.deletedEthContracts[chainID])
+	require.NotNil(t, s.deletedEthTopics[chainID])
 
-	_, ok := s.deletedEthContracts[chainID][contract]
+	_, ok := s.deletedEthTopics[chainID][contract]
 	require.True(t, ok)
 
 	// re-subscribe clears the deleted marker (idempotent behavior)
 	s.SubscribeEthContract(chainID, contract)
 	require.True(t, s.IsEthSubscription(chainID, contract))
 
-	_, ok = s.deletedEthContracts[chainID][contract]
+	_, ok = s.deletedEthTopics[chainID][contract]
 	require.False(t, ok)
 }
 
@@ -252,21 +251,21 @@ func Test_UnsubscribeSolanaAddress_RemovesFromActive_And_MarksDeleted(t *testing
 	require.True(t, s.IsSolanaSubscription(SolanaChainID, addr))
 
 	// deleted map must be initialized and contain the addr
-	require.NotNil(t, s.deletedSolAddresses[SolanaChainID])
-	_, ok := s.deletedSolAddresses[SolanaChainID][addr]
+	require.NotNil(t, s.deletedSolAddr[SolanaChainID])
+	_, ok := s.deletedSolAddr[SolanaChainID][addr]
 	require.True(t, ok)
 
 	// re-add clears deleted marker
 	s.SubscribeSolanaAddress(SolanaChainID, addr)
 	require.True(t, s.IsSolanaSubscription(SolanaChainID, addr))
-	_, ok = s.deletedSolAddresses[SolanaChainID][addr]
+	_, ok = s.deletedSolAddr[SolanaChainID][addr]
 	require.False(t, ok)
 
 	// delete again re-marks as deleted, no subscriptions
 	s.UnsubscribeSolanaAddress(SolanaChainID, addr)
 	require.True(t, s.IsSolanaSubscription(SolanaChainID, addr))
 
-	_, ok = s.deletedSolAddresses[SolanaChainID][addr]
+	_, ok = s.deletedSolAddr[SolanaChainID][addr]
 	require.True(t, ok)
 }
 
@@ -290,25 +289,49 @@ func openTestDB(t *testing.T) kv.RwDB {
 func readAllSubscriptions(
 	t *testing.T,
 	tx kv.Tx,
-) (map[apptypes.ChainType]map[EthereumAddress]struct{}, map[apptypes.ChainType]map[SolanaAddress]struct{}) {
+) (map[apptypes.ChainType]map[EthereumAddress]map[[32]byte]struct{}, map[apptypes.ChainType]map[SolanaAddress]struct{}) {
 	t.Helper()
 
-	gotEth := make(map[apptypes.ChainType]map[EthereumAddress]struct{})
+	gotEth := make(map[apptypes.ChainType]map[EthereumAddress]map[[32]byte]struct{})
 	gotSol := make(map[apptypes.ChainType]map[SolanaAddress]struct{})
 
 	err := tx.ForEach(SubscriptionBucket, nil, func(k, v []byte) error {
-		chain := apptypes.ChainType(binary.BigEndian.Uint64(k))
+		raw := binary.BigEndian.Uint64(k)
+
+		const topicKeyMask uint64 = 1 << 63
+
+		isTopicKey := (raw & topicKeyMask) != 0
+		chain := apptypes.ChainType(raw &^ topicKeyMask)
 
 		if IsEvmChain(chain) {
-			gotEth[chain] = make(map[EthereumAddress]struct{})
+			if gotEth[chain] == nil {
+				gotEth[chain] = make(map[EthereumAddress]map[[32]byte]struct{})
+			}
 
-			var addrs []EthereumAddress
+			if isTopicKey {
+				var entries []ChainTopicAddresses
 
-			dbErr := cbor.Unmarshal(v, &addrs)
-			require.NoError(t, dbErr)
+				dbErr := cbor.Unmarshal(v, &entries)
+				require.NoError(t, dbErr)
 
-			for _, addr := range addrs {
-				gotEth[chain][addr] = struct{}{}
+				for _, entry := range entries {
+					if gotEth[chain][entry.Address] == nil {
+						gotEth[chain][entry.Address] = make(map[[32]byte]struct{})
+					}
+
+					for _, topic := range entry.Topics {
+						gotEth[chain][entry.Address][topic] = struct{}{}
+					}
+				}
+			} else {
+				var addrs []EthereumAddress
+
+				dbErr := cbor.Unmarshal(v, &addrs)
+				require.NoError(t, dbErr)
+
+				for _, addr := range addrs {
+					gotEth[chain][addr] = nil // wildcard topics
+				}
 			}
 		} else if IsSolanaChain(chain) {
 			gotSol[chain] = make(map[SolanaAddress]struct{})
@@ -371,24 +394,12 @@ func Test_Store_Persistency_WriteAndReadBack(t *testing.T) {
 	require.Len(t, gotEth, 1)
 	require.Len(t, gotSol, 1)
 
-	// chain 1 should have eth1, eth2
+	// chain 1 should have eth1, eth2 (wildcard topics)
 	require.Contains(t, gotEth, apptypes.ChainType(1))
-	// byte equality
-	found1 := false
-	found2 := false
+	require.Len(t, gotEth[1], 2)
+	require.Empty(t, gotEth[1][eth1])
 
-	for v := range gotEth[1] {
-		if bytes.Equal(v[:], bytesOf(eth1)) {
-			found1 = true
-		}
-
-		if bytes.Equal(v[:], bytesOf(eth2)) {
-			found2 = true
-		}
-	}
-
-	require.True(t, found1)
-	require.True(t, found2)
+	require.Empty(t, gotEth[1][eth2])
 
 	// chain 2 should have the Solana address
 	require.Contains(t, gotSol, SolanaChainID)
@@ -495,5 +506,7 @@ func Test_Store_Persistency_DeleteWholeChainThenReAdd(t *testing.T) {
 	require.Len(t, gotEth, 1)
 	require.Empty(t, gotSol)
 
-	require.Equal(t, map[EthereumAddress]struct{}{ethY: {}}, gotEth[BNBChainID])
+	require.Contains(t, gotEth, BNBChainID)
+	require.Len(t, gotEth[BNBChainID], 1)
+	require.Empty(t, gotEth[BNBChainID][ethY])
 }
