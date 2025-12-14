@@ -12,6 +12,7 @@ import (
 
 	"github.com/blocto/solana-go-sdk/client"
 	"github.com/goccy/go-json"
+	_ "github.com/mattn/go-sqlite3" // SQLite driver for multichain state access
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
