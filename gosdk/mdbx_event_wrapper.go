@@ -25,7 +25,6 @@ type MdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 	txReader          kv.RoDB
 	chainID           uint32
 	logger            *zerolog.Logger
-	subscriber        *Subscriber
 	appchainDB        kv.RwDB
 	votingBlocks      *Voting[apptypes.ExternalBlock]
 	votingCheckpoints *Voting[apptypes.Checkpoint]
@@ -39,7 +38,6 @@ type EventStreamWrapperConstructor[appTx apptypes.AppTransaction[R], R apptypes.
 	txBatchDB kv.RoDB,
 	logger *zerolog.Logger,
 	appchainTx kv.RoDB,
-	subscriber *Subscriber,
 	votingBlocks *Voting[apptypes.ExternalBlock],
 	votingCheckpoints *Voting[apptypes.Checkpoint],
 ) (Streamer[appTx, R], error)
@@ -50,7 +48,6 @@ func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Rece
 	txBatchDB kv.RoDB,
 	logger *zerolog.Logger,
 	appchainDB kv.RwDB,
-	subscriber *Subscriber,
 	votingBlocks *Voting[apptypes.ExternalBlock],
 	votingCheckpoints *Voting[apptypes.Checkpoint],
 ) (*MdbxEventStreamWrapper[appTx, R], error) {
@@ -59,7 +56,6 @@ func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Rece
 		txReader:          txBatchDB,
 		chainID:           chainID,
 		logger:            logger,
-		subscriber:        subscriber,
 		appchainDB:        appchainDB,
 		votingBlocks:      votingBlocks,
 		votingCheckpoints: votingCheckpoints,
@@ -303,7 +299,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 				tx, innerErr := ews.txReader.BeginRo(ctx)
 				if innerErr != nil {
-					return innerErr
+					return fmt.Errorf("begin RO tx: %w", innerErr)
 				}
 				defer tx.Rollback()
 
@@ -314,7 +310,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 					val, innerErr := tx.GetOne(TxBuckets, hsh[:])
 					if innerErr != nil {
-						return innerErr
+						return fmt.Errorf("get tx by hash: %w", innerErr)
 					}
 
 					if len(val) == 0 {
@@ -323,7 +319,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 					txs, innerErr := utility.Unflatten(val)
 					if innerErr != nil {
-						return innerErr
+						return fmt.Errorf("flatten txs: %w", innerErr)
 					}
 
 					txBatches[hsh] = txs

@@ -10,11 +10,14 @@ get:
 tidy:
 	go mod tidy
 
-tests:
+tests-local:
 	go test -short -timeout 20m -failfast -shuffle=on -v ./... $(params)
 
+tests:
+	go test -timeout 20m -failfast -shuffle=on -v ./... $(params)
+
 race-tests:
-	go test -race -short -timeout 30m -failfast -shuffle=on -v ./... $(params)
+	go test -race -timeout 30m -failfast -shuffle=on -v ./... $(params)
 
 VERSION=v2.4.0
 
