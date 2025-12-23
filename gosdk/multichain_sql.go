@@ -198,8 +198,6 @@ func (sa *MultichainStateAccessSQL) Close() {
 }
 
 // SolanaBlock is not supported for the SQLite-backed multichain store.
-//
-//nolint:unparam // Unimplemented
 func (*MultichainStateAccessSQL) SolanaBlock(
 	_ context.Context,
 	block apptypes.ExternalBlock,

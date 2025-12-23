@@ -98,8 +98,8 @@ CREATE TABLE receipts (
 
 	gotBlock, err := msa.EVMBlock(ctx, extBlock)
 	require.NoError(t, err)
-	require.Equal(t, header.Number.ToInt().Uint64(), gotBlock.Header.Number.ToInt().Uint64())
-	require.Equal(t, ethBlock.Hash, gotBlock.Header.Hash)
+	require.Equal(t, header.Number.ToInt().Uint64(), gotBlock.Number.ToInt().Uint64())
+	require.Equal(t, ethBlock.Hash, gotBlock.Hash)
 
 	rcpts, err := msa.EVMReceipts(ctx, extBlock)
 	require.NoError(t, err)
