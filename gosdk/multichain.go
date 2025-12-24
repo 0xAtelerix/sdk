@@ -45,13 +45,37 @@ func SolanaTables() kv.TableCfg {
 }
 
 type MultichainStateAccess struct {
-	stateAccessDB map[apptypes.ChainType]kv.RoDB
+	stateAccessDB map[apptypes.ChainType]ReadonlyKV
 	mu            sync.RWMutex
 }
 
-type MultichainConfig map[apptypes.ChainType]string // chainID, chainDBpath
-func NewMultichainStateAccessDB(cfg MultichainConfig) (map[apptypes.ChainType]kv.RoDB, error) {
-	stateAccessDBs := make(map[apptypes.ChainType]kv.RoDB)
+// ReadonlyKV is the minimal interface we need from a key-value store for multichain reads.
+type ReadonlyKV interface {
+	View(ctx context.Context, f func(tx kv.Tx) error) error
+	Close()
+}
+
+type (
+	MultichainConfig map[apptypes.ChainType]string // chainID, chainDBpath
+	KVOpener         func(chainID apptypes.ChainType, path string, tableCfg kv.TableCfg) (ReadonlyKV, error)
+)
+
+func NewMultichainStateAccessDB(cfg MultichainConfig) (map[apptypes.ChainType]ReadonlyKV, error) {
+	// MDBX access by default to have compatibility
+	return NewMultichainStateAccessDBWith(
+		cfg,
+		func(_ apptypes.ChainType, path string, tableCfg kv.TableCfg) (ReadonlyKV, error) {
+			return openMDBX(path, tableCfg)
+		},
+	)
+}
+
+func NewMultichainStateAccessDBWith(
+	cfg MultichainConfig,
+	opener KVOpener,
+) (map[apptypes.ChainType]ReadonlyKV, error) {
+	stateAccessDBs := make(map[apptypes.ChainType]ReadonlyKV)
+
 	for chainID, path := range cfg {
 		var tableCfg kv.TableCfg
 
@@ -71,10 +95,7 @@ func NewMultichainStateAccessDB(cfg MultichainConfig) (map[apptypes.ChainType]kv
 		maxTries := 50
 
 		for {
-			stateAccessDB, err := mdbx.NewMDBX(mdbxlog.New()).
-				Path(path).WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
-				return tableCfg
-			}).Readonly().Open()
+			stateAccessDB, err := opener(chainID, path, tableCfg)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to initialize MDBX")
 				time.Sleep(time.Second)
@@ -98,7 +119,7 @@ func NewMultichainStateAccessDB(cfg MultichainConfig) (map[apptypes.ChainType]kv
 }
 
 func NewMultichainStateAccess(
-	stateAccessDBs map[apptypes.ChainType]kv.RoDB,
+	stateAccessDBs map[apptypes.ChainType]ReadonlyKV,
 ) *MultichainStateAccess {
 	multichainStateDB := MultichainStateAccess{
 		stateAccessDB: stateAccessDBs,
@@ -302,4 +323,12 @@ func SolBlockKey(num uint64) []byte {
 	binary.BigEndian.PutUint64(key, num)
 
 	return key
+}
+
+// openMDBX is kept private to allow DefaultKVOpener to use MDBX without forcing callers to import mdbx.
+func openMDBX(path string, tableCfg kv.TableCfg) (ReadonlyKV, error) {
+	return mdbx.NewMDBX(mdbxlog.New()).
+		Path(path).WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
+		return tableCfg
+	}).Readonly().Open()
 }

@@ -122,7 +122,12 @@ As your business logic grows you can extend `ProcessBatch` to derive external tr
 
 ## Multichain data access and synchronization
 
-The same example test also shows how to bootstrap multichain reads: it creates a `Subscriber`, opens the MDBX databases via `NewMultichainStateAccessDB`, and then constructs `MultichainStateAccess`. Turning that into a real workflow involves three extra steps.
+The same example test also shows how to bootstrap multichain reads. You have two backends:
+
+- **MDBX (default)** – open with `NewMultichainStateAccessDB` or `NewMultichainStateAccessDBWith` (pass a custom opener). Then wrap with `NewMultichainStateAccess`.
+- **SQLite** – if your fetcher produces SQLite snapshots, open with `NewMultichainStateAccessSQLDB` and wrap with `NewMultichainStateAccessSQL` (implements the same `MultichainReader` interface).
+
+Once you have a `MultichainReader`, construct `MultichainStateAccess` (MDBX) or use the SQLite reader directly and hand it to `BatchProcesser`. Turning that into a real workflow involves three extra steps.
 
 1. **Describe the data you need.** During startup, call the subscriber helpers before you run the appchain. Use concrete chain IDs and SDK address types:
 

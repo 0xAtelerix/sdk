@@ -196,7 +196,6 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 		a.TxBatchDB,
 		logger,
 		a.AppchainDB,
-		a.subscriber,
 		votingBlocks,
 		votingCheckpoints,
 	)

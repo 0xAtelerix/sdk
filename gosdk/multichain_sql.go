@@ -27,63 +27,12 @@ func NewMultichainStateAccessSQLDB(
 	for chainID, path := range cfg {
 		dbPath := filepath.Join(filepath.Clean(path), "sqlite")
 
-		dsn := fmt.Sprintf("file:%s?mode=ro&cache=shared&uri=true", dbPath)
-		log.Info().Str("path", dsn).Msg("connecting to sqlite")
-
-		var (
-			db  *sql.DB
-			err error
-		)
-
-		maxTries := 50
-
-		for {
-			db, err = sql.Open("sqlite3", dsn)
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to open SQLite DB")
-				time.Sleep(time.Second)
-
-				if maxTries == 0 {
-					return nil, err
-				}
-
-				maxTries--
-
-				continue
-			}
-
-			if pingErr := db.PingContext(ctx); pingErr != nil {
-				log.Error().Err(pingErr).Str("dsn", dsn).Msg("SQLite ping failed")
-
-				err = db.Close()
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to close DB")
-				}
-
-				time.Sleep(time.Second)
-
-				if maxTries == 0 {
-					return nil, pingErr
-				}
-
-				maxTries--
-
-				continue
-			}
-
-			log.Info().
-				Uint64("chainID", uint64(chainID)).
-				Str("path", dbPath).
-				Msg("SQLite read‑only DB opened")
-
-			if _, err := db.ExecContext(ctx, "PRAGMA query_only = ON;"); err != nil {
-				log.Warn().Err(err).Msg("Unable to enforce query_only; continue anyway")
-			}
-
-			stateAccessDBs[chainID] = db
-
-			break
+		db, err := openSQLite(ctx, dbPath, "ro")
+		if err != nil {
+			return nil, err
 		}
+
+		stateAccessDBs[chainID] = db
 	}
 
 	return stateAccessDBs, nil
@@ -248,11 +197,72 @@ func (sa *MultichainStateAccessSQL) Close() {
 	}
 }
 
-// SolanaBlock retrieves a Solana block from SQLite
-// TODO: Implement when Solana support is needed
+// SolanaBlock is not supported for the SQLite-backed multichain store.
 func (*MultichainStateAccessSQL) SolanaBlock(
 	_ context.Context,
-	_ apptypes.ExternalBlock,
+	block apptypes.ExternalBlock,
 ) (*client.Block, error) {
-	return nil, ErrNotImplemented
+	return nil, fmt.Errorf(
+		"%w, solana not available in sqlite backend for chainID %d",
+		ErrUnknownChain,
+		block.ChainID,
+	)
+}
+
+// openSQLite opens a SQLite database with the given mode ("ro" for read-only, "rwc" for read/write).
+// It mirrors the retry logic used by the MDBX opener so tests and production paths behave similarly.
+func openSQLite(ctx context.Context, dbPath, mode string) (*sql.DB, error) {
+	dsn := fmt.Sprintf("file:%s?mode=%s&cache=shared&uri=true", dbPath, mode)
+	log.Info().Str("path", dsn).Msg("connecting to sqlite")
+
+	var (
+		db  *sql.DB
+		err error
+	)
+
+	maxTries := 50
+
+	for {
+		db, err = sql.Open("sqlite3", dsn)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to open SQLite DB")
+			time.Sleep(time.Second)
+
+			if maxTries == 0 {
+				return nil, err
+			}
+
+			maxTries--
+
+			continue
+		}
+
+		if pingErr := db.PingContext(ctx); pingErr != nil {
+			log.Error().Err(pingErr).Str("dsn", dsn).Str("path", dbPath).Msg("SQLite ping failed")
+
+			if closeErr := db.Close(); closeErr != nil {
+				log.Error().Err(closeErr).Msg("Failed to close DB")
+			}
+
+			time.Sleep(time.Second)
+
+			if maxTries == 0 {
+				return nil, pingErr
+			}
+
+			maxTries--
+
+			continue
+		}
+
+		log.Info().Str("path", dbPath).Msg("SQLite DB opened")
+
+		if mode == "ro" {
+			if _, err := db.ExecContext(ctx, "PRAGMA query_only = ON;"); err != nil {
+				log.Warn().Err(err).Msg("Unable to enforce query_only; continue anyway")
+			}
+		}
+
+		return db, nil
+	}
 }
