@@ -191,7 +191,7 @@ func Test_SubscribeEthContract_And_IsEthSubscription(t *testing.T) {
 	chainID := apptypes.ChainType(1)
 	contract := mkEth(0x11)
 
-	require.False(t, s.IsEthSubscription(chainID, contract))
+	require.True(t, s.IsEthSubscription(chainID, contract))
 
 	s.SubscribeEthContract(chainID, contract, nil)
 	require.True(t, s.IsEthSubscription(chainID, contract))
@@ -209,7 +209,7 @@ func Test_UnsubscribeEthContract_RemovesFromActive_And_MarksDeleted(t *testing.T
 	contract := mkEth(0x22)
 
 	// precondition: no subscriptions, listen to all chains
-	require.False(t, s.IsEthSubscription(chainID, contract))
+	require.True(t, s.IsEthSubscription(chainID, contract))
 
 	// subscribe -> present
 	s.SubscribeEthContract(chainID, contract, nil)
@@ -218,8 +218,8 @@ func Test_UnsubscribeEthContract_RemovesFromActive_And_MarksDeleted(t *testing.T
 	// act: unsubscribe (should NOT panic with correct code)
 	s.UnsubscribeEthContract(chainID, contract, nil)
 
-	// removed from active - no subscriptions
-	require.False(t, s.IsEthSubscription(chainID, contract))
+	// removed from active - no subscriptions, listen to all chains
+	require.True(t, s.IsEthSubscription(chainID, contract))
 
 	// and marked as deleted
 	require.NotNil(t, s.deletedEthContracts[chainID])
@@ -519,7 +519,11 @@ func Test_Store_Persistency_DeleteWholeChainThenReAdd(t *testing.T) {
 	require.Len(t, gotEth, 1)
 	require.Empty(t, gotSol)
 
-	require.Equal(t, map[library.EthereumAddress]struct{}{ethY: {}}, gotEth[library.BNBChainID])
+	require.Equal(t, map[library.EthereumAddress]map[library.EthereumTopic]struct{}{
+		ethY: {},
+	},
+		gotEth[library.BNBChainID],
+	)
 }
 
 const wethDepositEventName = "Deposit"

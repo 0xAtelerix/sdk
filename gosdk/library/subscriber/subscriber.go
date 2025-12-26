@@ -62,7 +62,7 @@ func NewSubscriber(ctx context.Context, tx kv.RoDB) (*Subscriber, error) {
 func (s *Subscriber) SubscribeEthContract(
 	chainID apptypes.ChainType,
 	contract library.EthereumAddress,
-	h AppEventHandler, // optional
+	h AppEventHandler,               // optional
 	topics ...library.EthereumTopic, // optional
 ) {
 	s.mu.Lock()
@@ -98,7 +98,7 @@ func (s *Subscriber) SubscribeEthContract(
 func (s *Subscriber) UnsubscribeEthContract(
 	chainID apptypes.ChainType,
 	contract library.EthereumAddress,
-	h AppEventHandler, // optional
+	h AppEventHandler,               // optional
 	topics ...library.EthereumTopic, // optional
 ) {
 	s.mu.Lock()
@@ -124,7 +124,8 @@ func (s *Subscriber) UnsubscribeEthContract(
 	// Wildcard existing: remove entirely.
 	if topicSet == nil {
 		delete(s.ethContracts[chainID], contract)
-		delete(s.deletedEthContracts[chainID], contract)
+
+		s.deletedEthContracts[chainID][contract][library.EmptyEthereumTopic()] = struct{}{}
 
 		return
 	}
@@ -139,12 +140,14 @@ func (s *Subscriber) UnsubscribeEthContract(
 
 	for _, topic := range topics {
 		delete(topicSet, topic)
+
 		s.deletedEthContracts[chainID][contract][topic] = struct{}{}
 	}
 
 	if len(topicSet) == 0 {
 		delete(s.ethContracts[chainID], contract)
-		delete(s.deletedEthContracts[chainID], contract)
+
+		s.deletedEthContracts[chainID][contract][library.EmptyEthereumTopic()] = struct{}{}
 	}
 }
 
