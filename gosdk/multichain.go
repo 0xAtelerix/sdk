@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/blocto/solana-go-sdk/client"
-	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/goccy/go-json"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
@@ -19,6 +18,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/evmtypes"
 	"github.com/0xAtelerix/sdk/gosdk/library"
 	"github.com/0xAtelerix/sdk/gosdk/scheme"
 )
@@ -26,8 +26,8 @@ import (
 func EvmTables() kv.TableCfg {
 	return kv.TableCfg{
 		scheme.ChainIDBucket: {},
-		scheme.EthBlocks:     {},
-		scheme.EthReceipts:   {},
+		scheme.EvmBlocks:     {},
+		scheme.EvmReceipts:   {},
 	}
 }
 
@@ -35,7 +35,7 @@ func SolanaTables() kv.TableCfg {
 	return kv.TableCfg{
 		scheme.ChainIDBucket: {},
 		scheme.SolanaBlocks:  {},
-		scheme.EthReceipts:   {},
+		scheme.EvmReceipts:   {},
 	}
 }
 
@@ -103,10 +103,12 @@ func NewMultichainStateAccess(
 	return &multichainStateDB
 }
 
-func (sa *MultichainStateAccess) EthBlock(
+// EVMBlock returns a Block with standard fields plus raw JSON for chain-specific fields.
+// Works with ANY EVM chain: Ethereum, Polygon, Optimism, Arbitrum, Base, zkSync, etc.
+func (sa *MultichainStateAccess) EVMBlock(
 	ctx context.Context,
 	block apptypes.ExternalBlock,
-) (*EthereumBlock, error) {
+) (*evmtypes.Block, error) {
 	sa.mu.RLock()
 	defer sa.mu.RUnlock()
 
@@ -114,48 +116,53 @@ func (sa *MultichainStateAccess) EthBlock(
 		return nil, fmt.Errorf("%w, no DB for chainID, %v", library.ErrUnknownChain, block.ChainID)
 	}
 
-	key := EthBlockKey(block.BlockNumber, block.BlockHash)
+	key := EVMBlockKey(block.BlockNumber, block.BlockHash)
 
-	ethBlock := EthereumBlock{}
+	evmBlock := evmtypes.Block{}
 
-	err := sa.stateAccessDB[apptypes.ChainType(block.ChainID)].View(ctx, func(tx kv.Tx) error {
-		v, err := tx.GetOne(scheme.EthBlocks, key)
+	for {
+		err := sa.stateAccessDB[apptypes.ChainType(block.ChainID)].View(ctx, func(tx kv.Tx) error {
+			v, err := tx.GetOne(scheme.EvmBlocks, key)
+			if err != nil {
+				return err
+			}
+
+			return json.Unmarshal(v, &evmBlock)
+		})
 		if err != nil {
-			return err
+			log.Ctx(ctx).Error().Err(err).Msg("Failed to unmarshal block")
+			time.Sleep(50 * time.Millisecond)
+
+			continue
 		}
 
-		return json.Unmarshal(v, &ethBlock)
-	})
-	if err != nil {
-		return nil, fmt.Errorf(
-			"failed to read eth block: %w, chainID %d, block number %d, block hash %s",
-			err,
-			block.ChainID,
-			block.BlockNumber,
-			hex.EncodeToString(block.BlockHash[:]),
-		)
+		break
 	}
 
-	ethBlockHash := ethBlock.Header.Hash()
-	if ethBlockHash != block.BlockHash {
+	// Verify block integrity by computing hash from header fields
+	// This ensures the block data hasn't been tampered with
+	computedHash := evmBlock.ComputeHash()
+	if computedHash != block.BlockHash {
 		return nil, fmt.Errorf(
 			"%w, chainID %d; got block number %d, hash %s; expected block number %d, hash %s",
 			library.ErrWrongBlock,
 			block.ChainID,
-			ethBlock.Header.Number.Uint64(),
-			hex.EncodeToString(ethBlockHash[:]),
+			block.BlockNumber,
+			hex.EncodeToString(computedHash[:]),
 			block.BlockNumber,
 			hex.EncodeToString(block.BlockHash[:]),
 		)
 	}
 
-	return &ethBlock, nil
+	return &evmBlock, nil
 }
 
-func (sa *MultichainStateAccess) EthReceipts(
+// EVMReceipts returns Receipts with standard fields plus raw JSON for chain-specific fields.
+// Works with ANY EVM chain: Ethereum, Polygon, Optimism, Arbitrum, Base, zkSync, etc.
+func (sa *MultichainStateAccess) EVMReceipts(
 	ctx context.Context,
 	block apptypes.ExternalBlock,
-) ([]gethtypes.Receipt, error) {
+) ([]evmtypes.Receipt, error) {
 	sa.mu.RLock()
 	defer sa.mu.RUnlock()
 
@@ -163,20 +170,20 @@ func (sa *MultichainStateAccess) EthReceipts(
 		return nil, fmt.Errorf("%w, no DB for chainID, %v", library.ErrUnknownChain, block.ChainID)
 	}
 
-	key := EthReceiptKey(block.BlockNumber, block.BlockHash)
+	key := EVMReceiptKey(block.BlockNumber, block.BlockHash)
 
-	var blockReceipts []gethtypes.Receipt
+	var evmReceipts []evmtypes.Receipt
 
 	err := sa.stateAccessDB[apptypes.ChainType(block.ChainID)].View(ctx, func(tx kv.Tx) error {
-		return tx.ForPrefix(scheme.EthReceipts, key, func(_, v []byte) error {
-			r := gethtypes.Receipt{}
+		return tx.ForPrefix(scheme.EvmReceipts, key, func(_, v []byte) error {
+			receipt := evmtypes.Receipt{}
 
-			dbErr := json.Unmarshal(v, &r)
+			dbErr := json.Unmarshal(v, &receipt)
 			if dbErr != nil {
 				return dbErr
 			}
 
-			blockReceipts = append(blockReceipts, r)
+			evmReceipts = append(evmReceipts, receipt)
 
 			return nil
 		})
@@ -185,9 +192,7 @@ func (sa *MultichainStateAccess) EthReceipts(
 		return nil, err
 	}
 
-	// todo verify receipt root
-
-	return blockReceipts, nil
+	return evmReceipts, nil
 }
 
 func (sa *MultichainStateAccess) SolanaBlock(
@@ -262,8 +267,8 @@ func (sa *MultichainStateAccess) Close() {
 	}
 }
 
-// EthBlocks: [8 bytes blockNumber][32 bytes blockHash]  => total 40 bytes
-func EthBlockKey(num uint64, hash [32]byte) []byte {
+// EVMBlockKey: [8 bytes blockNumber][32 bytes blockHash]  => total 40 bytes
+func EVMBlockKey(num uint64, hash [32]byte) []byte {
 	key := make([]byte, 8+32)
 	binary.BigEndian.PutUint64(key[:8], num)
 	copy(key[8:], hash[:])
@@ -271,8 +276,8 @@ func EthBlockKey(num uint64, hash [32]byte) []byte {
 	return key
 }
 
-// EthReceipts: [8 bytes blockNumber][32 bytes blockHash][4 bytes txIndex] => 44 bytes
-func EthReceiptKey(blockNumber uint64, blockHash [32]byte, txIndex ...uint32) []byte {
+// EVMReceiptKey: [8 bytes blockNumber][32 bytes blockHash][4 bytes txIndex] => 44 bytes
+func EVMReceiptKey(blockNumber uint64, blockHash [32]byte, txIndex ...uint32) []byte {
 	keyLength := 44
 	if txIndex == nil {
 		keyLength = 40
@@ -289,23 +294,11 @@ func EthReceiptKey(blockNumber uint64, blockHash [32]byte, txIndex ...uint32) []
 	return key
 }
 
-// SolanaBlocks: [8 bytes blockNumber]  (you read by ExternalBlock.BlockNumber)
+// SolBlockKey: [8 bytes blockNumber]  (you read by ExternalBlock.BlockNumber)
 // If you use Slot as BlockNumber, write Slot here.
 func SolBlockKey(num uint64) []byte {
 	key := make([]byte, 8)
 	binary.BigEndian.PutUint64(key, num)
 
 	return key
-}
-
-type EthereumBlock struct {
-	Header gethtypes.Header
-	Body   gethtypes.Body
-}
-
-func NewEthereumBlock(b *gethtypes.Block) *EthereumBlock {
-	return &EthereumBlock{
-		Header: *b.Header(),
-		Body:   *b.Body(),
-	}
 }

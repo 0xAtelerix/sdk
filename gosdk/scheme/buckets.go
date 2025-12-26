@@ -14,10 +14,7 @@ const (
 	Snapshot         = "snapshot"
 	TxSnapshot       = "tx_snapshot"
 
-	ProcessedBuckets       = "processed_buckets"
-	EventStreamPositionKey = "event_stream_pos"
-
-	SubscriptionBucket             = "subscription_bucket"          // chainID -> []{address|contract}
+	SubscriptionBucket             = "subscription_bucket"          // chainID -> []{address|contract|topic}
 	SubscriptionEventLibraryBucket = "subscription_kinds_bucket"    // chainID|sha(contract|eventName) -> event
 	ValsetBucket                   = "validator_set_bucket"         // Epoch -> map[validatorID][stake] // map[uint32][uint64]
 	ExternalBlockVotingBucket      = "external_block_voting_bucket" // Chain|Block|Hash -> {votedStake, []{Epoch, Signer}}
@@ -28,9 +25,12 @@ const (
 
 	// Multichain
 	ChainIDBucket = "chainid"
-	EthBlocks     = "blocks"
-	EthReceipts   = "ethereum_receipts"
+	EvmBlocks     = "blocks"
+	EvmReceipts   = "ethereum_receipts"
 	SolanaBlocks  = "solana_blocks"
+
+	BlockTransactionsBucket = "block_transactions" // blockNumber -> []Transaction (CBOR encoded) [PRIMARY STORAGE]
+	TxLookupBucket          = "tx_lookup"          // txHash -> (blockNumber[8 bytes], txIndex[4 bytes]) [INDEX]
 )
 
 func TxBucketsTables() kv.TableCfg {
@@ -48,12 +48,14 @@ func DefaultTables() kv.TableCfg {
 		StateBucket:                    {},
 		Snapshot:                       {},
 		ReceiptBucket:                  {},
-		EthReceipts:                    {},
+		EvmReceipts:                    {},
 		SubscriptionBucket:             {},
 		SubscriptionEventLibraryBucket: {},
 		ValsetBucket:                   {},
 		ExternalBlockVotingBucket:      {},
 		CheckpointVotingBucket:         {},
+		BlockTransactionsBucket:        {},
+		TxLookupBucket:                 {},
 	}
 }
 

@@ -1,8 +1,6 @@
 package library
 
 import (
-	"slices"
-
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
@@ -13,6 +11,12 @@ const (
 
 type EthereumAddress [EthereumAddressLength]byte
 
+type EthereumTopic [32]byte
+
+func EmptyEthereumTopic() EthereumTopic {
+	return EthereumTopic{}
+}
+
 type SolanaAddress [SolanaAddressLength]byte
 
 type Address interface {
@@ -21,6 +25,16 @@ type Address interface {
 
 type AddressMap interface {
 	~map[EthereumAddress]struct{} | ~map[SolanaAddress]struct{}
+}
+
+type ChainAddresses[T Address] struct {
+	ChainID   apptypes.ChainType
+	Addresses []T
+}
+
+type ChainTopicAddresses struct {
+	Address EthereumAddress `cbor:"1,keyasint"`
+	Topics  []EthereumTopic `cbor:"2,keyasint"`
 }
 
 const (
@@ -41,6 +55,8 @@ const (
 	GnosisChiadoChainID    = apptypes.ChainType(10200)    // Gnosis Chiado Testnet
 	FantomTestnetChainID   = apptypes.ChainType(4002)     // Fantom Testnet
 
+	StavangerTestnetChainID = apptypes.ChainType(50591822) // Stavanger Testnet
+
 	SolanaDevnetChainID  = apptypes.ChainType(123231)
 	SolanaTestnetChainID = apptypes.ChainType(123234)
 	SolanaChainID        = apptypes.ChainType(1232342)
@@ -48,96 +64,20 @@ const (
 
 func EVMChains() map[apptypes.ChainType]struct{} {
 	return map[apptypes.ChainType]struct{}{
-		EthereumChainID:        {},
-		PolygonChainID:         {},
-		BNBChainID:             {},
-		AvalancheChainID:       {},
-		GnosisChainID:          {},
-		FantomChainID:          {},
-		BaseChainID:            {},
-		EthereumSepoliaChainID: {},
-		PolygonMumbaiChainID:   {},
-		PolygonAmoyChainID:     {},
-		BNBTestnetChainID:      {},
-		AvalancheFujiChainID:   {},
-		GnosisChiadoChainID:    {},
-		FantomTestnetChainID:   {},
+		EthereumChainID:         {},
+		PolygonChainID:          {},
+		BNBChainID:              {},
+		AvalancheChainID:        {},
+		GnosisChainID:           {},
+		FantomChainID:           {},
+		BaseChainID:             {},
+		EthereumSepoliaChainID:  {},
+		PolygonMumbaiChainID:    {},
+		PolygonAmoyChainID:      {},
+		BNBTestnetChainID:       {},
+		AvalancheFujiChainID:    {},
+		GnosisChiadoChainID:     {},
+		FantomTestnetChainID:    {},
+		StavangerTestnetChainID: {},
 	}
-}
-
-func SolanaChains() map[apptypes.ChainType]struct{} {
-	return map[apptypes.ChainType]struct{}{
-		SolanaTestnetChainID: {},
-		SolanaDevnetChainID:  {},
-		SolanaChainID:        {},
-	}
-}
-
-func IsEvmChain(chainID apptypes.ChainType) bool {
-	_, ok := EVMChains()[chainID]
-
-	return ok
-}
-
-func IsSolanaChain(chainID apptypes.ChainType) bool {
-	_, ok := SolanaChains()[chainID]
-
-	return ok
-}
-
-type ChainAddresses[T Address] struct {
-	ChainID   apptypes.ChainType
-	Addresses []T
-}
-
-func CmpAddr[T Address](a, b T) int {
-	for i := range len(a) {
-		if a[i] < b[i] {
-			return -1
-		}
-
-		if a[i] > b[i] {
-			return 1
-		}
-	}
-
-	return 0
-}
-
-func SortChainAddresses[T Address](items []ChainAddresses[T]) {
-	slices.SortFunc(items, func(a, b ChainAddresses[T]) int {
-		switch {
-		case a.ChainID < b.ChainID:
-			return -1
-		case a.ChainID > b.ChainID:
-			return 1
-		default:
-			return 0
-		}
-	})
-
-	for i := range items {
-		slices.SortFunc(items[i].Addresses, CmpAddr[T])
-	}
-}
-
-func CollectChainAddresses[T Address](m map[apptypes.ChainType]map[T]struct{}) []ChainAddresses[T] {
-	out := make([]ChainAddresses[T], 0, len(m))
-
-	for chainID, set := range m {
-		ca := ChainAddresses[T]{
-			ChainID:   chainID,
-			Addresses: make([]T, 0, len(set)),
-		}
-
-		for addr := range set {
-			ca.Addresses = append(ca.Addresses, addr)
-		}
-
-		out = append(out, ca)
-	}
-
-	SortChainAddresses(out)
-
-	return out
 }

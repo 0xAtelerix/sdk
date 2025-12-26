@@ -65,14 +65,14 @@ func Test_cmpAddr_Solana(t *testing.T) {
 
 func newSubscriber() *Subscriber {
 	return &Subscriber{
-		EthContracts:        make(map[apptypes.ChainType]map[library.EthereumAddress]struct{}),
-		SolAddresses:        make(map[apptypes.ChainType]map[library.SolanaAddress]struct{}),
-		deletedEthContracts: make(map[apptypes.ChainType]map[library.EthereumAddress]struct{}),
+		ethContracts:        make(map[apptypes.ChainType]map[library.EthereumAddress]map[library.EthereumTopic]struct{}),
+		solAddresses:        make(map[apptypes.ChainType]map[library.SolanaAddress]struct{}),
+		deletedEthContracts: make(map[apptypes.ChainType]map[library.EthereumAddress]map[library.EthereumTopic]struct{}),
 		deletedSolAddresses: make(map[apptypes.ChainType]map[library.SolanaAddress]struct{}),
 
 		EVMEventRegistry:    tokens.NewRegistry[tokens.AppEvent](),
-		EVMHandlers:         make(map[string]AppEventHandler),
-		SolanaEventRegistry: tokens.NewRegistry[tokens.AppEvent](),
+		evmHandlers:         make(map[string]AppEventHandler),
+		solanaEventRegistry: tokens.NewRegistry[tokens.AppEvent](),
 	}
 }
 
@@ -191,13 +191,13 @@ func Test_SubscribeEthContract_And_IsEthSubscription(t *testing.T) {
 	chainID := apptypes.ChainType(1)
 	contract := mkEth(0x11)
 
-	require.True(t, s.IsEthSubscription(chainID, contract))
+	require.False(t, s.IsEthSubscription(chainID, contract))
 
-	s.SubscribeEthContract(chainID, contract)
+	s.SubscribeEthContract(chainID, contract, nil)
 	require.True(t, s.IsEthSubscription(chainID, contract))
 
 	// subscribing twice keeps it present (idempotent)
-	s.SubscribeEthContract(chainID, contract)
+	s.SubscribeEthContract(chainID, contract, nil)
 	require.True(t, s.IsEthSubscription(chainID, contract))
 }
 
@@ -209,17 +209,17 @@ func Test_UnsubscribeEthContract_RemovesFromActive_And_MarksDeleted(t *testing.T
 	contract := mkEth(0x22)
 
 	// precondition: no subscriptions, listen to all chains
-	require.True(t, s.IsEthSubscription(chainID, contract))
+	require.False(t, s.IsEthSubscription(chainID, contract))
 
 	// subscribe -> present
-	s.SubscribeEthContract(chainID, contract)
+	s.SubscribeEthContract(chainID, contract, nil)
 	require.True(t, s.IsEthSubscription(chainID, contract))
 
 	// act: unsubscribe (should NOT panic with correct code)
-	s.UnsubscribeEthContract(chainID, contract)
+	s.UnsubscribeEthContract(chainID, contract, nil)
 
 	// removed from active - no subscriptions
-	require.True(t, s.IsEthSubscription(chainID, contract))
+	require.False(t, s.IsEthSubscription(chainID, contract))
 
 	// and marked as deleted
 	require.NotNil(t, s.deletedEthContracts[chainID])
@@ -228,7 +228,7 @@ func Test_UnsubscribeEthContract_RemovesFromActive_And_MarksDeleted(t *testing.T
 	require.True(t, ok)
 
 	// re-subscribe clears the deleted marker (idempotent behavior)
-	s.SubscribeEthContract(chainID, contract)
+	s.SubscribeEthContract(chainID, contract, nil)
 	require.True(t, s.IsEthSubscription(chainID, contract))
 
 	_, ok = s.deletedEthContracts[chainID][contract]
@@ -244,7 +244,7 @@ func Test_IsSolanaSubscription(t *testing.T) {
 	addr := mkSol(0x09)
 
 	// Manually set up to avoid the current Subscribe bug.
-	s.SolAddresses[chainID] = map[library.SolanaAddress]struct{}{addr: {}}
+	s.solAddresses[chainID] = map[library.SolanaAddress]struct{}{addr: {}}
 
 	require.True(t, s.IsSolanaSubscription(chainID, addr))
 	require.False(t, s.IsSolanaSubscription(chainID, mkSol(0xAA)))
@@ -290,25 +290,49 @@ func Test_UnsubscribeSolanaAddress_RemovesFromActive_And_MarksDeleted(t *testing
 func readAllSubscriptions(
 	t *testing.T,
 	tx kv.Tx,
-) (map[apptypes.ChainType]map[library.EthereumAddress]struct{}, map[apptypes.ChainType]map[library.SolanaAddress]struct{}) {
+) (map[apptypes.ChainType]map[library.EthereumAddress]map[library.EthereumTopic]struct{}, map[apptypes.ChainType]map[library.SolanaAddress]struct{}) {
 	t.Helper()
 
-	gotEth := make(map[apptypes.ChainType]map[library.EthereumAddress]struct{})
+	gotEth := make(map[apptypes.ChainType]map[library.EthereumAddress]map[library.EthereumTopic]struct{})
 	gotSol := make(map[apptypes.ChainType]map[library.SolanaAddress]struct{})
 
 	err := tx.ForEach(scheme.SubscriptionBucket, nil, func(k, v []byte) error {
-		chain := apptypes.ChainType(binary.BigEndian.Uint64(k))
+		chainID := binary.BigEndian.Uint64(k)
+
+		const topicKeyMask uint64 = 1 << 63
+
+		isTopicKey := (chainID & topicKeyMask) != 0
+		chain := apptypes.ChainType(chainID &^ topicKeyMask)
 
 		if library.IsEvmChain(chain) {
-			gotEth[chain] = make(map[library.EthereumAddress]struct{})
+			if gotEth[chain] == nil {
+				gotEth[chain] = make(map[library.EthereumAddress]map[library.EthereumTopic]struct{})
+			}
 
-			var addrs []library.EthereumAddress
+			if isTopicKey {
+				var entries []library.ChainTopicAddresses
 
-			dbErr := cbor.Unmarshal(v, &addrs)
-			require.NoError(t, dbErr)
+				dbErr := cbor.Unmarshal(v, &entries)
+				require.NoError(t, dbErr)
 
-			for _, addr := range addrs {
-				gotEth[chain][addr] = struct{}{}
+				for _, entry := range entries {
+					if gotEth[chain][entry.Address] == nil {
+						gotEth[chain][entry.Address] = make(map[library.EthereumTopic]struct{})
+					}
+
+					for _, topic := range entry.Topics {
+						gotEth[chain][entry.Address][topic] = struct{}{}
+					}
+				}
+			} else {
+				var addrs []library.EthereumAddress
+
+				dbErr := cbor.Unmarshal(v, &addrs)
+				require.NoError(t, dbErr)
+
+				for _, addr := range addrs {
+					gotEth[chain][addr] = nil // wildcard topics
+				}
 			}
 		} else if library.IsSolanaChain(chain) {
 			gotSol[chain] = make(map[library.SolanaAddress]struct{})
@@ -344,8 +368,8 @@ func Test_Store_Persistency_WriteAndReadBack(t *testing.T) {
 	eth1 := mkEth(0x01)
 	eth2 := mkEth(0x02)
 
-	s.SubscribeEthContract(1, eth1)
-	s.SubscribeEthContract(1, eth2)
+	s.SubscribeEthContract(1, eth1, nil)
+	s.SubscribeEthContract(1, eth2, nil)
 
 	// chain 2: one SOL
 	solA := mkSol(0xAA)
@@ -371,7 +395,7 @@ func Test_Store_Persistency_WriteAndReadBack(t *testing.T) {
 	require.Len(t, gotEth, 1)
 	require.Len(t, gotSol, 1)
 
-	// chain 1 should have eth1, eth2
+	// chain 1 should have eth1, eth2 (wildcard topics)
 	require.Contains(t, gotEth, apptypes.ChainType(1))
 	// byte equality
 	found1 := false
@@ -449,7 +473,7 @@ func Test_Store_Persistency_DeleteWholeChainThenReAdd(t *testing.T) {
 
 	// Chain 4: one ETH
 	ethX := mkEth(0x44)
-	s.SubscribeEthContract(library.BNBChainID, ethX)
+	s.SubscribeEthContract(library.BNBChainID, ethX, nil)
 
 	// Persist
 	rw, err := db.BeginRw(t.Context())
@@ -458,7 +482,7 @@ func Test_Store_Persistency_DeleteWholeChainThenReAdd(t *testing.T) {
 	require.NoError(t, rw.Commit())
 
 	// Remove last ETH from chain BNBChainID -> chain should end up empty
-	s.UnsubscribeEthContract(library.BNBChainID, ethX)
+	s.UnsubscribeEthContract(library.BNBChainID, ethX, nil)
 
 	// Persist deletion
 	rw, err = db.BeginRw(t.Context())
@@ -479,7 +503,7 @@ func Test_Store_Persistency_DeleteWholeChainThenReAdd(t *testing.T) {
 
 	// Re-add a new one and persist again
 	ethY := mkEth(0x55)
-	s.SubscribeEthContract(library.BNBChainID, ethY)
+	s.SubscribeEthContract(library.BNBChainID, ethY, nil)
 
 	rw, err = db.BeginRw(t.Context())
 	require.NoError(t, err)
@@ -501,8 +525,8 @@ func Test_Store_Persistency_DeleteWholeChainThenReAdd(t *testing.T) {
 const wethDepositEventName = "Deposit"
 
 type wethDeposit struct {
-	Dst common.Address `abi:"dst"`
-	Wad *big.Int       `abi:"wad"`
+	Dst library.EthereumAddress `abi:"dst"`
+	Wad *big.Int                `abi:"wad"`
 }
 
 func Test_AddEVMEvent_RegistersAndInvokesHandler_ForSubscribedEmitter(t *testing.T) {
@@ -573,7 +597,7 @@ func Test_AddEVMEvent_RegistersAndInvokesHandler_ForSubscribedEmitter(t *testing
 	defer tx.Rollback()
 
 	// Dispatch to the kind's handler
-	h, exists := s.EVMHandlers[wethDepositEventName]
+	h, exists := s.evmHandlers[wethDepositEventName]
 	require.True(t, exists)
 	h.Handle(evs, tx)
 
@@ -581,7 +605,7 @@ func Test_AddEVMEvent_RegistersAndInvokesHandler_ForSubscribedEmitter(t *testing
 	require.Equal(t, 1, called)
 	require.Equal(t, wethDepositEventName, got.EventName)
 	require.Equal(t, wethAddr.Hex(), got.Contract)
-	require.Equal(t, dst, got.SubscribedEvent.Dst)
+	require.Equal(t, library.EthereumAddress(dst), got.SubscribedEvent.Dst)
 	require.Zero(t, got.SubscribedEvent.Wad.Cmp(big.NewInt(777)))
 	require.Equal(t, uint(5), got.LogIndex)
 	require.Equal(t, txHash.Hex(), got.TxHash)
@@ -648,7 +672,7 @@ func Test_AddEVMEvent_NotInvoked_WhenEmitterNotSubscribed(t *testing.T) {
 
 	// (Simulate batch loop: since not subscribed, don't dispatch)
 	if ok {
-		s.EVMHandlers[wethDepositEventName].Handle(evs, tx)
+		s.evmHandlers[wethDepositEventName].Handle(evs, tx)
 	}
 
 	require.Equal(t, 0, called)
@@ -773,7 +797,7 @@ func Test_AddEVMEvent_MultipleKinds_DispatchSeparately(t *testing.T) {
 			}
 
 			for k, list := range byKind {
-				if h, ok := s.EVMHandlers[k]; ok {
+				if h, ok := s.evmHandlers[k]; ok {
 					h.Handle(list, tx)
 				}
 			}
@@ -859,14 +883,14 @@ func Test_EVMEvent_PersistAndRestore(t *testing.T) {
 	// 2) Simulate restart: new subscriber (empty in-memory state)
 	s2, err := NewSubscriber(ctx, db)
 	require.NoError(t, err)
-	require.Empty(t, s2.EVMHandlers)
+	require.Empty(t, s2.evmHandlers)
 
 	// 3) Restore the event + attach (compile-time typed) handler
 	require.NoError(t, LoadEVMEvent(ctx, s2, chainID, contract, evName, db, handler))
 
 	// Ensure handler registered under the event name key (per addEVMEvent)
-	h, ok := s2.EVMHandlers[evName]
-	require.True(t, ok, "handler should be restored into EVMHandlers")
+	h, ok := s2.evmHandlers[evName]
+	require.True(t, ok, "handler should be restored into evmHandlers")
 	require.Equal(t, evName, h.Name())
 
 	// 4) Sanity: the registry should now know how to decode a matching log

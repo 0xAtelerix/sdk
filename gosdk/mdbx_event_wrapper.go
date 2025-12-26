@@ -1,16 +1,19 @@
 package gosdk
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/library"
@@ -20,14 +23,16 @@ import (
 )
 
 type MdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
+	streamPath        string
 	eventReader       *EventReader
 	txReader          kv.RoDB
 	chainID           uint32
 	logger            *zerolog.Logger
 	subscriber        *subscriber2.Subscriber
-	appchainDB        kv.RoDB
+	appchainDB        kv.RwDB
 	votingBlocks      *Voting[apptypes.ExternalBlock]
 	votingCheckpoints *Voting[apptypes.Checkpoint]
+	currentEpoch      uint32
 }
 
 type EventStreamWrapperConstructor[appTx apptypes.AppTransaction[R], R apptypes.Receipt] func(
@@ -36,7 +41,7 @@ type EventStreamWrapperConstructor[appTx apptypes.AppTransaction[R], R apptypes.
 	eventStartPos int64,
 	txBatchDB kv.RoDB,
 	logger *zerolog.Logger,
-	appchainTx kv.RoDB,
+	appchainTx kv.RwDB,
 	subscriber *subscriber2.Subscriber,
 	votingBlocks *Voting[apptypes.ExternalBlock],
 	votingCheckpoints *Voting[apptypes.Checkpoint],
@@ -45,21 +50,15 @@ type EventStreamWrapperConstructor[appTx apptypes.AppTransaction[R], R apptypes.
 func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	eventsPath string,
 	chainID uint32,
-	eventStartPos int64,
 	txBatchDB kv.RoDB,
 	logger *zerolog.Logger,
-	appchainDB kv.RoDB,
+	appchainDB kv.RwDB,
 	subscriber *subscriber2.Subscriber,
 	votingBlocks *Voting[apptypes.ExternalBlock],
 	votingCheckpoints *Voting[apptypes.Checkpoint],
 ) (*MdbxEventStreamWrapper[appTx, R], error) {
-	eventReader, err := NewEventReader(eventsPath, eventStartPos)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create event reader: %w", err)
-	}
-
-	return &MdbxEventStreamWrapper[appTx, R]{
-		eventReader:       eventReader,
+	wrapper := &MdbxEventStreamWrapper[appTx, R]{
+		streamPath:        eventsPath,
 		txReader:          txBatchDB,
 		chainID:           chainID,
 		logger:            logger,
@@ -67,7 +66,47 @@ func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Rece
 		appchainDB:        appchainDB,
 		votingBlocks:      votingBlocks,
 		votingCheckpoints: votingCheckpoints,
-	}, nil
+	}
+
+	err := wrapper.InitReader(context.TODO())
+	if err != nil {
+		return nil, err
+	}
+
+	return wrapper, nil
+}
+
+func (ews *MdbxEventStreamWrapper[appTx, R]) InitReader(ctx context.Context) error {
+	pos, epoch, err := GetLastStreamPositions(ctx, ews.appchainDB)
+	if err != nil {
+		return err
+	}
+
+	ews.currentEpoch = epoch
+	newPath := filepath.Join(ews.streamPath, fmt.Sprintf("epoch_%d.data", epoch))
+
+	err = WaitFile(ctx, newPath, log.Ctx(ctx))
+	if err != nil {
+		return err
+	}
+
+	eventReader, err := NewEventReader(newPath, pos)
+	if err != nil {
+		return fmt.Errorf("failed to create event reader: %w", err)
+	}
+
+	if ews.eventReader != nil {
+		err = ews.eventReader.Close()
+		if err != nil {
+			ews.logger.Error().Err(err).Msg("failed to close event reader")
+
+			return err
+		}
+	}
+
+	ews.eventReader = eventReader
+
+	return nil
 }
 
 type Streamer[appTx apptypes.AppTransaction[R], R apptypes.Receipt] interface {
@@ -96,7 +135,22 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 	// getting the valset for the epoch
 	var valset *ValidatorSet
 
+	newEpoch := uint32(0)
+
+	var newValset []byte
+
 	for _, eventBatch := range eventBatches {
+		ews.logger.Debug().
+			Str("atropos", hex.EncodeToString(eventBatch.Atropos[4:])).
+			Msg("Compare atropos hash")
+
+		if bytes.Equal(eventBatch.Atropos[4:], library.EndOfEpochSuffix) {
+			newEpoch = binary.BigEndian.Uint32(eventBatch.Atropos[:4])
+			newValset = eventBatch.Events[0]
+
+			continue
+		}
+
 		ews.logger.Debug().
 			Hex("atropos", eventBatch.Atropos[:]).
 			Int("events", len(eventBatch.Events)).
@@ -163,7 +217,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 					}
 
 					if len(valsetData) == 0 {
-						return library.ErrNoValidatorSet
+						return fmt.Errorf("%w epoch %d", library.ErrNoValidatorSet, evt.Base.Epoch)
 					}
 
 					valset = &ValidatorSet{}
@@ -231,46 +285,28 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 		waitStart := time.Now()
 
+		const pollInterval = 50 * time.Millisecond
+
 		var notFoundCycle uint64
 
+		ticker := time.NewTicker(pollInterval)
+
 		for numOfFound := 0; numOfFound < len(txBatches); {
+			// Check for context cancellation
 			select {
 			case <-ctx.Done():
+				ticker.Stop()
+
 				return nil, ctx.Err()
 			default:
 			}
 
-			if numOfFound != 0 {
-				time.Sleep(time.Millisecond * 50)
-
-				notFoundCycle++
-
-				var s []string
-				for i := range txBatches {
-					s = append(s, hex.EncodeToString(i[:]))
-				}
-
-				ews.logger.Debug().
-					Int("numOfFound", numOfFound).
-					Int("len(txBatches)", len(txBatches)).
-					Strs("batches", s).
-					Msg("timed out waiting for batches")
-
-				if notFoundCycle%(1000/50) == 0 {
-					ews.logger.Warn().
-						Int("numOfFound", numOfFound).
-						Int("len(txBatches)", len(txBatches)).
-						Strs("batches", s).
-						Msg("timed out waiting for batches")
-				}
-			}
-
-			err := func(ctx context.Context) error {
+			processErr := func(ctx context.Context) error {
 				tLookup := time.Now()
 
-				tx, err := ews.txReader.BeginRo(ctx)
-				if err != nil {
-					return err
+				tx, innerErr := ews.txReader.BeginRo(ctx)
+				if innerErr != nil {
+					return innerErr
 				}
 				defer tx.Rollback()
 
@@ -279,18 +315,18 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 						continue
 					}
 
-					val, err := tx.GetOne(scheme.TxBuckets, hsh[:])
-					if err != nil {
-						return err
+					val, innerErr := tx.GetOne(scheme.TxBuckets, hsh[:])
+					if innerErr != nil {
+						return innerErr
 					}
 
 					if len(val) == 0 {
 						continue
 					}
 
-					txs, err := utility.Unflatten(val)
-					if err != nil {
-						return err
+					txs, innerErr := utility.Unflatten(val)
+					if innerErr != nil {
+						return innerErr
 					}
 
 					txBatches[hsh] = txs
@@ -304,12 +340,52 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 				return nil
 			}(ctx)
-			if err != nil {
-				ews.logger.Error().Err(err).Msg("got tx batches from mdbx")
+			if processErr != nil {
+				ews.logger.Error().Err(processErr).Msg("got tx batches from mdbx")
+				ticker.Stop()
 
-				return nil, err
+				return nil, processErr
+			}
+
+			// If not all batches found, wait before next poll
+			if numOfFound < len(txBatches) {
+				notFoundCycle++
+
+				// Log progress periodically
+				if notFoundCycle%20 == 0 { // Every ~1 second (20 * 50ms)
+					var s []string
+					for i := range txBatches {
+						s = append(s, hex.EncodeToString(i[:]))
+					}
+
+					ews.logger.Debug().
+						Int("numOfFound", numOfFound).
+						Int("len(txBatches)", len(txBatches)).
+						Strs("batches", s).
+						Msg("waiting for batches")
+
+					if notFoundCycle%200 == 0 { // Every ~10 seconds
+						ews.logger.Warn().
+							Int("numOfFound", numOfFound).
+							Int("len(txBatches)", len(txBatches)).
+							Strs("batches", s).
+							Msg("still waiting for batches")
+					}
+				}
+
+				// Wait for next poll interval or context cancellation
+				select {
+				case <-ctx.Done():
+					ticker.Stop()
+
+					return nil, ctx.Err()
+				case <-ticker.C:
+					// Continue to next iteration
+				}
 			}
 		}
+
+		ticker.Stop()
 
 		ews.logger.Debug().
 			Int("expectedTxBatches", len(expectedTxBatches)).
@@ -332,13 +408,13 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 			for _, rawTx := range txsRaw {
 				var tx appTx
-				if err := cbor.Unmarshal(rawTx, &tx); err != nil {
+				if unmarshalError := cbor.Unmarshal(rawTx, &tx); unmarshalError != nil {
 					ews.logger.Error().
-						Err(err).
+						Err(unmarshalError).
 						Str("json", string(rawTx)).
 						Msg("failed to unmarshal tx")
 
-					return nil, fmt.Errorf("failed to unmarshal tx: %w", err)
+					return nil, fmt.Errorf("failed to unmarshal tx: %w", unmarshalError)
 				}
 
 				allParsedTxs = append(allParsedTxs, tx)
@@ -352,6 +428,28 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 			Checkpoints:    ews.votingCheckpoints.PopFinalized(), // return only finalized
 			EndOffset:      eventBatch.EndOffset,
 		})
+	}
+
+	if newEpoch > 0 {
+		err = ews.appchainDB.Update(ctx, func(tx kv.RwTx) error {
+			epochkey := make([]byte, 4)
+			binary.BigEndian.PutUint32(epochkey, newEpoch)
+			err = tx.Put(scheme.ValsetBucket, epochkey, newValset)
+			ews.logger.Warn().
+				Uint32("epoch", newEpoch).
+				Int("valset len", len(newValset)).
+				Msg("new epoch")
+
+			return WriteSnapshotPosition(tx, newEpoch, 8)
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		err = ews.InitReader(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return result, nil

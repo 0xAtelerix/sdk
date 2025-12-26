@@ -76,6 +76,21 @@ func (r TestReceipt) Error() string {
 	return ""
 }
 
+// TestBlock - test block implementation
+type TestBlock struct {
+	BlockNumber uint64   `json:"number"`
+	BlockHash   [32]byte `json:"hash"`
+	Root        [32]byte `json:"root"`
+}
+
+func (b TestBlock) Hash() [32]byte {
+	return b.BlockHash
+}
+
+func (b TestBlock) StateRoot() [32]byte {
+	return b.Root
+}
+
 // setupTestEnvironment creates a test environment with databases and server
 func setupTestEnvironment(
 	t *testing.T,
@@ -113,7 +128,12 @@ func setupTestEnvironment(
 	server = NewStandardRPCServer(nil)
 
 	// Add standard methods to maintain compatibility with existing tests
-	AddStandardMethods(server, appchainDB, txPool)
+	AddStandardMethods[TestTransaction[TestReceipt], TestReceipt, TestBlock](
+		server,
+		appchainDB,
+		txPool,
+		42, // test chainID
+	)
 
 	cleanup = func() {
 		localDB.Close()
@@ -151,10 +171,19 @@ func makeJSONRPCRequest(
 	return rr
 }
 
-// ============= BASIC RPC METHODS =============
-
-//nolint:paralleltest //uses network ports
+// ============= INTEGRATION TESTS FOR RPC METHODS =============
+// These tests verify that RPC methods work correctly through the full HTTP/JSON-RPC stack.
+// They test:
+//   - HTTP request/response handling
+//   - JSON-RPC protocol compliance (version, id, error codes)
+//   - Request serialization and response deserialization
+//   - Integration between the RPC server and method handlers
+//
+// For unit tests that test method logic in isolation (without HTTP overhead),
+// see the dedicated methods_*_test.go files:
 func TestStandardRPCServer_sendTransaction(t *testing.T) {
+	t.Parallel()
+
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -185,8 +214,9 @@ func TestStandardRPCServer_sendTransaction(t *testing.T) {
 	assert.Equal(t, "0x", hashStr[:2])
 }
 
-//nolint:paralleltest //uses network ports
-func TestStandardRPCServer_getTransactionByHash(t *testing.T) {
+func TestStandardRPCServer_getTransaction(t *testing.T) {
+	t.Parallel()
+
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -209,8 +239,8 @@ func TestStandardRPCServer_getTransactionByHash(t *testing.T) {
 	hashStr, ok := sendResponse.Result.(string)
 	require.True(t, ok, "sendResponse should be string", sendResponse.Result, sendRR.Body)
 
-	// Now get the transaction by hash
-	getRR := makeJSONRPCRequest(t, server, "getTransactionByHash", []any{hashStr})
+	// Now get the transaction by hash (unified method checks txpool + blocks)
+	getRR := makeJSONRPCRequest(t, server, "getTransaction", []any{hashStr})
 
 	assert.Equal(t, http.StatusOK, getRR.Code)
 
@@ -224,8 +254,9 @@ func TestStandardRPCServer_getTransactionByHash(t *testing.T) {
 	assert.NotNil(t, getResponse.Result)
 }
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_getTransactionStatus(t *testing.T) {
+	t.Parallel()
+
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -270,8 +301,9 @@ func TestStandardRPCServer_getTransactionStatus(t *testing.T) {
 	)
 }
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_getPendingTransactions(t *testing.T) {
+	t.Parallel()
+
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -306,8 +338,9 @@ func TestStandardRPCServer_getPendingTransactions(t *testing.T) {
 	assert.Len(t, pendingTxs, 2)
 }
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_getTransactionReceipt(t *testing.T) {
+	t.Parallel()
+
 	server, appchainDB, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -320,7 +353,7 @@ func TestStandardRPCServer_getTransactionReceipt(t *testing.T) {
 	hash := sha256.Sum256([]byte("test-receipt"))
 
 	// Store receipt in database
-	err = appchainDB.Update(context.Background(), func(tx kv.RwTx) error {
+	err = appchainDB.Update(t.Context(), func(tx kv.RwTx) error {
 		return tx.Put(scheme.ReceiptBucket, hash[:], receiptData)
 	})
 	require.NoError(t, err)
@@ -341,10 +374,9 @@ func TestStandardRPCServer_getTransactionReceipt(t *testing.T) {
 	assert.NotNil(t, receiptResponse.Result)
 }
 
-// ============= CUSTOM METHODS & ERROR HANDLING =============
-
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_customMethod(t *testing.T) {
+	t.Parallel()
+
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -374,8 +406,9 @@ func TestStandardRPCServer_customMethod(t *testing.T) {
 	assert.Equal(t, "custom method works", result["message"])
 }
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_invalidMethod(t *testing.T) {
+	t.Parallel()
+
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -393,8 +426,9 @@ func TestStandardRPCServer_invalidMethod(t *testing.T) {
 	assert.Contains(t, response.Error.Message, "method not found")
 }
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_invalidJSONRPC(t *testing.T) {
+	t.Parallel()
+
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -416,8 +450,9 @@ func TestStandardRPCServer_invalidJSONRPC(t *testing.T) {
 	assert.Equal(t, -32700, response.Error.Code) // Parse error
 }
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_wrongHTTPMethod(t *testing.T) {
+	t.Parallel()
+
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -430,8 +465,9 @@ func TestStandardRPCServer_wrongHTTPMethod(t *testing.T) {
 
 // ============= HEALTH ENDPOINT =============
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_healthEndpoint(t *testing.T) {
+	t.Parallel()
+
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
@@ -464,13 +500,14 @@ func TestStandardRPCServer_healthEndpoint(t *testing.T) {
 	assert.IsType(t, float64(0), methodCount) // JSON numbers are float64
 }
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_healthEndpoint_wrongMethod(t *testing.T) {
+	t.Parallel()
+
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
 	// Test with POST method (should fail)
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "/health", nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, "/health", nil)
 	require.NoError(t, err)
 
 	rr := httptest.NewRecorder()
@@ -481,8 +518,9 @@ func TestStandardRPCServer_healthEndpoint_wrongMethod(t *testing.T) {
 
 // ============= BATCH REQUESTS =============
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_batchRequests(t *testing.T) {
+	t.Parallel()
+
 	server := NewStandardRPCServer(nil)
 
 	// Add test methods
@@ -553,8 +591,9 @@ func TestStandardRPCServer_batchRequests(t *testing.T) {
 	assert.InDelta(t, float64(2), batchResp[1].ID, 0.001)
 }
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_batchRequestsWithErrors(t *testing.T) {
+	t.Parallel()
+
 	server := NewStandardRPCServer(nil)
 
 	// Add only one method
@@ -631,8 +670,9 @@ func TestStandardRPCServer_batchRequestsWithErrors(t *testing.T) {
 	assert.Nil(t, batchResp[2].Error)
 }
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_emptyBatchRequest(t *testing.T) {
+	t.Parallel()
+
 	server := NewStandardRPCServer(nil)
 
 	// Test empty batch request
@@ -723,8 +763,9 @@ func (m *failingResponseMiddleware) ProcessResponse(
 
 // ============= MIDDLEWARE =============
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_middleware(t *testing.T) {
+	t.Parallel()
+
 	mw := &testMiddleware{
 		contextKey:   "test_key",
 		contextValue: "test_value",
@@ -761,8 +802,9 @@ func TestStandardRPCServer_middleware(t *testing.T) {
 	assert.Equal(t, "success", response.Result)
 }
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_middlewareBlocksRequest(t *testing.T) {
+	t.Parallel()
+
 	mw := &testMiddleware{shouldError: true}
 	server := NewStandardRPCServer(nil)
 	server.middlewares = []Middleware{mw}
@@ -795,8 +837,9 @@ func TestStandardRPCServer_middlewareBlocksRequest(t *testing.T) {
 	assert.Equal(t, "Middleware blocked request", response.Error.Message)
 }
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_middlewareBatch(t *testing.T) {
+	t.Parallel()
+
 	mw := &testMiddleware{
 		contextKey:   "batch_test",
 		contextValue: "batch_value",
@@ -839,8 +882,9 @@ func TestStandardRPCServer_middlewareBatch(t *testing.T) {
 	assert.Equal(t, "batch_success", responses[0].Result)
 }
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_middlewareBatchPartialFailure(t *testing.T) {
+	t.Parallel()
+
 	server := NewStandardRPCServer(nil)
 	server.middlewares = []Middleware{&failingResponseMiddleware{failID: float64(2)}}
 
@@ -895,8 +939,9 @@ func TestStandardRPCServer_middlewareBatchPartialFailure(t *testing.T) {
 	assert.Nil(t, responses[2].Error)
 }
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_middlewareRequestBlocksBatch(t *testing.T) {
+	t.Parallel()
+
 	mw := &testMiddleware{shouldError: true}
 	server := NewStandardRPCServer(nil)
 	server.middlewares = []Middleware{mw}
@@ -934,8 +979,9 @@ func TestStandardRPCServer_middlewareRequestBlocksBatch(t *testing.T) {
 	assert.Equal(t, "Middleware blocked request", response.Error.Message)
 }
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_middlewareMultipleResponseFailures(t *testing.T) {
+	t.Parallel()
+
 	server := NewStandardRPCServer(nil)
 	server.middlewares = []Middleware{
 		&failingResponseMiddleware{failID: float64(2)},
@@ -1002,8 +1048,9 @@ func TestStandardRPCServer_middlewareMultipleResponseFailures(t *testing.T) {
 
 // ============= CORS TESTS =============
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_corsHeaders(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name            string
 		corsConfig      *CORSConfig
@@ -1058,9 +1105,10 @@ func TestStandardRPCServer_corsHeaders(t *testing.T) {
 		},
 	}
 
-	//nolint:paralleltest //uses network ports
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			server := NewStandardRPCServer(tt.corsConfig)
 
 			// Test RPC endpoint
@@ -1083,8 +1131,9 @@ func TestStandardRPCServer_corsHeaders(t *testing.T) {
 	}
 }
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_corsOptionsPreflight(t *testing.T) {
+	t.Parallel()
+
 	server := NewStandardRPCServer(&CORSConfig{
 		AllowOrigin:  "https://example.com",
 		AllowMethods: "GET, POST, PUT, OPTIONS",
@@ -1106,8 +1155,9 @@ func TestStandardRPCServer_corsOptionsPreflight(t *testing.T) {
 	assert.Equal(t, 200, w.Code)
 }
 
-//nolint:paralleltest //uses network ports
 func TestStandardRPCServer_corsHealthEndpoint(t *testing.T) {
+	t.Parallel()
+
 	server := NewStandardRPCServer(&CORSConfig{
 		AllowOrigin:  "https://health.example.com",
 		AllowMethods: "GET, HEAD",
@@ -1124,4 +1174,71 @@ func TestStandardRPCServer_corsHealthEndpoint(t *testing.T) {
 	assert.Equal(t, "GET, HEAD", w.Header().Get("Access-Control-Allow-Methods"))
 	assert.Equal(t, "Accept", w.Header().Get("Access-Control-Allow-Headers"))
 	assert.Equal(t, 200, w.Code)
+}
+
+// ============= SCHEMA DISCOVERY TESTS =============
+
+func TestSchemaMethod_AddAndCall(t *testing.T) {
+	t.Parallel()
+
+	server := NewStandardRPCServer(nil)
+	chainID := uint64(42)
+
+	// Add schema method to server
+	AddSchemaMethod[TestTransaction[TestReceipt], TestReceipt, TestBlock](server, chainID)
+
+	// Verify that the method was registered
+	_, exists := server.methods["getAppchainSchema"]
+	assert.True(t, exists, "getAppchainSchema method should be registered")
+
+	// Call the method via the server
+	method := server.methods["getAppchainSchema"]
+	result, err := method(t.Context(), []any{})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	schema, ok := result.(map[string]any)
+	require.True(t, ok)
+
+	// Verify top-level structure
+	assert.Equal(t, chainID, schema["chainId"])
+
+	// Verify schemas object exists
+	schemas, ok := schema["schemas"].(map[string]any)
+	require.True(t, ok)
+
+	// Verify all three schema types exist
+	assert.Contains(t, schemas, "block")
+	assert.Contains(t, schemas, "transaction")
+	assert.Contains(t, schemas, "receipt")
+
+	// Verify they're not nil
+	assert.NotNil(t, schemas["block"])
+	assert.NotNil(t, schemas["transaction"])
+	assert.NotNil(t, schemas["receipt"])
+}
+
+func TestSchemaMethod_DifferentChainIDs(t *testing.T) {
+	t.Parallel()
+
+	chainIDs := []uint64{1, 42, 100, 999}
+
+	for _, chainID := range chainIDs {
+		t.Run("chainID_"+string(rune(chainID)), func(t *testing.T) {
+			t.Parallel()
+
+			server := NewStandardRPCServer(nil)
+			AddSchemaMethod[TestTransaction[TestReceipt], TestReceipt, TestBlock](server, chainID)
+
+			method := server.methods["getAppchainSchema"]
+			result, err := method(t.Context(), []any{})
+
+			require.NoError(t, err)
+
+			schema, ok := result.(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, chainID, schema["chainId"])
+		})
+	}
 }

@@ -23,13 +23,13 @@ type StateTransitionInterface[appTx apptypes.AppTransaction[R], R apptypes.Recei
 type BatchProcesser[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	StateTransitionSimplified
 
-	MultiChain *MultichainStateAccess
+	MultiChain MultichainStateAccessor
 	Subscriber *subscriber.Subscriber
 }
 
 func NewBatchProcesser[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	s StateTransitionSimplified,
-	m *MultichainStateAccess,
+	m MultichainStateAccessor,
 	sb *subscriber.Subscriber,
 ) *BatchProcesser[appTx, R] {
 	return &BatchProcesser[appTx, R]{
@@ -65,7 +65,7 @@ blockLoop:
 		switch {
 		case library.IsEvmChain(apptypes.ChainType(blk.ChainID)):
 			// todo склоняестя ли наш вариант в сторону жесткого космос, где сильно ограничена модификация клиента?
-			ethReceipts, err := b.MultiChain.EthReceipts(ctx, *blk)
+			evmReceipts, err := b.MultiChain.EVMReceipts(ctx, *blk)
 			if err != nil {
 				logger.Info().Err(err).Msg("failed to process batch external receipts")
 
@@ -74,7 +74,7 @@ blockLoop:
 
 			var ok bool
 
-			for _, rec := range ethReceipts {
+			for _, rec := range evmReceipts {
 				for _, lg := range rec.Logs {
 					emitter := library.EthereumAddress(lg.Address)
 					if !b.Subscriber.IsEthSubscription(apptypes.ChainType(blk.ChainID), emitter) {
@@ -101,9 +101,7 @@ blockLoop:
 					}
 
 					for k, evs := range byName {
-						if h, exists := b.Subscriber.EVMHandlers[k]; exists {
-							h.Handle(evs, dbtx)
-						}
+						b.Subscriber.Handle(k, evs, dbtx)
 					}
 				}
 

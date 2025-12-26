@@ -63,7 +63,7 @@ func TestEmitterCall(t *testing.T) {
 
 	var epochKey [4]byte
 
-	epoch := currentEpoch
+	epoch := uint32(1)
 	binary.BigEndian.PutUint32(epochKey[:], epoch)
 
 	valsetData, err := cbor.Marshal(valset)

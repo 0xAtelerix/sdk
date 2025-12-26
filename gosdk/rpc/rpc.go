@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
+	"github.com/invopop/jsonschema"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/rs/zerolog/log"
 
@@ -37,8 +38,9 @@ func (s *StandardRPCServer) AddMiddleware(middleware Middleware) {
 // StartHTTPServer starts the HTTP JSON-RPC server
 func (s *StandardRPCServer) StartHTTPServer(ctx context.Context, addr string) error {
 	s.logger = log.Ctx(ctx)
-	http.HandleFunc("/rpc", s.handleRPC)
-	http.HandleFunc("/health", s.healthcheck)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/rpc", s.handleRPC)
+	mux.HandleFunc("/health", s.healthcheck)
 
 	s.logger.Info().Msgf("Starting Standard RPC server on %s", addr)
 	s.logger.Info().Msgf("Available methods: %d methods registered", len(s.methods))
@@ -46,6 +48,7 @@ func (s *StandardRPCServer) StartHTTPServer(ctx context.Context, addr string) er
 
 	server := &http.Server{
 		Addr:         addr,
+		Handler:      mux,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -281,12 +284,58 @@ func (s *StandardRPCServer) setCORSHeaders(w http.ResponseWriter, defaultMethods
 }
 
 // AddStandardMethods adds all standard blockchain methods to the RPC server
-func AddStandardMethods[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
+func AddStandardMethods[
+	appTx apptypes.AppTransaction[R],
+	R apptypes.Receipt,
+	Block apptypes.AppchainBlock,
+](
 	server *StandardRPCServer,
 	appchainDB kv.RwDB,
 	txpool apptypes.TxPoolInterface[appTx, R],
+	chainID uint64,
 ) {
-	AddTxPoolMethods(server, txpool)
-	AddReceiptMethods[R](server, appchainDB)
 	AddTransactionMethods(server, txpool, appchainDB)
+	AddReceiptMethods[R](server, appchainDB)
+	AddBlockMethods[appTx, R, Block](server, appchainDB)
+	AddSchemaMethod[appTx, R, Block](server, chainID)
+}
+
+// ============= SCHEMA DISCOVERY =============
+
+// AddSchemaMethod registers the schema discovery RPC method on the server.
+// This is a simple helper that creates a closure over the chainID and type samples.
+func AddSchemaMethod[
+	appTx apptypes.AppTransaction[R],
+	R apptypes.Receipt,
+	Block apptypes.AppchainBlock,
+](
+	server *StandardRPCServer,
+	chainID uint64,
+) {
+	// Create zero-value samples for reflection
+	var (
+		txSample      appTx
+		receiptSample R
+		blockSample   Block
+	)
+
+	// Register the schema method as a closure
+
+	server.AddMethod("getAppchainSchema", func(_ context.Context, _ []any) (any, error) {
+		// Create a reflector for generating schemas
+		reflector := &jsonschema.Reflector{
+			Anonymous:                 true,
+			DoNotReference:            true,  // Inline all definitions instead of using $ref
+			AllowAdditionalProperties: false, // Strict schema
+		}
+
+		return map[string]any{
+			"chainId": chainID,
+			"schemas": map[string]any{
+				"block":       reflector.Reflect(blockSample),
+				"transaction": reflector.Reflect(txSample),
+				"receipt":     reflector.Reflect(receiptSample),
+			},
+		}, nil
+	})
 }

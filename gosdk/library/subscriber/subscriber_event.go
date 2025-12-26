@@ -57,15 +57,15 @@ func addEVMEvent[T any](
 		return common.Hash{}, err
 	}
 
-	if s.EVMHandlers == nil {
-		s.EVMHandlers = make(map[string]AppEventHandler)
+	if s.evmHandlers == nil {
+		s.evmHandlers = make(map[string]AppEventHandler)
 	}
 
 	if h == nil {
 		return
 	}
 
-	s.EVMHandlers[event.EventName] = NewEVMHandler(event.EventName, h)
+	s.evmHandlers[event.EventName] = NewEVMHandler(event.EventName, h)
 
 	return sig, nil
 }

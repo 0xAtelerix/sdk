@@ -26,7 +26,7 @@ func NewReceiptMethods[R apptypes.Receipt](appchainDB kv.RwDB) *ReceiptMethods[R
 // GetTransactionReceipt retrieves a transaction receipt by hash
 func (m *ReceiptMethods[R]) GetTransactionReceipt(ctx context.Context, params []any) (any, error) {
 	if len(params) != 1 {
-		return nil, ErrGetTransactionReceiptRequires1Param
+		return nil, ErrWrongParamsCount
 	}
 
 	hashStr, ok := params[0].(string)

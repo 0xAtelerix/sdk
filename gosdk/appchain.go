@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"time"
 
@@ -19,9 +18,9 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/library"
 	"github.com/0xAtelerix/sdk/gosdk/library/subscriber"
 	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
 	"github.com/0xAtelerix/sdk/gosdk/receipt"
@@ -75,8 +74,8 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 	txpool apptypes.TxPoolInterface[AppTx, R],
 	config AppchainConfig,
 	appchainDB kv.RwDB,
-	sub *subscriber.Subscriber,
-	multichain *MultichainStateAccess,
+	subscriber *subscriber.Subscriber,
+	multichain MultichainStateAccessor,
 	txBatchDB kv.RoDB,
 	options ...func(a *Appchain[STI, AppTx, R, AppBlock]),
 ) Appchain[STI, AppTx, R, AppBlock] {
@@ -100,7 +99,7 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 		TxBatchDB:              txBatchDB,
 		config:                 config,
 		multichainDB:           multichain,
-		subscriber:             sub,
+		subscriber:             subscriber,
 	}
 
 	for _, option := range options {
@@ -119,13 +118,12 @@ type Appchain[STI StateTransitionInterface[appTx, R], appTx apptypes.AppTransact
 	AppchainDB   kv.RwDB
 	TxBatchDB    kv.RoDB
 	config       AppchainConfig
-	multichainDB *MultichainStateAccess
+	multichainDB MultichainStateAccessor
 	subscriber   *subscriber.Subscriber
 }
 
 func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 	ctx context.Context,
-	streamConstructor EventStreamWrapperConstructor[appTx, R],
 ) error {
 	logger := log.Ctx(ctx)
 	logger.Warn().Msg("Appchain run started")
@@ -148,7 +146,7 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 		go startPrometheusServer(ctx, a.config.PrometheusPort)
 	}
 
-	startEventPos, startTxPos, err := GetLastStreamPositions(ctx, a.AppchainDB)
+	startEventPos, epoch, err := GetLastStreamPositions(ctx, a.AppchainDB)
 	if err != nil {
 		return err
 	}
@@ -156,37 +154,24 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 	logger.Info().
 		Str("dir", a.config.EventStreamDir).
 		Int64("start event", startEventPos).
-		Int64("start tx", startTxPos).
+		Uint32("epoch", epoch).
 		Msg("Initializing event readers")
 
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
+	err = WaitFile(ctx, a.config.EventStreamDir, logger)
+	if err != nil {
+		return err
+	}
 
-		_, err = os.Stat(a.config.EventStreamDir)
-		if err != nil {
-			logger.Warn().Err(err).Msg("waiting event stream file")
-			time.Sleep(5 * time.Second)
+	err = WaitFile(ctx, a.config.TxStreamDir, logger)
+	if err != nil {
+		return err
+	}
 
-			continue
-		}
-
-		_, err = os.Stat(a.config.TxStreamDir)
-		if err != nil && a.TxBatchDB == nil {
-			logger.Warn().Err(err).Msg("waiting tx stream file")
-			time.Sleep(5 * time.Second)
-
-			continue
-		}
-
-		break
+	if a.TxBatchDB == nil {
+		return library.ErrEmptyTxBatchDB
 	}
 
 	var (
-		eventStream       Streamer[appTx, R]
 		votingBlocks      *Voting[apptypes.ExternalBlock]
 		votingCheckpoints *Voting[apptypes.Checkpoint]
 	)
@@ -208,32 +193,16 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 		return err
 	}
 
-	if streamConstructor == nil {
-		logger.Info().Msg("NewMdbxEventStreamWrapper")
-		eventStream, err = NewMdbxEventStreamWrapper[appTx, R](
-			filepath.Join(a.config.EventStreamDir, "epoch_1.data"),
-			uint32(a.config.ChainID),
-			startEventPos,
-			a.TxBatchDB,
-			logger,
-			a.AppchainDB,
-			a.subscriber,
-			votingBlocks,
-			votingCheckpoints,
-		)
-	} else {
-		eventStream, err = streamConstructor(filepath.Join(a.config.EventStreamDir, "epoch_1.data"),
-			uint32(a.config.ChainID),
-			startEventPos,
-			a.TxBatchDB,
-			logger,
-			a.AppchainDB,
-			a.subscriber,
-			votingBlocks,
-			votingCheckpoints,
-		)
-	}
-
+	eventStream, err := NewMdbxEventStreamWrapper[appTx, R](
+		a.config.EventStreamDir,
+		uint32(a.config.ChainID),
+		a.TxBatchDB,
+		logger,
+		a.AppchainDB,
+		a.subscriber,
+		votingBlocks,
+		votingCheckpoints,
+	)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to create event stream")
 
@@ -300,7 +269,7 @@ runFor:
 		logger.Debug().Int("batches num", len(batches)).Msg("received new batches")
 
 		for i, batch := range batches {
-			logger.Debug().Int("batch", i).Int("tx", len(batches[i].Transactions)).Int("blocks", len(batches[i].ExternalBlocks)).Msg("received new batch")
+			logger.Debug().Int("batch", i).Int("tx", len(batch.Transactions)).Int("blocks", len(batch.ExternalBlocks)).Msg("received new batch")
 
 			start := time.Now() // метка начала
 
@@ -357,10 +326,24 @@ runFor:
 				logger.Debug().Uint64("block_number", blockNumber).
 					Msg("Write block")
 
-				if err = WriteBlock(rwtx, block.Number(), block.Bytes()); err != nil {
+				blockBytes, marshalErr := cbor.Marshal(block)
+				if marshalErr != nil {
+					logger.Error().Err(marshalErr).Msg("Failed to marshal block")
+
+					return fmt.Errorf("%w: %w", library.ErrBlockMarshalling, marshalErr)
+				}
+
+				if err = WriteBlock(rwtx, blockNumber, blockBytes); err != nil {
 					logger.Error().Err(err).Msg("Failed to write block")
 
-					return fmt.Errorf("failed to write block: %w", err)
+					return fmt.Errorf("%w: %w", library.ErrBlockWrite, err)
+				}
+
+				// Store transactions with relation to the block
+				if err = WriteBlockTransactions(rwtx, blockNumber, batch.Transactions); err != nil {
+					logger.Error().Err(err).Msg("Failed to write block transactions")
+
+					return fmt.Errorf("%w: %w", library.ErrBlockTransactionsWrite, err)
 				}
 
 				blockHash := block.Hash()
@@ -404,7 +387,7 @@ runFor:
 
 				logger.Debug().Int64("Next snapshot pos", batch.EndOffset).Msg("Write checkpoint")
 
-				err = WriteSnapshotPosition(rwtx, currentEpoch, batch.EndOffset)
+				err = WriteSnapshotPosition(rwtx, eventStream.currentEpoch, batch.EndOffset)
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to write snapshot pos")
 
@@ -445,11 +428,11 @@ runFor:
 
 				HeadBlockNumber.WithLabelValues(vid, cid).Set(float64(blockNumber))
 				EventStreamPosition.
-					WithLabelValues(vid, cid, strconv.FormatUint(uint64(currentEpoch), 10)).
+					WithLabelValues(vid, cid, strconv.FormatUint(uint64(eventStream.currentEpoch), 10)).
 					Set(float64(batch.EndOffset))
 				BlockExternalTxs.WithLabelValues(vid, cid).Observe(float64(len(extTxs)))
 				BlockInternalTxs.WithLabelValues(vid, cid).Observe(float64(len(batch.Transactions)))
-				BlockBytes.WithLabelValues(vid, cid).Observe(float64(len(block.Bytes())))
+				BlockBytes.WithLabelValues(vid, cid).Observe(float64(len(blockBytes)))
 
 				previousBlockNumber = blockNumber
 				previousBlockHash = block.Hash()
@@ -464,6 +447,28 @@ runFor:
 		}
 
 		BatchProcessingDuration.WithLabelValues(vid, cid).Observe(time.Since(timer).Seconds())
+	}
+
+	return nil
+}
+
+func WaitFile(ctx context.Context, filePath string, logger *zerolog.Logger) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		_, err := os.Stat(filePath)
+		if err != nil {
+			logger.Warn().Err(err).Str("file", filePath).Msg("waiting file")
+			time.Sleep(5 * time.Second)
+
+			continue
+		}
+
+		break
 	}
 
 	return nil
@@ -553,6 +558,45 @@ func WriteBlock(rwtx kv.RwTx, blockNumber uint64, blockBytes []byte) error {
 	return rwtx.Put(scheme.BlocksBucket, number, blockBytes)
 }
 
+// WriteBlockTransactions stores the transactions for a block in CBOR format.
+// Storage strategy: Transactions are stored once in BlockTransactionsBucket,
+// while TxLookupBucket maintains a lightweight index (txHash -> blockNumber + txIndex).
+func WriteBlockTransactions[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
+	rwtx kv.RwTx,
+	blockNumber uint64,
+	txs []appTx,
+) error {
+	blockNumBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(blockNumBytes, blockNumber)
+
+	// Marshal transactions to CBOR - this is the only place we store full transaction data
+	txsBytes, err := cbor.Marshal(txs)
+	if err != nil {
+		return fmt.Errorf("%w: %w", library.ErrTransactionsMarshalling, err)
+	}
+
+	// Store in BlockTransactionsBucket (primary storage)
+	if err := rwtx.Put(scheme.BlockTransactionsBucket, blockNumBytes, txsBytes); err != nil {
+		return fmt.Errorf("%w: %w", library.ErrBlockTransactionsWrite, err)
+	}
+
+	// Create lookup entries: txHash -> (blockNumber, txIndex)
+	for i, tx := range txs {
+		txHash := tx.Hash()
+
+		// Encode: blockNumber (8 bytes) + txIndex (4 bytes)
+		lookupEntry := make([]byte, 12)
+		binary.BigEndian.PutUint64(lookupEntry[0:8], blockNumber)
+		binary.BigEndian.PutUint32(lookupEntry[8:12], uint32(i))
+
+		if err := rwtx.Put(scheme.TxLookupBucket, txHash[:], lookupEntry); err != nil {
+			return fmt.Errorf("%w (tx %x): %w", library.ErrTransactionLookupWrite, txHash[:4], err)
+		}
+	}
+
+	return nil
+}
+
 func WriteLastBlock(rwtx kv.RwTx, number uint64, hash [32]byte) error {
 	value := make([]byte, 8+32)
 	binary.BigEndian.PutUint64(value[:8], number)
@@ -576,8 +620,7 @@ func GetLastBlock(tx kv.Tx) (uint64, [32]byte, error) {
 	return number, ([32]byte)(value[8:]), err
 }
 
-// Функция записи внешней транзакции в MDBX
-// todo ответственность за взаимодействия с валидатором на стороне AppchainEmitterServer
+// WriteExternalTransactions writes external transactions to the database in CBOR format.
 // Should be called strictly once per block
 func WriteExternalTransactions(
 	dbTx kv.RwTx,
@@ -586,14 +629,15 @@ func WriteExternalTransactions(
 ) ([32]byte, error) {
 	root := Merklize(txs)
 
-	value, err := proto.Marshal(TransactionToProto(txs, blockNumber, root))
+	// Marshal to CBOR (used by both validators and explorer)
+	value, err := cbor.Marshal(txs)
 	if err != nil {
 		log.Error().Err(err).Msg("Transaction serialization failed")
 
 		return [32]byte{}, fmt.Errorf("transaction serialization failed: %w", err)
 	}
 
-	// Записываем в базу
+	// Write to database
 	key := make([]byte, 8)
 	binary.BigEndian.PutUint64(key, blockNumber)
 
@@ -605,25 +649,30 @@ func WriteExternalTransactions(
 	return root, nil
 }
 
-func TransactionToProto(
-	txs []apptypes.ExternalTransaction,
+// ReadExternalTransactions reads external transactions from the database.
+// This is used by both the validator/emitter API and the block explorer RPC.
+func ReadExternalTransactions(
+	tx kv.Tx,
 	blockNumber uint64,
-	root [32]byte,
-) *emitterproto.GetExternalTransactionsResponse_BlockTransactions {
-	protoTxs := make([]*emitterproto.ExternalTransaction, len(txs))
+) ([]apptypes.ExternalTransaction, error) {
+	key := make([]byte, 8)
+	binary.BigEndian.PutUint64(key, blockNumber)
 
-	for i, tx := range txs {
-		protoTxs[i] = &emitterproto.ExternalTransaction{
-			ChainId: uint64(tx.ChainID),
-			Tx:      tx.Tx,
-		}
+	value, err := tx.GetOne(scheme.ExternalTxBucket, key)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", library.ErrExternalTransactionsGet, err)
 	}
 
-	return &emitterproto.GetExternalTransactionsResponse_BlockTransactions{
-		BlockNumber:          blockNumber,
-		TransactionsRootHash: root[:],
-		ExternalTransactions: protoTxs,
+	if len(value) == 0 {
+		return []apptypes.ExternalTransaction{}, nil
 	}
+
+	var txs []apptypes.ExternalTransaction
+	if err := cbor.Unmarshal(value, &txs); err != nil {
+		return nil, fmt.Errorf("%w: %w", library.ErrExternalTransactionsUnmarshal, err)
+	}
+
+	return txs, nil
 }
 
 func CheckpointToProto(cp apptypes.Checkpoint) *emitterproto.CheckpointResponse_Checkpoint {
@@ -704,40 +753,35 @@ func ReadSnapshotPosition(tx kv.Tx, epoch uint32) (int64, error) {
 	return int64(binary.BigEndian.Uint64(val)), nil
 }
 
-func ReadTxSnapshotPosition(tx kv.Tx, epoch uint32) int64 {
-	key := make([]byte, 4)
-	binary.BigEndian.PutUint32(key, epoch)
-
-	val, err := tx.GetOne(scheme.TxSnapshot, key)
-	if err != nil {
-		log.Log().Err(err).Msgf("ReadTxSnapshotPosition: can't read tx. Epoch: %d", epoch)
-
-		return 8 // fallback: пропускаем заголовок
-	}
-
-	if len(val) != 8 {
-		return 8
-	}
-
-	return int64(binary.BigEndian.Uint64(val))
-}
-
-const currentEpoch = uint32(1)
-
 func GetLastStreamPositions(
 	ctx context.Context,
 	appchainDB kv.RwDB,
-) (startEventPos int64, startTxPos int64, err error) {
-	startEventPos = int64(8)
-	startTxPos = int64(8)
+) (int64, uint32, error) {
+	startEventPos := int64(8)
+	epoch := uint32(1)
 
-	err = appchainDB.View(ctx, func(tx kv.Tx) error {
-		var dbErr error
-
-		startEventPos, dbErr = ReadSnapshotPosition(tx, currentEpoch)
-		if dbErr != nil {
-			return dbErr
+	err := appchainDB.View(ctx, func(tx kv.Tx) error {
+		c, err := tx.Cursor(scheme.Snapshot)
+		if err != nil {
+			return err
 		}
+
+		k, v, err := c.Last()
+		if err != nil {
+			return err
+		}
+
+		if len(k) != 4 {
+			return nil
+		}
+
+		epoch = binary.BigEndian.Uint32(k)
+
+		if len(v) != 8 {
+			return nil
+		}
+
+		startEventPos = int64(binary.BigEndian.Uint64(v))
 
 		return nil
 	})
@@ -745,5 +789,5 @@ func GetLastStreamPositions(
 		return 0, 0, fmt.Errorf("faild to get stream positions: %w", err)
 	}
 
-	return startEventPos, startTxPos, nil
+	return startEventPos, epoch, nil
 }
