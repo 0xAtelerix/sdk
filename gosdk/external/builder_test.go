@@ -148,7 +148,13 @@ func TestSolanaTransactions(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	require.Equal(t, mainnetTx.ChainID, library.SolanaChainID, "Unexpected ChainID for Solana mainnet")
+	require.Equal(
+		t,
+		library.SolanaChainID,
+		mainnetTx.ChainID,
+		"Unexpected ChainID for Solana mainnet",
+	)
+
 	if mainnetTx.ChainID != library.SolanaChainID {
 		t.Errorf(
 			"Expected ChainID %d for Solana mainnet, got %d",
@@ -158,7 +164,11 @@ func TestSolanaTransactions(t *testing.T) {
 	}
 
 	// Test Solana devnet
-	devnetTx, err := NewExTxBuilder(payloadBytes, library.SolanaDevnetChainID).AddSolanaAccounts([]types.AccountMeta{{}}).Build()
+	devnetTx, err := NewExTxBuilder(
+		payloadBytes,
+		library.SolanaDevnetChainID,
+	).AddSolanaAccounts([]types.AccountMeta{{}}).
+		Build()
 	require.NoError(t, err)
 
 	if devnetTx.ChainID != library.SolanaDevnetChainID {
@@ -580,8 +590,10 @@ func TestSolanaPayload_RoundTrip(t *testing.T) {
 				Build()
 			if tc.err != nil {
 				require.ErrorIs(tr, err, tc.err)
+
 				return
 			}
+
 			require.NoError(tr, err)
 
 			// Decode
@@ -874,7 +886,10 @@ func TestTestnetWorkflow(t *testing.T) {
 		{
 			"SolanaDevnet",
 			func() *ExTxBuilder {
-				return NewExTxBuilder(payloadBytes, library.SolanaDevnetChainID).AddSolanaAccounts([]types.AccountMeta{{}})
+				return NewExTxBuilder(
+					payloadBytes,
+					library.SolanaDevnetChainID,
+				).AddSolanaAccounts([]types.AccountMeta{{}})
 			},
 			library.SolanaDevnetChainID,
 		},

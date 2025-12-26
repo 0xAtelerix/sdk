@@ -65,9 +65,13 @@ func Test_cmpAddr_Solana(t *testing.T) {
 
 func newSubscriber() *Subscriber {
 	return &Subscriber{
-		ethContracts:        make(map[apptypes.ChainType]map[library.EthereumAddress]map[library.EthereumTopic]struct{}),
-		solAddresses:        make(map[apptypes.ChainType]map[library.SolanaAddress]struct{}),
-		deletedEthContracts: make(map[apptypes.ChainType]map[library.EthereumAddress]map[library.EthereumTopic]struct{}),
+		ethContracts: make(
+			map[apptypes.ChainType]map[library.EthereumAddress]map[library.EthereumTopic]struct{},
+		),
+		solAddresses: make(map[apptypes.ChainType]map[library.SolanaAddress]struct{}),
+		deletedEthContracts: make(
+			map[apptypes.ChainType]map[library.EthereumAddress]map[library.EthereumTopic]struct{},
+		),
 		deletedSolAddresses: make(map[apptypes.ChainType]map[library.SolanaAddress]struct{}),
 
 		EVMEventRegistry:    tokens.NewRegistry[tokens.AppEvent](),
@@ -293,7 +297,9 @@ func readAllSubscriptions(
 ) (map[apptypes.ChainType]map[library.EthereumAddress]map[library.EthereumTopic]struct{}, map[apptypes.ChainType]map[library.SolanaAddress]struct{}) {
 	t.Helper()
 
-	gotEth := make(map[apptypes.ChainType]map[library.EthereumAddress]map[library.EthereumTopic]struct{})
+	gotEth := make(
+		map[apptypes.ChainType]map[library.EthereumAddress]map[library.EthereumTopic]struct{},
+	)
 	gotSol := make(map[apptypes.ChainType]map[library.SolanaAddress]struct{})
 
 	err := tx.ForEach(scheme.SubscriptionBucket, nil, func(k, v []byte) error {

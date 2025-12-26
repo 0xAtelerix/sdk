@@ -28,9 +28,9 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/evmtypes"
 	"github.com/0xAtelerix/sdk/gosdk/library"
 	"github.com/0xAtelerix/sdk/gosdk/scheme"
-	"github.com/0xAtelerix/sdk/gosdk/evmtypes"
 )
 
 // --- minimal test fixture writer matching your read-side keying ---

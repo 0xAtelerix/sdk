@@ -74,7 +74,7 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 	txpool apptypes.TxPoolInterface[AppTx, R],
 	config AppchainConfig,
 	appchainDB kv.RwDB,
-	subscriber *subscriber.Subscriber,
+	sub *subscriber.Subscriber,
 	multichain MultichainStateAccessor,
 	txBatchDB kv.RoDB,
 	options ...func(a *Appchain[STI, AppTx, R, AppBlock]),
@@ -99,7 +99,7 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 		TxBatchDB:              txBatchDB,
 		config:                 config,
 		multichainDB:           multichain,
-		subscriber:             subscriber,
+		subscriber:             sub,
 	}
 
 	for _, option := range options {
