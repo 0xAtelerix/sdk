@@ -52,7 +52,7 @@ docker compose build appchain && docker compose up appchain
 The Go SDK lives under `gosdk/`. The directories and modules below map to the core capabilities your appchain will plug together:
 
 - **Runtime harness (`gosdk/appchain.go`)** – orchestrates configuration, storage wiring, gRPC servers, and the main execution loop that pulls consensus batches into your state transition.
-- **Initialization (`gosdk/init.go`)** – provides `Init()` to bootstrap all common components (databases, multichain access, subscriber) with sensible defaults. Also defines path helpers (`TxBatchPath`, `ChainDBPath`, etc.) for consistent directory layout.
+- **Initialization (`gosdk/init.go`)** – provides `InitApp()` to bootstrap all common components (databases, multichain access, subscriber) with sensible defaults. Also defines path helpers for consistent directory layout.
 - **Core appchain types (`gosdk/apptypes/`)** – supplies shared interfaces for transactions, receipts, batches, and external payloads so your business logic can interoperate with the validator stack.
 - **Transaction pool (`gosdk/txpool/`)** – manages queued transactions, batching, and hash verification so validators stay in sync with the payloads your appchain will execute.
 - **Multichain access (`gosdk/multichain.go`, `gosdk/multichain_sql.go`)** – opens deterministic, read-only windows into Pelagos-hosted data sets for other chains (EVM, Solana, etc.). Supports both MDBX and SQLite backends via `MultichainStateAccessor` interface.
@@ -118,7 +118,7 @@ Path helpers in `gosdk/init.go`:
 
 ## State management and batch processing
 
-The SDK provides a streamlined initialization flow through `gosdk.Init()` that sets up all common components with sensible defaults. Here's how a typical appchain main function looks:
+The SDK provides a streamlined initialization flow through `gosdk.InitApp()` that sets up all common components with sensible defaults. Here's how a typical appchain main function looks:
 
 ```go
 func main() {
@@ -126,31 +126,30 @@ func main() {
     defer cancel()
 
     // Initialize all common components
-    appInit, err := gosdk.Init(ctx, gosdk.InitConfig{
-        ChainID:      42,
-        DataDir:      "./data",
-        EmitterPort:  ":9090",
-        CustomTables: application.Tables(),
-        Logger:       &log.Logger,
-    })
+    storage, config, err := gosdk.InitApp[MyTransaction[MyReceipt], MyReceipt](
+        ctx,
+        gosdk.InitConfig{
+            ChainID:      42,
+            DataDir:      "./data",
+            EmitterPort:  ":9090",
+            CustomTables: application.Tables(),
+        },
+    )
     if err != nil {
         log.Fatal().Err(err).Msg("Failed to init appchain")
     }
-    defer appInit.Close()
-
-    // Create transaction pool
-    txPool := txpool.NewTxPool[MyTransaction[MyReceipt]](appInit.LocalDB)
+    defer storage.Close()
 
     // Create appchain with SDK's default batch processor
     appchain := gosdk.NewAppchain(
-        appInit,
+        storage,
+        config,
         gosdk.NewDefaultBatchProcessor[MyTransaction[MyReceipt], MyReceipt](
-            NewExtBlockProcessor(appInit.Multichain),
-            appInit.Multichain,
-            appInit.Subscriber,
+            NewExtBlockProcessor(storage.Multichain()),
+            storage.Multichain(),
+            storage.Subscriber(),
         ),
         MyBlockConstructor,
-        txPool,
     )
 
     // Run appchain
@@ -160,17 +159,27 @@ func main() {
 }
 ```
 
-The `Init()` function returns an `InitResult` containing:
+`InitApp()` returns:
+- `Storage` – contains all databases and storage components (appchain DB, txpool, multichain accessor, subscriber)
 - `Config` – the fully populated `AppchainConfig` with paths and settings
-- `AppchainDB` – the main appchain database for blocks, checkpoints, and receipts
-- `LocalDB` – database for transaction pool (txpool)
-- `TxBatchDB` – read-only database for transaction batches written by pelacli's fetcher
-- `Multichain` – `MultichainStateAccessor` for external chain data (EVM, Solana via SQLite)
-- `Subscriber` – manages external chain subscriptions for filtering
+
+The `Storage` object provides accessor methods:
+- `storage.AppchainDB()` – main appchain database for blocks, checkpoints, and receipts
+- `storage.TxPool()` – transaction pool for managing pending transactions
+- `storage.Multichain()` – multichain state accessor for external chain data (EVM, Solana)
+- `storage.Subscriber()` – manages external chain subscriptions for filtering
+- `storage.TxBatchDB()` – read-only database for transaction batches from pelacli
 
 ### Implementing your transaction type
 
 Your transaction type must implement `apptypes.AppTransaction`. Each transaction carries your domain-specific fields and a `Process` method that mutates state:
+
+The same example test also shows how to bootstrap multichain reads. You have two backends:
+
+- **MDBX (default)** – open with `NewMultichainStateAccessDB` or `NewMultichainStateAccessDBWith` (pass a custom opener). Then wrap with `NewMultichainStateAccess`.
+- **SQLite** – if your fetcher produces SQLite snapshots, open with `NewMultichainStateAccessSQLDB` and wrap with `NewMultichainStateAccessSQL` (implements the same `MultichainReader` interface).
+
+Once you have a `MultichainReader`, construct `MultichainStateAccess` (MDBX) or use the SQLite reader directly and hand it to `BatchProcesser`. Turning that into a real workflow involves three extra steps.
 
 ```go
 type MyTransaction[R MyReceipt] struct {
@@ -220,22 +229,22 @@ Usage:
 ```go
 // Default - use SDK's DefaultBatchProcessor
 appchain := gosdk.NewAppchain(
-    appInit,
+    storage,
+    config,
     gosdk.NewDefaultBatchProcessor[MyTx, MyReceipt](
         myExtBlockProcessor,
-        appInit.Multichain,
-        appInit.Subscriber,
+        storage.Multichain(),
+        storage.Subscriber(),
     ),
     blockBuilder,
-    txPool,
 )
 
 // Custom - provide your own BatchProcessor implementation
 appchain := gosdk.NewAppchain(
-    appInit,
+    storage,
+    config,
     myCustomBatchProcessor,
     blockBuilder,
-    txPool,
 )
 ```
 
@@ -383,13 +392,13 @@ rpcServer.AddMiddleware(myMiddleware)
 // Add standard methods (sendTransaction, getBlock, getReceipt, etc.)
 rpc.AddStandardMethods[MyTx, MyReceipt, MyBlock](
     rpcServer,
-    appInit.AppchainDB,
-    txPool,
+    storage.AppchainDB(),
+    storage.TxPool(),
     chainID,
 )
 
 // Add custom methods
-myCustomRPC := NewCustomRPC(rpcServer, appInit.AppchainDB)
+myCustomRPC := NewCustomRPC(rpcServer, storage.AppchainDB())
 myCustomRPC.AddRPCMethods()
 
 // Start server
@@ -454,7 +463,7 @@ The SDK assumes every validator replays identical state transitions. Keep your l
 - **ExternalBlockProcessor**: Interface you implement to handle external chain data (used by `DefaultBatchProcessor`).
 - **External block**: Reference to finalized data from another chain used in processing.
 - **Fetcher**: Service that writes transaction batches and external chain data to databases for appchain consumption.
-- **InitResult**: Contains all initialized SDK components (databases, multichain, subscriber).
+- **Storage**: Contains all databases and storage components (appchain DB, txpool, multichain accessor, subscriber). Returned by `InitApp()`.
 - **MultichainStateAccessor**: Interface for reading external chain data (EVM blocks/receipts, Solana blocks). Implementations: `MultichainStateAccessSQL` (SQLite), `MultichainStateAccess` (MDBX).
 - **Pelacli**: CLI tool that runs the consensus stub and fetcher for local development.
 - **Subscriber**: Component that tracks which external addresses/contracts your appchain cares about.

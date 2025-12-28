@@ -166,7 +166,6 @@ func (a *Appchain[AppTx, R, AppBlock]) Run(ctx context.Context) error {
 		a.storage.txBatchDB,
 		logger,
 		a.storage.appchainDB,
-		a.storage.subscriber,
 		votingBlocks,
 		votingCheckpoints,
 	)
