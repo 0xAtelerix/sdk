@@ -3,6 +3,7 @@ package gosdk
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"os"
 	"strconv"
 	"testing"
@@ -17,83 +18,63 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
-	"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
 
 func TestExampleAppchain(t *testing.T) {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	ctx := log.Logger.WithContext(t.Context())
 
 	tmp := t.TempDir()
 
-	config := AppchainConfig{
-		ChainID:           DefaultAppchainID,
-		EmitterPort:       DefaultEmitterPort,
-		AppchainDBPath:    AppchainDBPath(tmp, DefaultAppchainID),
-		EventStreamDir:    EventsPath(tmp),
-		TxStreamDir:       TxBatchPath(tmp, DefaultAppchainID),
-		MultichainStateDB: map[apptypes.ChainType]string{},
-	}
+	// Create events directory (normally created by pelacli)
+	eventsPath := EventsPath(tmp)
+	require.NoError(t, os.MkdirAll(eventsPath, 0o755))
 
-	localDB, err := mdbx.NewMDBX(mdbxlog.New()).
-		InMem(tmp).
-		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
-			return txpool.Tables()
-		}).
-		Open()
-	require.NoError(t, err)
-
-	txPool := txpool.NewTxPool[ExampleTransaction[ExampleReceipt]](localDB)
-
-	appchainDB, err := mdbx.NewMDBX(mdbxlog.New()).
-		Path(config.AppchainDBPath).
-		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
-			return DefaultTables()
-		}).
-		Open()
-	require.NoError(t, err)
+	// Create txbatch database (normally created by pelacli)
+	// We create and close it so InitApp can open it
+	txBatchPath := TxBatchPath(tmp)
+	require.NoError(t, os.MkdirAll(txBatchPath, 0o755))
 
 	txBatchDB, err := mdbx.NewMDBX(mdbxlog.New()).
-		Path(config.TxStreamDir).
+		Path(txBatchPath).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return TxBucketsTables()
 		}).
 		Open()
 	require.NoError(t, err)
+	txBatchDB.Close() // Close it so InitApp can open it
 
-	subscriber, err := NewSubscriber(t.Context(), appchainDB)
+	storage, config, err := InitApp[ExampleTransaction[ExampleReceipt], ExampleReceipt](
+		ctx,
+		InitConfig{
+			ChainID:     DefaultAppchainID,
+			DataDir:     tmp,
+			EmitterPort: DefaultEmitterPort,
+		},
+	)
 	require.NoError(t, err)
-
-	chainDBs, err := NewMultichainStateAccessDB(config.MultichainStateDB)
-	require.NoError(t, err)
-
-	multichainDB := NewMultichainStateAccess(chainDBs)
-
-	// Create InitResult manually for test
-	appInit := &InitResult{
-		Config:     config,
-		AppchainDB: appchainDB,
-		LocalDB:    localDB,
-		TxBatchDB:  txBatchDB,
-		Multichain: multichainDB,
-		Subscriber: subscriber,
-	}
 
 	log.Info().Msg("Creating appchain...")
 
+	// Create no-op multichain for test (test doesn't process external blocks)
+	multichain := NewMultichainStateAccessSQL(make(map[apptypes.ChainType]*sql.DB))
+
 	appchainExample := NewAppchain(
-		appInit,
+		storage,
+		config,
 		NewDefaultBatchProcessor[ExampleTransaction[ExampleReceipt], ExampleReceipt](
-			NewExtBlockProcessor(multichainDB),
-			multichainDB,
-			subscriber,
+			NewExtBlockProcessor(multichain),
+			multichain,
+			storage.Subscriber(),
 		),
 		func(_ uint64, _ [32]byte, _ [32]byte, _ apptypes.Batch[ExampleTransaction[ExampleReceipt], ExampleReceipt]) *ExampleBlock {
 			return &ExampleBlock{}
 		},
-		txPool,
 	)
 
-	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer appchainExample.Close()
+
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 
 	// Run appchain in goroutine
@@ -108,8 +89,6 @@ func TestExampleAppchain(t *testing.T) {
 	}()
 
 	err = <-runErr
-
-	appchainExample.Shutdown()
 
 	log.Info().Err(err).Msg("Appchain exited")
 }
@@ -167,10 +146,10 @@ func (*ExampleBlock) Bytes() []byte {
 var _ ExternalBlockProcessor = &ExtBlockProcessor{}
 
 type ExtBlockProcessor struct {
-	MultiChain *MultichainStateAccess
+	MultiChain MultichainStateAccessor
 }
 
-func NewExtBlockProcessor(multiChain *MultichainStateAccess) *ExtBlockProcessor {
+func NewExtBlockProcessor(multiChain MultichainStateAccessor) *ExtBlockProcessor {
 	return &ExtBlockProcessor{
 		MultiChain: multiChain,
 	}

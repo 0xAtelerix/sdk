@@ -2,235 +2,46 @@ package gosdk
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strconv"
 
-	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
 
-// ============================================================================
-// Defaults
-// ============================================================================
-
-// Default data directory for both Docker and local deployments.
-const DefaultDataDir = "./data"
-
-// Default ports and chainID for appchain services.
-const (
-	// DefaultEmitterPort is the gRPC port for emitter API.
-	// Used by: fetcher (pelacli/core) to fetch checkpoints, txbatches, external txs.
-	DefaultEmitterPort = ":9090"
-
-	// DefaultRPCPort is the HTTP port for JSON-RPC server.
-	// Used by: external clients to query blocks, txs, receipts.
-	DefaultRPCPort = ":8080"
-
-	// DefaultAppchainID is the default chain ID for local development.
-	// Production appchains should use unique chain IDs.
-	DefaultAppchainID uint64 = 42
-)
-
-// Directory names within the data directory.
-const (
-	// MultichainDirName stores external chain data (EVM, Solana blocks).
-	// Written by: pelacli/core (multichain oracle)
-	// Read by: appchain (via MultichainStateAccessor)
-	MultichainDirName = "multichain"
-
-	// EventsDirName stores consensus events/snapshots.
-	// Written by: pelacli/core (consensus stub)
-	// Read by: appchain (via MdbxEventStreamWrapper)
-	EventsDirName = "events"
-
-	// AppchainDirName stores appchain state (blocks, checkpoints, receipts).
-	// Written by: appchain
-	// Read by: appchain, RPC server
-	AppchainDirName = "appchain"
-
-	// FetcherDirName stores fetcher data including transaction batches.
-	// Written by: pelacli/core (fetcher WriterLoop)
-	// Read by: appchain (to process batches)
-	FetcherDirName = "fetcher"
-
-	// LocalDirName stores node-local data like txpool.
-	// Written by: appchain (txpool)
-	// Read by: appchain, emitter API (exposes to fetcher via gRPC)
-	LocalDirName = "local"
-)
-
-// ============================================================================
-// Path Helpers
-// ============================================================================
-
-// MultichainPath returns the multichain directory for a given base path.
-func MultichainPath(dataDir string) string {
-	return filepath.Join(dataDir, MultichainDirName)
-}
-
-// EventsPath returns the events directory for a given base path.
-func EventsPath(dataDir string) string {
-	return filepath.Join(dataDir, EventsDirName)
-}
-
-// ChainDBPath returns the database path for a specific chain ID.
-func ChainDBPath(dataDir string, chainID uint64) string {
-	return filepath.Join(dataDir, MultichainDirName, strconv.FormatUint(chainID, 10))
-}
-
-// AppchainDBPath returns the appchain database directory for a specific chain.
-func AppchainDBPath(dataDir string, chainID uint64) string {
-	return filepath.Join(dataDir, AppchainDirName, strconv.FormatUint(chainID, 10))
-}
-
-// TxBatchPath returns the transaction batch directory for an appchain.
-func TxBatchPath(dataDir string, chainID uint64) string {
-	return filepath.Join(dataDir, FetcherDirName, strconv.FormatUint(chainID, 10))
-}
-
-// LocalDBPath returns the local database directory for an appchain (for txpool).
-func LocalDBPath(dataDir string, chainID uint64) string {
-	return filepath.Join(dataDir, LocalDirName, strconv.FormatUint(chainID, 10))
-}
-
-// DiscoverMultichainDBsInDir scans a directory for multichain databases.
-// Only includes directories that contain actual database files (SQLite or MDBX).
-func DiscoverMultichainDBsInDir(dir string) (MultichainConfig, error) {
-	config := make(MultichainConfig)
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return config, nil
-		}
-
-		return nil, fmt.Errorf("failed to read multichain directory %s: %w", dir, err)
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		chainID, err := strconv.ParseUint(entry.Name(), 10, 64)
-		if err != nil {
-			continue
-		}
-
-		dbPath := filepath.Join(dir, entry.Name())
-
-		// Check if SQLite database file exists (preferred)
-		sqliteFile := filepath.Join(dbPath, "sqlite")
-		if _, err := os.Stat(sqliteFile); err == nil {
-			config[apptypes.ChainType(chainID)] = dbPath
-
-			continue
-		}
-
-		// Fallback: check for MDBX database file
-		mdbxFile := filepath.Join(dbPath, "mdbx.dat")
-		if _, err := os.Stat(mdbxFile); err == nil {
-			config[apptypes.ChainType(chainID)] = dbPath
-
-			continue
-		}
-
-		// Skip directories without database files
-	}
-
-	return config, nil
-}
-
-// ============================================================================
-// Initialization
-// ============================================================================
-
-// InitConfig holds configuration for initializing an appchain.
 type InitConfig struct {
-	// ChainID is the unique identifier for this appchain.
-	ChainID uint64
+	ChainID     uint64 // Defaults to 42
+	DataDir     string // Defaults to /data
+	EmitterPort string // Defaults to :9090
 
-	// DataDir is the root data directory (shared with pelacli).
-	// Defaults to /data in Docker deployments.
-	DataDir string
+	RequiredChains []uint64 // External chain IDs to wait for
 
-	// EmitterPort is the gRPC port for the emitter API.
-	// Defaults to :9090.
-	EmitterPort string
-
-	// CustomTables are additional MDBX tables for the appchain.
-	// These are merged with SDK's default tables.
-	CustomTables kv.TableCfg
-
-	// Logger is an optional custom logger.
-	Logger *zerolog.Logger
+	PrometheusPort string               // Optional, leave empty to disable
+	ValidatorID    string               // Optional, for multi-validator metrics/logs
+	CustomTables   kv.TableCfg          // Optional, merged with default tables
+	CustomPaths    *AppchainCustomPaths // Optional, overrides DataDir-derived paths
 }
 
-// InitResult contains all initialized components for an appchain.
-type InitResult struct {
-	// Config is the fully populated appchain config.
-	Config AppchainConfig
-
-	// AppchainDB is the main appchain database.
-	AppchainDB kv.RwDB
-
-	// LocalDB is the database for transaction pool.
-	LocalDB kv.RwDB
-
-	// TxBatchDB is the read-only database for transaction batches (written by pelacli).
-	TxBatchDB kv.RoDB
-
-	// Multichain is the accessor for external chain data (SQLite or MDBX).
-	Multichain MultichainStateAccessor
-
-	// Subscriber manages external chain subscriptions.
-	Subscriber *Subscriber
+// AppchainCustomPaths overrides default directory paths.
+// Optional - if not set, paths are derived from DataDir.
+type AppchainCustomPaths struct {
+	MultichainDir   string // Default: {DataDir}/multichain
+	AppchainDBDir   string // Default: {DataDir}/appchain/db
+	TxPoolDir       string // Default: {DataDir}/appchain/txpool
+	EventsStreamDir string // Default: {DataDir}/consensus/events
+	TxBatchDir      string // Default: {DataDir}/consensus/txbatch
 }
 
-// Close releases all resources held by the init result.
-func (r *InitResult) Close() {
-	if r.Multichain != nil {
-		r.Multichain.Close()
-	}
-
-	if r.TxBatchDB != nil {
-		r.TxBatchDB.Close()
-	}
-
-	if r.LocalDB != nil {
-		r.LocalDB.Close()
-	}
-
-	if r.AppchainDB != nil {
-		r.AppchainDB.Close()
-	}
-}
-
-// Init initializes all common appchain components with sensible defaults.
-// This eliminates boilerplate and provides a consistent setup across appchains.
-//
-// Example usage:
-//
-//	result, err := gosdk.Init(ctx, gosdk.InitConfig{
-//	    ChainID:      42,
-//	    CustomTables: myapp.Tables(),
-//	})
-//	if err != nil {
-//	    log.Fatal().Err(err).Msg("Failed to init")
-//	}
-//	defer result.Close()
-func Init(ctx context.Context, cfg InitConfig) (*InitResult, error) {
-	// Apply defaults
+// InitApp initializes the appchain storage and configuration.
+func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
+	ctx context.Context,
+	cfg InitConfig,
+) (*Storage[AppTx, R], *AppchainConfig, error) {
 	if cfg.ChainID == 0 {
 		cfg.ChainID = DefaultAppchainID
 	}
@@ -243,119 +54,158 @@ func Init(ctx context.Context, cfg InitConfig) (*InitResult, error) {
 		cfg.EmitterPort = DefaultEmitterPort
 	}
 
-	logger := &log.Logger
-	if cfg.Logger != nil {
-		logger = cfg.Logger
+	logger := log.Ctx(ctx)
+
+	eventStreamDir := EventsPath(cfg.DataDir)
+	if cfg.CustomPaths != nil && cfg.CustomPaths.EventsStreamDir != "" {
+		eventStreamDir = cfg.CustomPaths.EventsStreamDir
 	}
 
-	result := &InitResult{}
-
-	// Auto-discover multichain databases
-	multichainConfig, err := DiscoverMultichainDBsInDir(MultichainPath(cfg.DataDir))
-	if err != nil {
-		logger.Warn().
-			Err(err).
-			Msg("Failed to discover multichain DBs, continuing with empty config")
-
-		multichainConfig = make(MultichainConfig)
+	txStreamDir := TxBatchPath(cfg.DataDir)
+	if cfg.CustomPaths != nil && cfg.CustomPaths.TxBatchDir != "" {
+		txStreamDir = cfg.CustomPaths.TxBatchDir
 	}
 
-	logger.Info().Int("chains", len(multichainConfig)).Msg("Discovered multichain databases")
-
-	// Create appchain config
-	result.Config = AppchainConfig{
-		ChainID:           cfg.ChainID,
-		EmitterPort:       cfg.EmitterPort,
-		AppchainDBPath:    AppchainDBPath(cfg.DataDir, cfg.ChainID),
-		EventStreamDir:    EventsPath(cfg.DataDir),
-		TxStreamDir:       TxBatchPath(cfg.DataDir, cfg.ChainID),
-		MultichainStateDB: multichainConfig,
-		Logger:            logger,
+	config := &AppchainConfig{
+		ChainID:        cfg.ChainID,
+		DataDir:        cfg.DataDir,
+		EmitterPort:    cfg.EmitterPort,
+		PrometheusPort: cfg.PrometheusPort,
+		ValidatorID:    cfg.ValidatorID,
+		Logger:         logger,
 	}
 
-	// Initialize multichain state accessor (SQLite-based)
-	chainDBs, err := NewMultichainStateAccessSQLDB(ctx, multichainConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create multichain db: %w", err)
+	storage := &Storage[AppTx, R]{
+		eventStreamDir: eventStreamDir,
+		txStreamDir:    txStreamDir,
 	}
 
-	result.Multichain = NewMultichainStateAccessSQL(chainDBs)
+	multichainConfig := make(MultichainConfig)
 
-	// Initialize appchain database
+	multichainRoot := MultichainPath(cfg.DataDir)
+	if cfg.CustomPaths != nil && cfg.CustomPaths.MultichainDir != "" {
+		multichainRoot = cfg.CustomPaths.MultichainDir
+	}
+
+	for _, chainID := range cfg.RequiredChains {
+		chainType := apptypes.ChainType(chainID)
+		if !IsEvmChain(chainType) && !IsSolanaChain(chainType) {
+			return nil, nil, fmt.Errorf("unsupported chain ID %d: not a recognized chain", chainID)
+		}
+
+		chainPath := MultichainChainPath(multichainRoot, chainID)
+		multichainConfig[chainType] = chainPath
+
+		logger.Info().
+			Uint64("chainID", chainID).
+			Str("path", chainPath).
+			Msg("Waiting for external chain data...")
+
+		if err := WaitFile(ctx, chainPath, logger); err != nil {
+			storage.Close()
+
+			return nil, nil, fmt.Errorf("chain %d not available: %w", chainID, err)
+		}
+
+		logger.Info().
+			Uint64("chainID", chainID).
+			Msg("External chain data available")
+	}
+
+	logger.Info().
+		Int("chains", len(multichainConfig)).
+		Uints64("chainIDs", cfg.RequiredChains).
+		Msg("Multichain databases configured")
+
+	if len(multichainConfig) > 0 {
+		chainDBs, err := NewMultichainStateAccessSQLDB(ctx, multichainConfig)
+		if err != nil {
+			storage.Close()
+
+			return nil, nil, fmt.Errorf("failed to create multichain db: %w", err)
+		}
+
+		storage.multichain = NewMultichainStateAccessSQL(chainDBs)
+	}
+
 	tables := DefaultTables()
 	if cfg.CustomTables != nil {
 		tables = MergeTables(tables, cfg.CustomTables)
 	}
 
-	// Initialize appchain database for state
-	result.AppchainDB, err = mdbx.NewMDBX(mdbxlog.New()).
-		Path(result.Config.AppchainDBPath).
+	appchainDBPath := AppchainDBPath(cfg.DataDir)
+	if cfg.CustomPaths != nil && cfg.CustomPaths.AppchainDBDir != "" {
+		appchainDBPath = cfg.CustomPaths.AppchainDBDir
+	}
+
+	if err := os.MkdirAll(appchainDBPath, 0o755); err != nil {
+		storage.Close()
+
+		return nil, nil, fmt.Errorf("failed to create appchain db directory: %w", err)
+	}
+
+	var err error
+
+	storage.appchainDB, err = mdbx.NewMDBX(mdbxlog.New()).
+		Path(appchainDBPath).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return tables
 		}).Open()
 	if err != nil {
-		result.Close()
+		storage.Close()
 
-		return nil, fmt.Errorf("failed to open appchain database: %w", err)
+		return nil, nil, fmt.Errorf("failed to open appchain database: %w", err)
 	}
 
-	// Initialize subscriber
-	result.Subscriber, err = NewSubscriber(ctx, result.AppchainDB)
+	storage.subscriber, err = NewSubscriber(ctx, storage.appchainDB)
 	if err != nil {
-		result.Close()
+		storage.Close()
 
-		return nil, fmt.Errorf("failed to create subscriber: %w", err)
+		return nil, nil, fmt.Errorf("failed to create subscriber: %w", err)
 	}
 
-	// Initialize local database for transaction pool
-	result.LocalDB, err = mdbx.NewMDBX(mdbxlog.New()).
-		Path(LocalDBPath(cfg.DataDir, cfg.ChainID)).
+	txPoolDir := TxPoolPath(cfg.DataDir)
+	if cfg.CustomPaths != nil && cfg.CustomPaths.TxPoolDir != "" {
+		txPoolDir = cfg.CustomPaths.TxPoolDir
+	}
+
+	err = os.MkdirAll(txPoolDir, 0o755)
+	if err != nil {
+		storage.Close()
+
+		return nil, nil, fmt.Errorf("failed to create txpool directory: %w", err)
+	}
+
+	storage.txPoolDB, err = mdbx.NewMDBX(mdbxlog.New()).
+		Path(txPoolDir).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return txpool.Tables()
 		}).
 		Open()
 	if err != nil {
-		result.Close()
+		storage.Close()
 
-		return nil, fmt.Errorf("failed to open local database: %w", err)
+		return nil, nil, fmt.Errorf("failed to open txpool database: %w", err)
 	}
 
-	// Open transaction batch database (read-only)
-	// This database is created by pelacli's fetcher
-	result.TxBatchDB, err = mdbx.NewMDBX(mdbxlog.New()).
-		Path(result.Config.TxStreamDir).
+	storage.txPool = txpool.NewTxPool[AppTx](storage.txPoolDB)
+
+	storage.txBatchDB, err = mdbx.NewMDBX(mdbxlog.New()).
+		Path(storage.txStreamDir).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return TxBucketsTables()
 		}).
 		Readonly().Open()
 	if err != nil {
-		result.Close()
+		storage.Close()
 
-		return nil, fmt.Errorf(
-			"failed to open tx batch database at %s: %w",
-			result.Config.TxStreamDir,
-			err,
-		)
+		return nil, nil, fmt.Errorf("failed to open txbatch database: %w", err)
 	}
 
-	return result, nil
-}
+	logger.Info().
+		Uint64("chainID", cfg.ChainID).
+		Str("dataDir", cfg.DataDir).
+		Msg("Appchain initialization complete")
 
-// InitDevValidatorSet initializes a single-validator set for local development.
-// Call this from your application for local (pelacli) testing only.
-// On testnet/mainnet, the validator set comes from the consensus layer.
-func InitDevValidatorSet(ctx context.Context, db kv.RwDB) error {
-	valset := &ValidatorSet{Set: map[ValidatorID]Stake{0: 100}}
-
-	var epochKey [4]byte
-	binary.BigEndian.PutUint32(epochKey[:], 1)
-
-	valsetData, err := cbor.Marshal(valset)
-	if err != nil {
-		return fmt.Errorf("failed to marshal validator set: %w", err)
-	}
-
-	return db.Update(ctx, func(tx kv.RwTx) error {
-		return tx.Put(ValsetBucket, epochKey[:], valsetData)
-	})
+	return storage, config, nil
 }
