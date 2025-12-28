@@ -90,7 +90,7 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	for _, chainID := range cfg.RequiredChains {
 		chainType := apptypes.ChainType(chainID)
 		if !IsEvmChain(chainType) && !IsSolanaChain(chainType) {
-			return nil, nil, fmt.Errorf("unsupported chain ID %d: not a recognized chain", chainID)
+			return nil, nil, fmt.Errorf("chain ID %d: %w", chainID, ErrUnknownChain)
 		}
 
 		chainPath := MultichainChainPath(multichainRoot, chainID)
