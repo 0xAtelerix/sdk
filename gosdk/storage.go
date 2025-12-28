@@ -381,23 +381,22 @@ func GetLastStreamPositions(
 
 // WaitFile waits for a file or directory to exist.
 func WaitFile(ctx context.Context, filePath string, logger *zerolog.Logger) error {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
 	for {
+		_, err := os.Stat(filePath)
+		if err == nil {
+			return nil
+		}
+
+		logger.Warn().Err(err).Str("file", filePath).Msg("waiting file")
+
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		default:
+		case <-ticker.C:
+			// Continue loop to check file again
 		}
-
-		_, err := os.Stat(filePath)
-		if err != nil {
-			logger.Warn().Err(err).Str("file", filePath).Msg("waiting file")
-			time.Sleep(5 * time.Second)
-
-			continue
-		}
-
-		break
 	}
-
-	return nil
 }

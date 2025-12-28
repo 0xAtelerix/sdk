@@ -161,6 +161,7 @@ func (a *Appchain[AppTx, R, AppBlock]) Run(ctx context.Context) error {
 	}
 
 	eventStream, err := NewMdbxEventStreamWrapper[AppTx, R](
+		ctx,
 		a.storage.eventStreamDir,
 		uint32(a.config.ChainID),
 		a.storage.txBatchDB,
