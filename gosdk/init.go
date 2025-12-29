@@ -61,7 +61,7 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 		eventStreamDir = cfg.CustomPaths.EventsStreamDir
 	}
 
-	txStreamDir := TxBatchPath(cfg.DataDir)
+	txStreamDir := TxBatchPathForChain(cfg.DataDir, uint64(cfg.ChainID))
 	if cfg.CustomPaths != nil && cfg.CustomPaths.TxBatchDir != "" {
 		txStreamDir = cfg.CustomPaths.TxBatchDir
 	}
