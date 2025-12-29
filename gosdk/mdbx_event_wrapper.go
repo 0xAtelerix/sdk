@@ -17,7 +17,6 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/library"
-	subscriber2 "github.com/0xAtelerix/sdk/gosdk/library/subscriber"
 	"github.com/0xAtelerix/sdk/gosdk/scheme"
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
@@ -28,7 +27,6 @@ type MdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 	txReader          kv.RoDB
 	chainID           uint32
 	logger            *zerolog.Logger
-	subscriber        *subscriber2.Subscriber
 	appchainDB        kv.RwDB
 	votingBlocks      *Voting[apptypes.ExternalBlock]
 	votingCheckpoints *Voting[apptypes.Checkpoint]
@@ -42,7 +40,6 @@ type EventStreamWrapperConstructor[appTx apptypes.AppTransaction[R], R apptypes.
 	txBatchDB kv.RoDB,
 	logger *zerolog.Logger,
 	appchainTx kv.RwDB,
-	subscriber *subscriber2.Subscriber,
 	votingBlocks *Voting[apptypes.ExternalBlock],
 	votingCheckpoints *Voting[apptypes.Checkpoint],
 ) (Streamer[appTx, R], error)
@@ -53,7 +50,6 @@ func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Rece
 	txBatchDB kv.RoDB,
 	logger *zerolog.Logger,
 	appchainDB kv.RwDB,
-	subscriber *subscriber2.Subscriber,
 	votingBlocks *Voting[apptypes.ExternalBlock],
 	votingCheckpoints *Voting[apptypes.Checkpoint],
 ) (*MdbxEventStreamWrapper[appTx, R], error) {
@@ -62,7 +58,6 @@ func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Rece
 		txReader:          txBatchDB,
 		chainID:           chainID,
 		logger:            logger,
-		subscriber:        subscriber,
 		appchainDB:        appchainDB,
 		votingBlocks:      votingBlocks,
 		votingCheckpoints: votingCheckpoints,
