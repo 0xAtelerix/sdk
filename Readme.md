@@ -90,32 +90,30 @@ Once the template behaves as expected locally, you can push the forked repositor
 
 ## Data directory structure
 
-The SDK and pelacli share a common data directory (default: `./data`). Understanding this structure helps with debugging and configuration:
+The SDK and pelacli share a common data directory (default: `/data`). Understanding this structure helps with debugging and configuration:
 
 ```
 ./data/
-├── multichain/           # External chain data (written by pelacli, read by appchain)
+├── multichain/           # External chain data (oracle writes, appchain reads)
+│   ├── index-db/         # Multichain oracle index database
 │   ├── 11155111/         # Ethereum Sepolia
 │   │   └── sqlite        # SQLite database with blocks and receipts
 │   └── 80002/            # Polygon Amoy
 │       └── sqlite
-├── events/               # Consensus events (written by pelacli, read by appchain)
-├── fetcher/              # Transaction batches (written by pelacli, read by appchain)
-│   └── 42/               # Per-appchain (chainID=42)
-│       └── mdbx.dat
-├── appchain/             # Appchain state (written by appchain)
-│   └── 42/
-│       └── mdbx.dat
-└── local/                # Local node data like txpool (written by appchain)
-    └── 42/
+├── consensus/            # Consensus layer data (pelacli writes, appchain reads)
+│   ├── events/           # Consensus events (snapshots, validator sets)
+│   ├── txbatch/          # Transaction batches from fetcher
+│   │   └── 42/           # Per-appchain (chainID=42)
+│   │       └── mdbx.dat
+│   └── fetcher-db/       # Pelacli fetcher database
+└── appchain/             # Appchain-specific data (appchain writes)
+    ├── db/               # Main appchain database (blocks, state, receipts)
+    │   └── mdbx.dat
+    └── txpool/           # Transaction pool database
         └── mdbx.dat
 ```
 
-Path helpers in `gosdk/init.go`:
-- `gosdk.ChainDBPath(dataDir, chainID)` → `{dataDir}/multichain/{chainID}`
-- `gosdk.TxBatchPath(dataDir, chainID)` → `{dataDir}/fetcher/{chainID}`
-- `gosdk.AppchainDBPath(dataDir, chainID)` → `{dataDir}/appchain/{chainID}`
-- `gosdk.LocalDBPath(dataDir, chainID)` → `{dataDir}/local/{chainID}`
+The SDK provides path helper functions (in `gosdk/paths.go`) for accessing these directories consistently. See the package documentation for the full list.
 
 ## State management and batch processing
 
@@ -345,12 +343,18 @@ storage, config, err := gosdk.InitApp[MyTx, MyReceipt](
 )
 ```
 
-### Default behavior
+### Example default
 
-**If you omit `RequiredChains` or provide an empty slice, the SDK defaults to Ethereum Sepolia (chain ID 11155111).** This ensures:
-- Zero-config demos work out of the box
-- Alignment with pelacli's default configuration
-- New appchains can test multichain features immediately
+The [example appchain](https://github.com/0xAtelerix/example) defaults to Ethereum Sepolia if `required_chains` is not specified in `config.yaml`:
+
+```go
+// In example/cmd/config.go
+if len(c.RequiredChains) == 0 {
+    c.RequiredChains = []uint64{uint64(gosdk.EthereumSepoliaChainID)}
+}
+```
+
+This ensures demos work out of the box. For production, always explicitly specify your required chains in the config file.
 
 ### Supported chains
 
@@ -360,22 +364,24 @@ The SDK validates chain IDs against known EVM and Solana chains:
 ### How it works
 
 During `InitApp()`:
-1. SDK resolves `RequiredChains` (defaults to Sepolia if empty)
-2. For each chain, waits for pelacli to populate `{dataDir}/multichain/{chainID}/`
-3. Opens multichain database connections for those chains
-4. Returns `MultichainStateAccessor` via `storage.Multichain()`
+1. For each chain in `RequiredChains`, waits for pelacli to populate `{dataDir}/multichain/{chainID}/`
+2. Opens multichain database connections for those chains
+3. Returns `MultichainStateAccessor` via `storage.Multichain()`
 
 If a required chain's data isn't available (e.g., pelacli hasn't synced it), `InitApp()` will wait until the data directory appears.
 
-### Production configuration
+### Best practices
 
-In production, explicitly list the chains your appchain needs:
+Always explicitly specify required chains in your config file:
 
-```go
-RequiredChains: []uint64{1, 137}, // Ethereum + Polygon mainnet
+```yaml
+# config.yaml
+required_chains:
+  - 11155111  # Ethereum Sepolia
+  - 80002     # Polygon Amoy
 ```
 
-This prevents waiting for unnecessary chain data and makes your appchain's dependencies clear.
+This makes your appchain's external dependencies clear and prevents relying on defaults that may change.
 
 ## Multichain data access
 

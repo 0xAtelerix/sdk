@@ -81,6 +81,11 @@ func (b *DefaultBatchProcessor[appTx, R]) ProcessBatch(
 	}
 
 	// Process external blocks (filtered by subscriptions)
+	// Skip if multichain or external block processor or subscriber is not set
+	if b.multichain == nil || b.extBlockProc == nil || b.subscriber == nil {
+		return receipts, extTxs, nil
+	}
+
 blockLoop:
 	for _, blk := range batch.ExternalBlocks {
 		switch {
