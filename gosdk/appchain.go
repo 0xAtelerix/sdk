@@ -29,9 +29,9 @@ import (
 )
 
 func WithRootCalculator[STI StateTransitionInterface[AppTx, R],
-AppTx apptypes.AppTransaction[R],
-R apptypes.Receipt,
-AppBlock apptypes.AppchainBlock](rc apptypes.RootCalculator) func(a *Appchain[STI, AppTx, R, AppBlock]) {
+	AppTx apptypes.AppTransaction[R],
+	R apptypes.Receipt,
+	AppBlock apptypes.AppchainBlock](rc apptypes.RootCalculator) func(a *Appchain[STI, AppTx, R, AppBlock]) {
 	return func(a *Appchain[STI, AppTx, R, AppBlock]) {
 		a.rootCalculator = rc
 	}
@@ -66,9 +66,9 @@ func MakeAppchainConfig(
 }
 
 func NewAppchain[STI StateTransitionInterface[AppTx, R],
-AppTx apptypes.AppTransaction[R],
-R apptypes.Receipt,
-AppBlock apptypes.AppchainBlock](
+	AppTx apptypes.AppTransaction[R],
+	R apptypes.Receipt,
+	AppBlock apptypes.AppchainBlock](
 	sti STI,
 	blockBuilder apptypes.AppchainBlockConstructor[AppTx, R, AppBlock],
 	txpool apptypes.TxPoolInterface[AppTx, R],
