@@ -87,7 +87,13 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 		multichainRoot = cfg.CustomPaths.MultichainDir
 	}
 
-	for _, chainID := range cfg.RequiredChains {
+	// Default to Sepolia testnet if no chains specified
+	requiredChains := cfg.RequiredChains
+	if len(requiredChains) == 0 {
+		requiredChains = []uint64{uint64(EthereumSepoliaChainID)} // Sepolia
+	}
+
+	for _, chainID := range requiredChains {
 		chainType := apptypes.ChainType(chainID)
 		if !IsEvmChain(chainType) && !IsSolanaChain(chainType) {
 			return nil, nil, fmt.Errorf("chain ID %d: %w", chainID, ErrUnknownChain)
@@ -114,7 +120,7 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 
 	logger.Info().
 		Int("chains", len(multichainConfig)).
-		Uints64("chainIDs", cfg.RequiredChains).
+		Uints64("chainIDs", requiredChains).
 		Msg("Multichain databases configured")
 
 	if len(multichainConfig) > 0 {

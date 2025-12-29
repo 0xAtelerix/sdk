@@ -14,6 +14,7 @@ This README concentrates on that Go-centric workflow. It assumes you will start 
 - [Quickstart](#quickstart)
 - [Data directory structure](#data-directory-structure)
 - [State management and batch processing](#state-management-and-batch-processing)
+- [Configuring required chains](#configuring-required-chains)
 - [Multichain data access](#multichain-data-access)
 - [External transactions](#external-transactions)
 - [Designing custom transaction formats](#designing-custom-transaction-formats)
@@ -129,10 +130,11 @@ func main() {
     storage, config, err := gosdk.InitApp[MyTransaction[MyReceipt], MyReceipt](
         ctx,
         gosdk.InitConfig{
-            ChainID:      42,
-            DataDir:      "./data",
-            EmitterPort:  ":9090",
-            CustomTables: application.Tables(),
+            ChainID:        42,
+            DataDir:        "./data",
+            EmitterPort:    ":9090",
+            RequiredChains: []uint64{uint64(gosdk.EthereumSepoliaChainID), uint64(gosdk.PolygonAmoyChainID)}, // Sepolia + Polygon Amoy
+            CustomTables:   application.Tables(),
         },
     )
     if err != nil {
@@ -327,6 +329,53 @@ The SDK automatically:
 - Commits the transaction
 
 If an error occurs, the write transaction is rolled back and the batch is retried.
+
+## Configuring required chains
+
+The SDK needs to know which external chains your appchain will read data from. This is configured via the `RequiredChains` field in `InitConfig`:
+
+```go
+storage, config, err := gosdk.InitApp[MyTx, MyReceipt](
+    ctx,
+    gosdk.InitConfig{
+        ChainID:        42,
+        DataDir:        "./data",
+        RequiredChains: []uint64{uint64(gosdk.EthereumSepoliaChainID), uint64(gosdk.PolygonAmoyChainID)}, // Ethereum Sepolia + Polygon Amoy
+    },
+)
+```
+
+### Default behavior
+
+**If you omit `RequiredChains` or provide an empty slice, the SDK defaults to Ethereum Sepolia (chain ID 11155111).** This ensures:
+- Zero-config demos work out of the box
+- Alignment with pelacli's default configuration
+- New appchains can test multichain features immediately
+
+### Supported chains
+
+The SDK validates chain IDs against known EVM and Solana chains:
+- See `gosdk/chain_consts.go` for the full list of supported networks
+
+### How it works
+
+During `InitApp()`:
+1. SDK resolves `RequiredChains` (defaults to Sepolia if empty)
+2. For each chain, waits for pelacli to populate `{dataDir}/multichain/{chainID}/`
+3. Opens multichain database connections for those chains
+4. Returns `MultichainStateAccessor` via `storage.Multichain()`
+
+If a required chain's data isn't available (e.g., pelacli hasn't synced it), `InitApp()` will wait until the data directory appears.
+
+### Production configuration
+
+In production, explicitly list the chains your appchain needs:
+
+```go
+RequiredChains: []uint64{1, 137}, // Ethereum + Polygon mainnet
+```
+
+This prevents waiting for unnecessary chain data and makes your appchain's dependencies clear.
 
 ## Multichain data access
 
