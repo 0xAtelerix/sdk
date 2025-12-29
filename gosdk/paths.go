@@ -42,8 +42,8 @@ func MultichainPath(dataDir string) string {
 }
 
 // MultichainChainPath returns the database path for a specific external chain (EVM/Solana).
-func MultichainChainPath(dataDir string, chainID uint64) string {
-	return filepath.Join(dataDir, MultichainDirName, strconv.FormatUint(chainID, 10))
+func MultichainChainPath(multichainRoot string, chainID uint64) string {
+	return filepath.Join(multichainRoot, strconv.FormatUint(chainID, 10))
 }
 
 // EventsPath returns the consensus events directory (snapshots, validator sets).
