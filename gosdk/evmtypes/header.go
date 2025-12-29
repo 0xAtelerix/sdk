@@ -10,7 +10,7 @@ import (
 )
 
 // Header contains standard EVM header fields plus raw JSON for chain-specific fields.
-type Header struct {
+type Header[T CustomFields] struct {
 	Number           *hexutil.Big     `json:"number"`
 	Hash             common.Hash      `json:"hash"`
 	ParentHash       common.Hash      `json:"parentHash"`
@@ -29,19 +29,26 @@ type Header struct {
 	MixHash          common.Hash      `json:"mixHash"`
 	BaseFeePerGas    *hexutil.Big     `json:"baseFeePerGas,omitempty"` // EIP-1559
 
-	Raw json.RawMessage `json:"-"` // Set by fetcher for GetCustomField()
+	Raw T `json:"-"` // Set by fetcher for GetCustomField()
+}
+
+type CustomFields interface {
+	json.RawMessage | EthereumCustomFields
 }
 
 // NewHeader creates a new Header with the given block number.
-func NewHeader(number uint64) *Header {
-	return &Header{
+func NewHeader[T CustomFields](number uint64) *Header[T] {
+	return &Header[T]{
 		Number: (*hexutil.Big)(new(big.Int).SetUint64(number)),
 	}
 }
 
-// GetCustomField extracts a chain-specific field from raw JSON.
-func (h *Header) GetCustomField(fieldName string) (any, error) {
-	return GetCustomFieldFromRaw(h.Raw, fieldName)
+func (h *Header[T]) GetCustom() T {
+	return h.Raw
+}
+
+func (h *Header[T]) GetCustomField(fieldName string) (any, error) {
+	return GetCustomField[T](h, fieldName)
 }
 
 // ComputeHash computes the block hash from the header fields using RLP encoding and Keccak256.
@@ -54,7 +61,7 @@ func (h *Header) GetCustomField(fieldName string) (any, error) {
 // Supports EIP fields: EIP-1559 (baseFee), EIP-4895 (withdrawalsRoot),
 // EIP-4844 (blobGasUsed, excessBlobGas), EIP-4788 (parentBeaconBlockRoot),
 // EIP-7685 (requestsHash - Pectra upgrade)
-func (h *Header) ComputeHash() common.Hash {
+func (h *Header[T]) ComputeHash() common.Hash {
 	gethHeader := h.toGethHeader()
 
 	return gethHeader.Hash()
@@ -62,13 +69,13 @@ func (h *Header) ComputeHash() common.Hash {
 
 // VerifyHash checks if the stored hash matches the computed hash from header fields.
 // Returns true if the hash is valid, false otherwise.
-func (h *Header) VerifyHash() bool {
+func (h *Header[T]) VerifyHash() bool {
 	return h.ComputeHash() == h.Hash
 }
 
 // toGethHeader converts evmtypes.Header to go-ethereum types.Header.
 // This handles all standard EVM header fields including optional EIP fields.
-func (h *Header) toGethHeader() *types.Header {
+func (h *Header[T]) toGethHeader() *types.Header {
 	gethHeader := &types.Header{
 		ParentHash:  h.ParentHash,
 		UncleHash:   h.Sha3Uncles,

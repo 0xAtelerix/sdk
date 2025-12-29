@@ -1,6 +1,8 @@
 package evmtypes
 
 import (
+	"fmt"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/goccy/go-json"
 )
@@ -12,31 +14,52 @@ type Body struct {
 }
 
 // Block contains standard EVM block fields.
-type Block struct {
-	Header
+type Block[T CustomFields] struct {
+	Header[T]
 	Body
 
-	Raw json.RawMessage `json:"-"` // Set by fetcher for GetCustomField()
+	Raw T `json:"-"` // Set by fetcher for GetCustomField()
 }
 
 // NewBlock creates a new Block with the given header and transactions.
-func NewBlock(header *Header, transactions []Transaction) *Block {
+func NewBlock[T CustomFields](header *Header[T], transactions []Transaction) *Block[T] {
 	if transactions == nil {
 		transactions = []Transaction{}
 	}
 
-	h := Header{}
+	h := Header[T]{}
 	if header != nil {
 		h = *header
 	}
 
-	return &Block{
+	return &Block[T]{
 		Header: h,
 		Body:   Body{Transactions: transactions},
 	}
 }
 
+func (b *Block[T]) GetCustom() T {
+	return b.Raw
+}
+
 // GetCustomField extracts a chain-specific field from raw JSON.
-func (b *Block) GetCustomField(fieldName string) (any, error) {
-	return GetCustomFieldFromRaw(b.Raw, fieldName)
+func (b *Block[T]) GetCustomField(fieldName string) (any, error) {
+	return GetCustomField[T](b, fieldName)
+}
+
+type RawField[T CustomFields] interface {
+	GetCustom() T
+}
+
+func GetCustomField[T CustomFields](rawFieldGetter RawField[T], fieldName string) (any, error) {
+	raw := rawFieldGetter.GetCustom()
+
+	switch field := any(raw).(type) {
+	case EthereumCustomFields:
+		return field.GetField(fieldName)
+	case json.RawMessage:
+		return GetCustomFieldFromRaw(field, fieldName)
+	default:
+		return nil, fmt.Errorf("unknown custom field type: %T", field)
+	}
 }

@@ -20,7 +20,7 @@ func TestHeader_GetCustomField(t *testing.T) {
 		raw := json.RawMessage(
 			`{"number":"0x100","hash":"0x1234","customField":"customValue","l1BlockNumber":"0x999"}`,
 		)
-		header := &Header{
+		header := &Header[json.RawMessage]{
 			Number: (*hexutil.Big)(big.NewInt(256)),
 			Raw:    raw,
 		}
@@ -39,7 +39,7 @@ func TestHeader_GetCustomField(t *testing.T) {
 		t.Parallel()
 
 		raw := json.RawMessage(`{"number":"0x100"}`)
-		header := &Header{Raw: raw}
+		header := &Header[json.RawMessage]{Raw: raw}
 
 		_, err := header.GetCustomField("nonexistent")
 		assert.ErrorIs(t, err, ErrFieldNotFound)
@@ -48,7 +48,7 @@ func TestHeader_GetCustomField(t *testing.T) {
 	t.Run("returns error when raw is nil", func(t *testing.T) {
 		t.Parallel()
 
-		header := &Header{}
+		header := &Header[json.RawMessage]{}
 
 		_, err := header.GetCustomField("anyField")
 		assert.ErrorIs(t, err, ErrRawJSONNotAvailable)
@@ -62,7 +62,7 @@ func TestBlock_GetCustomField(t *testing.T) {
 		t.Parallel()
 
 		raw := json.RawMessage(`{"withdrawalsRoot":"0xabc123","blobGasUsed":"0x20000"}`)
-		block := &Block{Raw: raw}
+		block := &Block[json.RawMessage]{Raw: raw}
 
 		val, err := block.GetCustomField("withdrawalsRoot")
 		require.NoError(t, err)
@@ -77,7 +77,7 @@ func TestBlock_GetCustomField(t *testing.T) {
 		t.Parallel()
 
 		raw := json.RawMessage(`{"number":"0x100"}`)
-		block := &Block{Raw: raw}
+		block := &Block[json.RawMessage]{Raw: raw}
 
 		_, err := block.GetCustomField("nonexistent")
 		assert.ErrorIs(t, err, ErrFieldNotFound)
@@ -86,7 +86,7 @@ func TestBlock_GetCustomField(t *testing.T) {
 	t.Run("returns error when raw is nil", func(t *testing.T) {
 		t.Parallel()
 
-		block := &Block{}
+		block := &Block[json.RawMessage]{}
 
 		_, err := block.GetCustomField("anyField")
 		assert.ErrorIs(t, err, ErrRawJSONNotAvailable)
@@ -173,7 +173,7 @@ func TestTransaction_GetCustomField(t *testing.T) {
 func TestNewHeader(t *testing.T) {
 	t.Parallel()
 
-	header := NewHeader(12345)
+	header := NewHeader[json.RawMessage](12345)
 
 	require.NotNil(t, header.Number)
 	assert.Equal(t, uint64(12345), header.Number.ToInt().Uint64())
@@ -185,7 +185,7 @@ func TestNewBlock(t *testing.T) {
 	t.Run("with header and transactions", func(t *testing.T) {
 		t.Parallel()
 
-		header := NewHeader(100)
+		header := NewHeader[json.RawMessage](100)
 		txs := []Transaction{
 			{Hash: common.HexToHash("0x123")},
 			{Hash: common.HexToHash("0x456")},
@@ -200,7 +200,7 @@ func TestNewBlock(t *testing.T) {
 	t.Run("with nil header", func(t *testing.T) {
 		t.Parallel()
 
-		block := NewBlock(nil, nil)
+		block := NewBlock[json.RawMessage](nil, nil)
 
 		assert.NotNil(t, block)
 		assert.Empty(t, block.Transactions)
@@ -209,7 +209,7 @@ func TestNewBlock(t *testing.T) {
 	t.Run("with nil transactions", func(t *testing.T) {
 		t.Parallel()
 
-		header := NewHeader(50)
+		header := NewHeader[json.RawMessage](50)
 		block := NewBlock(header, nil)
 
 		assert.NotNil(t, block.Transactions)
@@ -255,7 +255,7 @@ func TestHeader_ComputeHash(t *testing.T) {
 		t.Parallel()
 
 		// Create a header and compute its hash
-		header := NewHeader(12345)
+		header := NewHeader[json.RawMessage](12345)
 		header.ParentHash = common.HexToHash(
 			"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
 		)
@@ -280,7 +280,7 @@ func TestHeader_ComputeHash(t *testing.T) {
 	t.Run("verify hash returns true for matching hash", func(t *testing.T) {
 		t.Parallel()
 
-		header := NewHeader(100)
+		header := NewHeader[json.RawMessage](100)
 		header.ParentHash = common.HexToHash("0x1234")
 		header.Sha3Uncles = emptyUnclesHash
 		header.StateRoot = common.HexToHash("0xabcd")
@@ -297,7 +297,7 @@ func TestHeader_ComputeHash(t *testing.T) {
 	t.Run("verify hash returns false for mismatched hash", func(t *testing.T) {
 		t.Parallel()
 
-		header := NewHeader(100)
+		header := NewHeader[json.RawMessage](100)
 		header.ParentHash = common.HexToHash("0x1234")
 		header.Sha3Uncles = emptyUnclesHash
 		header.StateRoot = common.HexToHash("0xabcd")
@@ -314,7 +314,7 @@ func TestHeader_ComputeHash(t *testing.T) {
 	t.Run("handles EIP-1559 baseFee", func(t *testing.T) {
 		t.Parallel()
 
-		header := NewHeader(15000000)
+		header := NewHeader[json.RawMessage](15000000)
 		header.ParentHash = common.HexToHash("0x1234")
 		header.Sha3Uncles = emptyUnclesHash
 		header.StateRoot = common.HexToHash("0xabcd")
@@ -335,7 +335,7 @@ func TestHeader_ComputeHash(t *testing.T) {
 	t.Run("handles EIP-7685 requestsHash (Pectra)", func(t *testing.T) {
 		t.Parallel()
 
-		header := NewHeader(20000000)
+		header := NewHeader[json.RawMessage](20000000)
 		header.ParentHash = common.HexToHash("0x1234")
 		header.Sha3Uncles = emptyUnclesHash
 		header.StateRoot = common.HexToHash("0xabcd")
