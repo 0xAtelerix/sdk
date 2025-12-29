@@ -32,7 +32,7 @@ func TestExampleAppchain(t *testing.T) {
 
 	// Create txbatch database (normally created by pelacli)
 	// We create and close it so InitApp can open it
-	txBatchPath := TxBatchPathForChain(TxBatchPath(tmp), DefaultAppchainID)
+	txBatchPath := TxBatchPathForChain(tmp, DefaultAppchainID)
 	require.NoError(t, os.MkdirAll(txBatchPath, 0o755))
 
 	txBatchDB, err := mdbx.NewMDBX(mdbxlog.New()).

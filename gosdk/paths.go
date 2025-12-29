@@ -37,39 +37,54 @@ const (
 // ============================================================================
 
 // ConsensusPath returns the base consensus directory.
-// All consensus-related subdirectories are under this path.
+// Returns: {dataDir}/consensus
 func ConsensusPath(dataDir string) string {
 	return filepath.Join(dataDir, ConsensusDirName)
 }
 
 // AppchainPath returns the base appchain directory.
-// All appchain-specific subdirectories are under this path.
+// Returns: {dataDir}/appchain
 func AppchainPath(dataDir string) string {
 	return filepath.Join(dataDir, AppchainDirName)
 }
 
 // MultichainPath returns the base multichain directory.
-// All external chain data subdirectories are under this path.
+// Returns: {dataDir}/multichain
 func MultichainPath(dataDir string) string {
 	return filepath.Join(dataDir, MultichainDirName)
+}
+
+// ============================================================================
+// Multichain Paths (external chain data)
+// ============================================================================
+
+// MultichainChainPath returns the database path for a specific external chain.
+// Returns: {multichainRoot}/{chainID}
+// Note: Accepts resolved root (with custom path handling) to support multiple chains.
+func MultichainChainPath(multichainRoot string, chainID uint64) string {
+	return filepath.Join(multichainRoot, strconv.FormatUint(chainID, 10))
+}
+
+// MultichainIndexDBPath returns the multichain oracle index database path.
+// Returns: {dataDir}/multichain/index-db
+// Used by: core/multichain oracle for tracking external chain state.
+func MultichainIndexDBPath(dataDir string) string {
+	return filepath.Join(MultichainPath(dataDir), IndexDBDirName)
 }
 
 // ============================================================================
 // Appchain Paths (used by appchain implementations)
 // ============================================================================
 
-// MultichainChainPath returns the database path for a specific external chain (EVM/Solana).
-func MultichainChainPath(multichainRoot string, chainID uint64) string {
-	return filepath.Join(multichainRoot, strconv.FormatUint(chainID, 10))
-}
-
-// EventsPath returns the consensus events directory (snapshots, validator sets).
-// Appchains read consensus events from this directory.
+// EventsPath returns the consensus events directory.
+// Returns: {dataDir}/consensus/events
+// Used by: appchains to read consensus snapshots and validator sets.
 func EventsPath(dataDir string) string {
 	return filepath.Join(ConsensusPath(dataDir), EventsDirName)
 }
 
 // TxBatchPath returns the base transaction batch directory.
+// Returns: {dataDir}/consensus/txbatch
 // Used by: pelacli fetcher (writes to {base}/{chainID}/ subdirectories).
 // Note: Appchains should use TxBatchPathForChain() to read from chain-specific subdirectory.
 func TxBatchPath(dataDir string) string {
@@ -77,19 +92,23 @@ func TxBatchPath(dataDir string) string {
 }
 
 // TxBatchPathForChain returns the transaction batch path for a specific appchain.
-// Returns: {txBatchRoot}/{chainID}/
+// Returns: {dataDir}/consensus/txbatch/{chainID}
 // Used by: appchains to read their transaction batches (written by fetcher).
-// Note: Pass the resolved txBatch base path (with custom path handling) to support custom paths.
-func TxBatchPathForChain(txBatchRoot string, chainID uint64) string {
-	return filepath.Join(txBatchRoot, strconv.FormatUint(chainID, 10))
+// Note: For custom paths, use CustomPaths.TxBatchDir directly (full path, no chain ID needed).
+func TxBatchPathForChain(dataDir string, chainID uint64) string {
+	return filepath.Join(TxBatchPath(dataDir), strconv.FormatUint(chainID, 10))
 }
 
-// AppchainDBPath returns the main appchain database path (blocks, state, receipts).
+// AppchainDBPath returns the main appchain database path.
+// Returns: {dataDir}/appchain/db
+// Used by: appchains to store blocks, state, and receipts.
 func AppchainDBPath(dataDir string) string {
 	return filepath.Join(AppchainPath(dataDir), AppchainDBDirName)
 }
 
 // TxPoolPath returns the transaction pool database path.
+// Returns: {dataDir}/appchain/txpool
+// Used by: appchains to store pending transactions.
 func TxPoolPath(dataDir string) string {
 	return filepath.Join(AppchainPath(dataDir), TxPoolDirName)
 }
@@ -99,6 +118,7 @@ func TxPoolPath(dataDir string) string {
 // ============================================================================
 
 // ConsensusFetcherDBPath returns the fetcher database path.
+// Returns: {dataDir}/consensus/fetcher-db
 // Used by: pelacli fetcher to track fetched transactions and checkpoints.
 func ConsensusFetcherDBPath(dataDir string) string {
 	return filepath.Join(ConsensusPath(dataDir), FetcherDirName)
@@ -109,19 +129,10 @@ func ConsensusFetcherDBPath(dataDir string) string {
 // ============================================================================
 
 // ConsensusNodeDBPath returns the consensus node database path.
+// Returns: {dataDir}/consensus/node-db
 // Used by: core/node for validator consensus state.
 func ConsensusNodeDBPath(dataDir string) string {
 	return filepath.Join(ConsensusPath(dataDir), NodeDBDirName)
-}
-
-// ============================================================================
-// Core Multichain Oracle Paths
-// ============================================================================
-
-// MultichainIndexDBPath returns the multichain oracle index database path.
-// Used by: core/multichain oracle for tracking external chain state.
-func MultichainIndexDBPath(dataDir string) string {
-	return filepath.Join(MultichainPath(dataDir), IndexDBDirName)
 }
 
 // ============================================================================
@@ -129,6 +140,7 @@ func MultichainIndexDBPath(dataDir string) string {
 // ============================================================================
 
 // SignerDBPath returns the signer database path.
+// Returns: {dataDir}/consensus/signer-db
 // Used by: core/signer for managing validator keys and signatures.
 func SignerDBPath(dataDir string) string {
 	return filepath.Join(ConsensusPath(dataDir), SignerDirName)
