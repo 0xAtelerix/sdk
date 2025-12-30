@@ -110,6 +110,7 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 		ChainID:        chainID,
 		DataDir:        cfg.DataDir,
 		EmitterPort:    cfg.EmitterPort,
+		RPCPort:        cfg.RPCPort,
 		PrometheusPort: cfg.PrometheusPort,
 		ValidatorID:    cfg.ValidatorID,
 		Logger:         logger,

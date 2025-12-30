@@ -37,6 +37,7 @@ type AppchainConfig struct {
 	ChainID        uint64
 	DataDir        string
 	EmitterPort    string
+	RPCPort        string
 	PrometheusPort string
 	ValidatorID    string // Optional validator identifier for metrics/logs
 	Logger         *zerolog.Logger
