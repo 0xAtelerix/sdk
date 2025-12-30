@@ -13,6 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/library"
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
 
@@ -138,8 +139,8 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 
 	for _, chainID := range cfg.RequiredChains {
 		chainType := apptypes.ChainType(chainID)
-		if !IsEvmChain(chainType) && !IsSolanaChain(chainType) {
-			return nil, fmt.Errorf("chain ID %d: %w", chainID, ErrUnknownChain)
+		if !library.IsEvmChain(chainType) && !library.IsSolanaChain(chainType) {
+			return nil, fmt.Errorf("chain ID %d: %w", chainID, library.ErrUnknownChain)
 		}
 
 		chainPath := MultichainChainPath(multichainRoot, chainID)

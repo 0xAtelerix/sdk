@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/library"
 	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
 	"github.com/0xAtelerix/sdk/gosdk/receipt"
 	"github.com/0xAtelerix/sdk/gosdk/utility"
@@ -144,7 +145,7 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) Run(ctx context.Context) error {
 	}
 
 	if a.storage.txBatchDB == nil {
-		return ErrEmptyTxBatchDB
+		return library.ErrEmptyTxBatchDB
 	}
 
 	var (
@@ -322,20 +323,20 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 	if marshalErr != nil {
 		logger.Error().Err(marshalErr).Msg("Failed to marshal block")
 
-		return fmt.Errorf("%w: %w", ErrBlockMarshalling, marshalErr)
+		return fmt.Errorf("%w: %w", library.ErrBlockMarshalling, marshalErr)
 	}
 
 	if err = WriteBlock(rwtx, blockNumber, blockBytes); err != nil {
 		logger.Error().Err(err).Msg("Failed to write block")
 
-		return fmt.Errorf("%w: %w", ErrBlockWrite, err)
+		return fmt.Errorf("%w: %w", library.ErrBlockWrite, err)
 	}
 
 	// Store transactions with relation to the block
 	if err = WriteBlockTransactions(rwtx, blockNumber, batch.Transactions); err != nil {
 		logger.Error().Err(err).Msg("Failed to write block transactions")
 
-		return fmt.Errorf("%w: %w", ErrBlockTransactionsWrite, err)
+		return fmt.Errorf("%w: %w", library.ErrBlockTransactionsWrite, err)
 	}
 
 	blockHash := block.Hash()

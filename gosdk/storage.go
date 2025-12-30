@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/library"
 	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
 )
 
@@ -126,11 +127,11 @@ func WriteBlockTransactions[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 
 	txsBytes, err := cbor.Marshal(txs)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrTransactionsMarshalling, err)
+		return fmt.Errorf("%w: %w", library.ErrTransactionsMarshalling, err)
 	}
 
 	if err := rwtx.Put(BlockTransactionsBucket, blockNumBytes, txsBytes); err != nil {
-		return fmt.Errorf("%w: %w", ErrBlockTransactionsWrite, err)
+		return fmt.Errorf("%w: %w", library.ErrBlockTransactionsWrite, err)
 	}
 
 	for i, tx := range txs {
@@ -140,7 +141,7 @@ func WriteBlockTransactions[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 		binary.BigEndian.PutUint32(lookupEntry[8:12], uint32(i))
 
 		if err := rwtx.Put(TxLookupBucket, txHash[:], lookupEntry); err != nil {
-			return fmt.Errorf("%w (tx %x): %w", ErrTransactionLookupWrite, txHash[:4], err)
+			return fmt.Errorf("%w (tx %x): %w", library.ErrTransactionLookupWrite, txHash[:4], err)
 		}
 	}
 
@@ -203,7 +204,7 @@ func ReadExternalTransactions(
 
 	value, err := tx.GetOne(ExternalTxBucket, key)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrExternalTransactionsGet, err)
+		return nil, fmt.Errorf("%w: %w", library.ErrExternalTransactionsGet, err)
 	}
 
 	if len(value) == 0 {
@@ -212,7 +213,7 @@ func ReadExternalTransactions(
 
 	var txs []apptypes.ExternalTransaction
 	if err := cbor.Unmarshal(value, &txs); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrExternalTransactionsUnmarshal, err)
+		return nil, fmt.Errorf("%w: %w", library.ErrExternalTransactionsUnmarshal, err)
 	}
 
 	return txs, nil

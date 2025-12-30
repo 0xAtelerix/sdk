@@ -1,7 +1,6 @@
 package gosdk
 
 import (
-	"context"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -17,11 +16,14 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/evmtypes"
+	"github.com/0xAtelerix/sdk/gosdk/library"
 )
 
 // Ensures the SQLite-backed MultichainStateAccessSQL can read blocks/receipts that match the simpleappchain schema.
 func TestMultichainStateAccessSQL_EthBlockAndReceipts(t *testing.T) {
-	ctx := context.Background()
+	t.Parallel()
+
+	ctx := t.Context()
 	tmp := t.TempDir()
 
 	chainDir := filepath.Join(tmp, "evm1")
@@ -84,13 +86,16 @@ CREATE TABLE receipts (
 	require.NoError(t, err)
 
 	// Open through the SQL multichain helper and read back.
-	dbs, err := NewMultichainStateAccessSQLDB(ctx, MultichainConfig{EthereumChainID: chainDir})
+	dbs, err := NewMultichainStateAccessSQLDB(
+		ctx,
+		MultichainConfig{library.EthereumChainID: chainDir},
+	)
 	require.NoError(t, err)
 
 	msa := NewMultichainStateAccessSQL(dbs)
 
 	extBlock := apptypes.ExternalBlock{
-		ChainID:     uint64(EthereumChainID),
+		ChainID:     uint64(library.EthereumChainID),
 		BlockNumber: header.Number.ToInt().Uint64(),
 		BlockHash:   ethBlock.Hash,
 	}

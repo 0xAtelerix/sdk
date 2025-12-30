@@ -17,6 +17,7 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/evmtypes"
+	"github.com/0xAtelerix/sdk/gosdk/library"
 )
 
 func NewMultichainStateAccessSQLDB(
@@ -59,7 +60,7 @@ func (sa *MultichainStateAccessSQL) EVMBlock(
 
 	db, ok := sa.stateAccessDB[apptypes.ChainType(block.ChainID)]
 	if !ok {
-		return nil, fmt.Errorf("%w, no DB for chainID %d", ErrUnknownChain, block.ChainID)
+		return nil, fmt.Errorf("%w, no DB for chainID %d", library.ErrUnknownChain, block.ChainID)
 	}
 
 	var (
@@ -99,10 +100,10 @@ func (sa *MultichainStateAccessSQL) EVMBlock(
 		}
 
 		if num != int64(block.BlockNumber) {
-			log.Error().Msg(ErrWrongBlock.Error())
+			log.Error().Msg(library.ErrWrongBlock.Error())
 
 			return nil, fmt.Errorf(" %w block number mismatch: got %d, expected %d",
-				ErrWrongBlock, num, block.BlockNumber)
+				library.ErrWrongBlock, num, block.BlockNumber)
 		}
 
 		var evmBlock evmtypes.Block
@@ -121,7 +122,7 @@ func (sa *MultichainStateAccessSQL) EVMBlock(
 		if computedHash != block.BlockHash {
 			return nil, fmt.Errorf(
 				"%w, chainID %d; block %d; computed hash %s does not match expected hash %s",
-				ErrHashMismatch,
+				library.ErrHashMismatch,
 				block.ChainID,
 				block.BlockNumber,
 				hex.EncodeToString(computedHash[:]),
@@ -142,7 +143,7 @@ func (sa *MultichainStateAccessSQL) EVMReceipts(
 
 	db, ok := sa.stateAccessDB[apptypes.ChainType(block.ChainID)]
 	if !ok {
-		return nil, fmt.Errorf("%w, no DB for chainID %d", ErrUnknownChain, block.ChainID)
+		return nil, fmt.Errorf("%w, no DB for chainID %d", library.ErrUnknownChain, block.ChainID)
 	}
 
 	const q = `
@@ -205,7 +206,7 @@ func (*MultichainStateAccessSQL) SolanaBlock(
 ) (*client.Block, error) {
 	return nil, fmt.Errorf(
 		"%w, solana not available in sqlite backend for chainID %d",
-		ErrUnknownChain,
+		library.ErrUnknownChain,
 		block.ChainID,
 	)
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/library"
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
@@ -37,7 +38,7 @@ type EventStreamWrapperConstructor[appTx apptypes.AppTransaction[R], R apptypes.
 	eventStartPos int64,
 	txBatchDB kv.RoDB,
 	logger *zerolog.Logger,
-	appchainTx kv.RoDB,
+	appchainTx kv.RwDB,
 	votingBlocks *Voting[apptypes.ExternalBlock],
 	votingCheckpoints *Voting[apptypes.Checkpoint],
 ) (Streamer[appTx, R], error)
@@ -138,7 +139,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 			Str("atropos", hex.EncodeToString(eventBatch.Atropos[4:])).
 			Msg("Compare atropos hash")
 
-		if bytes.Equal(eventBatch.Atropos[4:], endOfEpochSuffix) {
+		if bytes.Equal(eventBatch.Atropos[4:], library.EndOfEpochSuffix) {
 			newEpoch = binary.BigEndian.Uint32(eventBatch.Atropos[:4])
 			newValset = eventBatch.Events[0]
 
@@ -211,7 +212,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 					}
 
 					if len(valsetData) == 0 {
-						return fmt.Errorf("%w epoch %d", ErrNoValidatorSet, evt.Base.Epoch)
+						return fmt.Errorf("%w epoch %d", library.ErrNoValidatorSet, evt.Base.Epoch)
 					}
 
 					valset = &ValidatorSet{}
@@ -397,7 +398,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 		for _, ref := range expectedTxBatches {
 			txsRaw, ok := txBatches[ref.batchHash]
 			if !ok {
-				return nil, fmt.Errorf("%w: %x", ErrMissingTxBatch, ref.batchHash[:4])
+				return nil, fmt.Errorf("%w: %x", library.ErrMissingTxBatch, ref.batchHash[:4])
 			}
 
 			for _, rawTx := range txsRaw {

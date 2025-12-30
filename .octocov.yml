@@ -12,3 +12,8 @@ report:
 diff:
   datastores:
     - artifact://${GITHUB_REPOSITORY}
+codeToTestRatio:
+  code:
+    - "**/*.go"
+  test:
+    - "**/*_test.go"

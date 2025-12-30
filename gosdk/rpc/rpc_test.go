@@ -181,7 +181,6 @@ func makeJSONRPCRequest(
 //
 // For unit tests that test method logic in isolation (without HTTP overhead),
 // see the dedicated methods_*_test.go files:
-
 func TestStandardRPCServer_sendTransaction(t *testing.T) {
 	t.Parallel()
 
