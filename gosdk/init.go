@@ -63,6 +63,10 @@ func LoadConfig(path string) (*InitConfig, error) {
 }
 
 func SetupLogger(ctx context.Context, logLevel int) context.Context {
+	if logLevel == 0 {
+		logLevel = int(zerolog.InfoLevel)
+	}
+
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).
 		Level(zerolog.Level(logLevel))
 
@@ -88,10 +92,6 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 
 	if cfg.RPCPort == "" {
 		cfg.RPCPort = DefaultRPCPort
-	}
-
-	if cfg.LogLevel == 0 {
-		cfg.LogLevel = int(zerolog.InfoLevel)
 	}
 
 	logger := log.Ctx(ctx)
