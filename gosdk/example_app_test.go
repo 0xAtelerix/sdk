@@ -21,6 +21,7 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
 
+//nolint:paralleltest //uses full application
 func TestExampleAppchain(t *testing.T) {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
@@ -63,7 +64,7 @@ func TestExampleAppchain(t *testing.T) {
 		log.Panic().Err(err).Msg("Failed to tx batch mdbx database")
 	}
 
-	subscriber, err := NewSubscriber(t.Context(), appchainDB)
+	sub, err := NewSubscriber(t.Context(), appchainDB)
 	require.NoError(t, err)
 
 	chainDBs, err := NewMultichainStateAccessDB(config.MultichainStateDB)
@@ -76,7 +77,7 @@ func TestExampleAppchain(t *testing.T) {
 	stateTransition := NewBatchProcesser[ExampleTransaction[ExampleReceipt], ExampleReceipt](
 		NewStateTransition(multichainDB),
 		multichainDB,
-		subscriber,
+		sub,
 	)
 
 	log.Info().Msg("Creating appchain...")
@@ -89,7 +90,7 @@ func TestExampleAppchain(t *testing.T) {
 		txPool,
 		config,
 		appchainDB,
-		subscriber,
+		sub,
 		multichainDB,
 		txBatchDB,
 	)

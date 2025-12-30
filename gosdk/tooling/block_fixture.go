@@ -20,6 +20,7 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/evmtypes"
+	"github.com/0xAtelerix/sdk/gosdk/library"
 )
 
 type FixtureWriter[T any] struct {
@@ -67,7 +68,7 @@ func (fw *FixtureWriter[T]) writeOne(ctx context.Context, item T) error {
 	case client.Block:
 		return fw.putSolBlock(ctx, &v)
 	default:
-		return fmt.Errorf("%w: %T", gosdk.ErrUnsupportedFixture, item)
+		return fmt.Errorf("%w: %T", library.ErrUnsupportedFixture, item)
 	}
 }
 

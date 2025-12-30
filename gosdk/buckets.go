@@ -16,7 +16,13 @@ const (
 	Snapshot         = "snapshot"
 	TxSnapshot       = "tx_snapshot"
 
-	SubscriptionBucket        = "subscription_bucket"          // chainID -> []{address|contract}
+	// chainID -> []{address|contract}
+	SubscriptionBucket = "subscription_bucket"
+
+	// chainID|sha(contract|eventName) -> event	ExternalBlockVotingBucket   = "external_block_voting_bucket"
+	// Chain|Block|Hash -> {votedStake, []{Epoch, Signer}}
+	SubscriptionEventLibraryBucket = "subscription_kinds_bucket"
+
 	ValsetBucket              = "validator_set_bucket"         // Epoch -> map[validatorID][stake] // map[uint32][uint64]
 	ExternalBlockVotingBucket = "external_block_voting_bucket" // Chain|Block|Hash -> {votedStake, []{Epoch, Signer}}
 	CheckpointVotingBucket    = "checkpoint_voting_bucket"     // Chain|Block|Hash -> {votedStake, []{Epoch, Signer}}
@@ -35,20 +41,21 @@ func TxBucketsTables() kv.TableCfg {
 
 func DefaultTables() kv.TableCfg {
 	return kv.TableCfg{
-		CheckpointBucket:          {},
-		ExternalTxBucket:          {},
-		BlocksBucket:              {},
-		ConfigBucket:              {},
-		StateBucket:               {},
-		Snapshot:                  {},
-		receipt.ReceiptBucket:     {},
-		EvmReceipts:               {},
-		SubscriptionBucket:        {},
-		ValsetBucket:              {},
-		ExternalBlockVotingBucket: {},
-		CheckpointVotingBucket:    {},
-		BlockTransactionsBucket:   {},
-		TxLookupBucket:            {},
+		CheckpointBucket:               {},
+		ExternalTxBucket:               {},
+		BlocksBucket:                   {},
+		ConfigBucket:                   {},
+		StateBucket:                    {},
+		Snapshot:                       {},
+		receipt.ReceiptBucket:          {},
+		EvmReceipts:                    {},
+		SubscriptionBucket:             {},
+		SubscriptionEventLibraryBucket: {},
+		ValsetBucket:                   {},
+		ExternalBlockVotingBucket:      {},
+		CheckpointVotingBucket:         {},
+		BlockTransactionsBucket:        {},
+		TxLookupBucket:                 {},
 	}
 }
 

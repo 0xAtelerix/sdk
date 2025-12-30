@@ -20,6 +20,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/library"
 	emitterproto "github.com/0xAtelerix/sdk/gosdk/proto"
 	"github.com/0xAtelerix/sdk/gosdk/receipt"
 	"github.com/0xAtelerix/sdk/gosdk/utility"
@@ -71,7 +72,7 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 	txpool apptypes.TxPoolInterface[AppTx, R],
 	config AppchainConfig,
 	appchainDB kv.RwDB,
-	subscriber *Subscriber,
+	sub *Subscriber,
 	multichain MultichainStateAccessor,
 	txBatchDB kv.RoDB,
 	options ...func(a *Appchain[STI, AppTx, R, AppBlock]),
@@ -96,7 +97,7 @@ func NewAppchain[STI StateTransitionInterface[AppTx, R],
 		TxBatchDB:              txBatchDB,
 		config:                 config,
 		multichainDB:           multichain,
-		subscriber:             subscriber,
+		subscriber:             sub,
 	}
 
 	for _, option := range options {
@@ -165,7 +166,7 @@ func (a *Appchain[STI, appTx, R, AppBlock]) Run(
 	}
 
 	if a.TxBatchDB == nil {
-		return ErrEmptyTxBatchDB
+		return library.ErrEmptyTxBatchDB
 	}
 
 	var (
@@ -326,20 +327,20 @@ runFor:
 				if marshalErr != nil {
 					logger.Error().Err(marshalErr).Msg("Failed to marshal block")
 
-					return fmt.Errorf("%w: %w", ErrBlockMarshalling, marshalErr)
+					return fmt.Errorf("%w: %w", library.ErrBlockMarshalling, marshalErr)
 				}
 
 				if err = WriteBlock(rwtx, blockNumber, blockBytes); err != nil {
 					logger.Error().Err(err).Msg("Failed to write block")
 
-					return fmt.Errorf("%w: %w", ErrBlockWrite, err)
+					return fmt.Errorf("%w: %w", library.ErrBlockWrite, err)
 				}
 
 				// Store transactions with relation to the block
 				if err = WriteBlockTransactions(rwtx, blockNumber, batch.Transactions); err != nil {
 					logger.Error().Err(err).Msg("Failed to write block transactions")
 
-					return fmt.Errorf("%w: %w", ErrBlockTransactionsWrite, err)
+					return fmt.Errorf("%w: %w", library.ErrBlockTransactionsWrite, err)
 				}
 
 				blockHash := block.Hash()
@@ -568,12 +569,12 @@ func WriteBlockTransactions[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 	// Marshal transactions to CBOR - this is the only place we store full transaction data
 	txsBytes, err := cbor.Marshal(txs)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrTransactionsMarshalling, err)
+		return fmt.Errorf("%w: %w", library.ErrTransactionsMarshalling, err)
 	}
 
 	// Store in BlockTransactionsBucket (primary storage)
 	if err := rwtx.Put(BlockTransactionsBucket, blockNumBytes, txsBytes); err != nil {
-		return fmt.Errorf("%w: %w", ErrBlockTransactionsWrite, err)
+		return fmt.Errorf("%w: %w", library.ErrBlockTransactionsWrite, err)
 	}
 
 	// Create lookup entries: txHash -> (blockNumber, txIndex)
@@ -586,7 +587,7 @@ func WriteBlockTransactions[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 		binary.BigEndian.PutUint32(lookupEntry[8:12], uint32(i))
 
 		if err := rwtx.Put(TxLookupBucket, txHash[:], lookupEntry); err != nil {
-			return fmt.Errorf("%w (tx %x): %w", ErrTransactionLookupWrite, txHash[:4], err)
+			return fmt.Errorf("%w (tx %x): %w", library.ErrTransactionLookupWrite, txHash[:4], err)
 		}
 	}
 
@@ -656,7 +657,7 @@ func ReadExternalTransactions(
 
 	value, err := tx.GetOne(ExternalTxBucket, key)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrExternalTransactionsGet, err)
+		return nil, fmt.Errorf("%w: %w", library.ErrExternalTransactionsGet, err)
 	}
 
 	if len(value) == 0 {
@@ -665,7 +666,7 @@ func ReadExternalTransactions(
 
 	var txs []apptypes.ExternalTransaction
 	if err := cbor.Unmarshal(value, &txs); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrExternalTransactionsUnmarshal, err)
+		return nil, fmt.Errorf("%w: %w", library.ErrExternalTransactionsUnmarshal, err)
 	}
 
 	return txs, nil
