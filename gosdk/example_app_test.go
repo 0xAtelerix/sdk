@@ -21,8 +21,9 @@ import (
 )
 
 func TestExampleAppchain(t *testing.T) {
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-	ctx := log.Logger.WithContext(t.Context())
+	// Setup logging
+	ctx := SetupLogger(t.Context(), int(zerolog.InfoLevel))
+	logger := log.Ctx(ctx)
 
 	tmp := t.TempDir()
 
@@ -58,7 +59,7 @@ func TestExampleAppchain(t *testing.T) {
 
 	defer appInit.Close()
 
-	log.Info().Msg("Creating appchain...")
+	logger.Info().Msg("Creating appchain...")
 
 	// Create no-op multichain for test (test doesn't process external blocks)
 	multichain := NewMultichainStateAccessSQL(make(map[apptypes.ChainType]*sql.DB))
@@ -66,7 +67,7 @@ func TestExampleAppchain(t *testing.T) {
 	appchainExample := NewAppchain(
 		appInit.Storage,
 		appInit.Config,
-		NewDefaultBatchProcessor[ExampleTransaction[ExampleReceipt], ExampleReceipt](
+		NewDefaultBatchProcessor[ExampleTransaction[ExampleReceipt]](
 			NewExtBlockProcessor(multichain),
 			multichain,
 			appInit.Storage.Subscriber(),
@@ -84,7 +85,7 @@ func TestExampleAppchain(t *testing.T) {
 	// Run appchain in goroutine
 	runErr := make(chan error, 1)
 
-	log.Info().Msg("Starting appchain...")
+	logger.Info().Msg("Starting appchain...")
 
 	go func() {
 		assert.NotPanics(t, func() {
@@ -94,7 +95,7 @@ func TestExampleAppchain(t *testing.T) {
 
 	err = <-runErr
 
-	log.Info().Err(err).Msg("Appchain exited")
+	logger.Info().Err(err).Msg("Appchain exited")
 }
 
 type ExampleTransaction[R ExampleReceipt] struct {
