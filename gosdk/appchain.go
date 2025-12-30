@@ -42,28 +42,36 @@ type AppchainConfig struct {
 	Logger         *zerolog.Logger
 }
 
-type Appchain[AppTx apptypes.AppTransaction[R], R apptypes.Receipt, AppBlock apptypes.AppchainBlock] struct {
+type Appchain[
+	AppTx apptypes.AppTransaction[R],
+	R apptypes.Receipt,
+	AppBlock apptypes.AppchainBlock,
+	BP BatchProcessor[AppTx, R],
+] struct {
 	storage        *Storage[AppTx, R]
 	config         *AppchainConfig
-	batchProcessor BatchProcessor[AppTx, R]
+	batchProcessor BP
 	blockBuilder   apptypes.AppchainBlockConstructor[AppTx, R, AppBlock]
 	rootCalculator apptypes.RootCalculator
 	emitterAPI     emitterproto.EmitterServer
 }
 
-func NewAppchain[AppTx apptypes.AppTransaction[R],
+func NewAppchain[
+	AppTx apptypes.AppTransaction[R],
 	R apptypes.Receipt,
-	AppBlock apptypes.AppchainBlock](
+	AppBlock apptypes.AppchainBlock,
+	BP BatchProcessor[AppTx, R],
+](
 	storage *Storage[AppTx, R],
 	config *AppchainConfig,
-	batchProcessor BatchProcessor[AppTx, R],
+	batchProcessor BP,
 	blockBuilder apptypes.AppchainBlockConstructor[AppTx, R, AppBlock],
-	options ...func(a *Appchain[AppTx, R, AppBlock]),
-) Appchain[AppTx, R, AppBlock] {
+	options ...func(a *Appchain[AppTx, R, AppBlock, BP]),
+) Appchain[AppTx, R, AppBlock, BP] {
 	emitterAPI := NewServer(storage.appchainDB, config.ChainID, storage.txPool)
 	emitterAPI.logger = config.Logger
 
-	appchain := Appchain[AppTx, R, AppBlock]{
+	appchain := Appchain[AppTx, R, AppBlock, BP]{
 		storage:        storage,
 		config:         config,
 		batchProcessor: batchProcessor,
@@ -81,17 +89,17 @@ func NewAppchain[AppTx apptypes.AppTransaction[R],
 	return appchain
 }
 
-func (a *Appchain[AppTx, R, AppBlock]) SetRootCalculator(rc apptypes.RootCalculator) {
+func (a *Appchain[AppTx, R, AppBlock, BP]) SetRootCalculator(rc apptypes.RootCalculator) {
 	a.rootCalculator = rc
 }
 
-func (a *Appchain[AppTx, R, AppBlock]) Close() {
+func (a *Appchain[AppTx, R, AppBlock, BP]) Close() {
 	if a.storage != nil {
 		a.storage.Close()
 	}
 }
 
-func (a *Appchain[AppTx, R, AppBlock]) Run(ctx context.Context) error {
+func (a *Appchain[AppTx, R, AppBlock, BP]) Run(ctx context.Context) error {
 	logger := log.Ctx(ctx)
 	logger.Info().Msg("Appchain run started")
 
@@ -256,7 +264,7 @@ runFor:
 	return nil
 }
 
-func (a *Appchain[AppTx, R, AppBlock]) processBatch(
+func (a *Appchain[AppTx, R, AppBlock, BP]) processBatch(
 	ctx context.Context,
 	batch apptypes.Batch[AppTx, R],
 	previousBlockNumber *uint64,
@@ -420,7 +428,7 @@ func (a *Appchain[AppTx, R, AppBlock]) processBatch(
 	return nil
 }
 
-func (a *Appchain[AppTx, R, AppBlock]) runEmitterAPI(ctx context.Context, errCh chan error) {
+func (a *Appchain[AppTx, R, AppBlock, BP]) runEmitterAPI(ctx context.Context, errCh chan error) {
 	logger := log.Ctx(ctx)
 
 	lis, err := (&net.ListenConfig{}).Listen(ctx, "tcp", a.config.EmitterPort)
@@ -465,6 +473,7 @@ func (a *Appchain[AppTx, R, AppBlock]) runEmitterAPI(ctx context.Context, errCh 
 				Dur("timeout", gracePeriod).
 				Msg("Graceful stop timed out; forcing stop")
 
+			// Immediately close listeners and cancel in-flight RPCs
 			grpcServer.Stop()
 		}
 

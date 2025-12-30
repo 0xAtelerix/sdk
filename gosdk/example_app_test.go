@@ -44,15 +44,19 @@ func TestExampleAppchain(t *testing.T) {
 	require.NoError(t, err)
 	txBatchDB.Close() // Close it so InitApp can open it
 
-	storage, config, err := InitApp[ExampleTransaction[ExampleReceipt], ExampleReceipt](
+	chainID := DefaultAppchainID
+	appInit, err := InitApp[ExampleTransaction[ExampleReceipt]](
 		ctx,
 		InitConfig{
-			ChainID:     DefaultAppchainID,
-			DataDir:     tmp,
-			EmitterPort: DefaultEmitterPort,
+			ChainID:        &chainID,
+			DataDir:        tmp,
+			EmitterPort:    DefaultEmitterPort,
+			RequiredChains: []uint64{}, // Skip multichain requirement for this test
 		},
 	)
 	require.NoError(t, err)
+
+	defer appInit.Close()
 
 	log.Info().Msg("Creating appchain...")
 
@@ -60,12 +64,12 @@ func TestExampleAppchain(t *testing.T) {
 	multichain := NewMultichainStateAccessSQL(make(map[apptypes.ChainType]*sql.DB))
 
 	appchainExample := NewAppchain(
-		storage,
-		config,
+		appInit.Storage,
+		appInit.Config,
 		NewDefaultBatchProcessor[ExampleTransaction[ExampleReceipt], ExampleReceipt](
 			NewExtBlockProcessor(multichain),
 			multichain,
-			storage.Subscriber(),
+			appInit.Storage.Subscriber(),
 		),
 		func(_ uint64, _ [32]byte, _ [32]byte, _ apptypes.Batch[ExampleTransaction[ExampleReceipt], ExampleReceipt]) *ExampleBlock {
 			return &ExampleBlock{}

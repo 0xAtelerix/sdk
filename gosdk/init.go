@@ -8,42 +8,74 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"gopkg.in/yaml.v3"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
 
 type InitConfig struct {
-	ChainID     uint64 // Defaults to 42
-	DataDir     string // Defaults to /data
-	EmitterPort string // Defaults to :9090
-
-	RequiredChains []uint64 // External chain IDs to wait for
-
-	PrometheusPort string               // Optional, leave empty to disable
-	ValidatorID    string               // Optional, for multi-validator metrics/logs
-	CustomTables   kv.TableCfg          // Optional, merged with default tables
-	CustomPaths    *AppchainCustomPaths // Optional, overrides DataDir-derived paths
+	ChainID        *uint64              `yaml:"chain_id,omitempty"`
+	DataDir        string               `yaml:"data_dir,omitempty"`
+	EmitterPort    string               `yaml:"emitter_port,omitempty"`
+	RPCPort        string               `yaml:"rpc_port,omitempty"`
+	LogLevel       int                  `yaml:"log_level,omitempty"`
+	RequiredChains []uint64             `yaml:"required_chains,omitempty"`
+	PrometheusPort string               `yaml:"prometheus_port,omitempty"`
+	ValidatorID    string               `yaml:"validator_id,omitempty"`
+	CustomTables   kv.TableCfg          `yaml:"-"`
+	CustomPaths    *AppchainCustomPaths `yaml:"custom_paths,omitempty"`
 }
 
-// AppchainCustomPaths overrides default directory paths.
-// Optional - if not set, paths are derived from DataDir.
 type AppchainCustomPaths struct {
-	MultichainDir   string // Default: {DataDir}/multichain
-	AppchainDBDir   string // Default: {DataDir}/appchain/db
-	TxPoolDir       string // Default: {DataDir}/appchain/txpool
-	EventsStreamDir string // Default: {DataDir}/consensus/events
-	TxBatchDir      string // Default: {DataDir}/consensus/txbatch
+	MultichainDir   string `yaml:"multichain_dir,omitempty"`
+	AppchainDBDir   string `yaml:"appchain_db_dir,omitempty"`
+	TxPoolDir       string `yaml:"txpool_dir,omitempty"`
+	EventsStreamDir string `yaml:"events_stream_dir,omitempty"`
+	TxBatchDir      string `yaml:"txbatch_dir,omitempty"`
 }
 
-// InitApp initializes the appchain storage and configuration.
+type AppInit[AppTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
+	Storage *Storage[AppTx, R]
+	Config  *AppchainConfig
+}
+
+func (a *AppInit[AppTx, R]) Close() {
+	if a.Storage != nil {
+		a.Storage.Close()
+	}
+}
+
+func LoadConfig(path string) (*InitConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read config: %w", err)
+	}
+
+	var cfg InitConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("parse config: %w", err)
+	}
+
+	return &cfg, nil
+}
+
+func SetupLogger(ctx context.Context, logLevel int) context.Context {
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).
+		Level(zerolog.Level(logLevel))
+
+	return log.Logger.WithContext(ctx)
+}
+
 func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	ctx context.Context,
 	cfg InitConfig,
-) (*Storage[AppTx, R], *AppchainConfig, error) {
-	if cfg.ChainID == 0 {
-		cfg.ChainID = DefaultAppchainID
+) (*AppInit[AppTx, R], error) {
+	chainID := DefaultAppchainID
+	if cfg.ChainID != nil {
+		chainID = *cfg.ChainID
 	}
 
 	if cfg.DataDir == "" {
@@ -54,6 +86,14 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 		cfg.EmitterPort = DefaultEmitterPort
 	}
 
+	if cfg.RPCPort == "" {
+		cfg.RPCPort = DefaultRPCPort
+	}
+
+	if cfg.LogLevel == 0 {
+		cfg.LogLevel = int(zerolog.InfoLevel)
+	}
+
 	logger := log.Ctx(ctx)
 
 	eventStreamDir := EventsPath(cfg.DataDir)
@@ -61,13 +101,13 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 		eventStreamDir = cfg.CustomPaths.EventsStreamDir
 	}
 
-	txStreamDir := TxBatchPathForChain(cfg.DataDir, cfg.ChainID)
+	txStreamDir := TxBatchPathForChain(cfg.DataDir, chainID)
 	if cfg.CustomPaths != nil && cfg.CustomPaths.TxBatchDir != "" {
 		txStreamDir = cfg.CustomPaths.TxBatchDir
 	}
 
 	config := &AppchainConfig{
-		ChainID:        cfg.ChainID,
+		ChainID:        chainID,
 		DataDir:        cfg.DataDir,
 		EmitterPort:    cfg.EmitterPort,
 		PrometheusPort: cfg.PrometheusPort,
@@ -80,6 +120,14 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 		txStreamDir:    txStreamDir,
 	}
 
+	var success bool
+
+	defer func() {
+		if !success {
+			storage.Close()
+		}
+	}()
+
 	multichainConfig := make(MultichainConfig)
 
 	multichainRoot := MultichainPath(cfg.DataDir)
@@ -90,7 +138,7 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	for _, chainID := range cfg.RequiredChains {
 		chainType := apptypes.ChainType(chainID)
 		if !IsEvmChain(chainType) && !IsSolanaChain(chainType) {
-			return nil, nil, fmt.Errorf("chain ID %d: %w", chainID, ErrUnknownChain)
+			return nil, fmt.Errorf("chain ID %d: %w", chainID, ErrUnknownChain)
 		}
 
 		chainPath := MultichainChainPath(multichainRoot, chainID)
@@ -102,9 +150,7 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 			Msg("Waiting for external chain data...")
 
 		if err := WaitFile(ctx, chainPath, logger); err != nil {
-			storage.Close()
-
-			return nil, nil, fmt.Errorf("chain %d not available: %w", chainID, err)
+			return nil, fmt.Errorf("chain %d not available: %w", chainID, err)
 		}
 
 		logger.Info().
@@ -120,9 +166,7 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	if len(multichainConfig) > 0 {
 		chainDBs, err := NewMultichainStateAccessSQLDB(ctx, multichainConfig)
 		if err != nil {
-			storage.Close()
-
-			return nil, nil, fmt.Errorf("failed to create multichain db: %w", err)
+			return nil, fmt.Errorf("failed to create multichain db: %w", err)
 		}
 
 		storage.multichain = NewMultichainStateAccessSQL(chainDBs)
@@ -139,9 +183,7 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	}
 
 	if err := os.MkdirAll(appchainDBPath, 0o755); err != nil {
-		storage.Close()
-
-		return nil, nil, fmt.Errorf("failed to create appchain db directory: %w", err)
+		return nil, fmt.Errorf("failed to create appchain db directory: %w", err)
 	}
 
 	var err error
@@ -152,16 +194,12 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 			return tables
 		}).Open()
 	if err != nil {
-		storage.Close()
-
-		return nil, nil, fmt.Errorf("failed to open appchain database: %w", err)
+		return nil, fmt.Errorf("failed to open appchain database: %w", err)
 	}
 
 	storage.subscriber, err = NewSubscriber(ctx, storage.appchainDB)
 	if err != nil {
-		storage.Close()
-
-		return nil, nil, fmt.Errorf("failed to create subscriber: %w", err)
+		return nil, fmt.Errorf("failed to create subscriber: %w", err)
 	}
 
 	txPoolDir := TxPoolPath(cfg.DataDir)
@@ -171,9 +209,7 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 
 	err = os.MkdirAll(txPoolDir, 0o755)
 	if err != nil {
-		storage.Close()
-
-		return nil, nil, fmt.Errorf("failed to create txpool directory: %w", err)
+		return nil, fmt.Errorf("failed to create txpool directory: %w", err)
 	}
 
 	storage.txPoolDB, err = mdbx.NewMDBX(mdbxlog.New()).
@@ -183,9 +219,7 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 		}).
 		Open()
 	if err != nil {
-		storage.Close()
-
-		return nil, nil, fmt.Errorf("failed to open txpool database: %w", err)
+		return nil, fmt.Errorf("failed to open txpool database: %w", err)
 	}
 
 	storage.txPool = txpool.NewTxPool[AppTx](storage.txPoolDB)
@@ -197,15 +231,18 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 		}).
 		Readonly().Open()
 	if err != nil {
-		storage.Close()
-
-		return nil, nil, fmt.Errorf("failed to open txbatch database: %w", err)
+		return nil, fmt.Errorf("failed to open txbatch database: %w", err)
 	}
 
 	logger.Info().
-		Uint64("chainID", cfg.ChainID).
+		Uint64("chainID", chainID).
 		Str("dataDir", cfg.DataDir).
 		Msg("Appchain initialization complete")
 
-	return storage, config, nil
+	success = true
+
+	return &AppInit[AppTx, R]{
+		Storage: storage,
+		Config:  config,
+	}, nil
 }

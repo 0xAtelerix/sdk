@@ -9,13 +9,6 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-// BatchProcessor is the interface for processing batches of transactions and external blocks.
-// The SDK provides a default implementation (DefaultBatchProcessor) that handles:
-// - Processing app transactions
-// - Filtering external blocks by subscriptions
-// - Delegating to ExternalBlockProcessor
-//
-// Apps can implement their own BatchProcessor for custom batch processing logic.
 type BatchProcessor[appTx apptypes.AppTransaction[R], R apptypes.Receipt] interface {
 	ProcessBatch(
 		ctx context.Context,
@@ -24,24 +17,12 @@ type BatchProcessor[appTx apptypes.AppTransaction[R], R apptypes.Receipt] interf
 	) ([]R, []apptypes.ExternalTransaction, error)
 }
 
-// DefaultBatchProcessor is the SDK's default BatchProcessor implementation.
-// It processes app transactions, filters external blocks by subscriptions,
-// and delegates block processing to the wrapped ExternalBlockProcessor.
 type DefaultBatchProcessor[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	extBlockProc ExternalBlockProcessor
 	multichain   MultichainStateAccessor
 	subscriber   *Subscriber
 }
 
-// NewDefaultBatchProcessor creates the SDK's default BatchProcessor.
-//
-// Usage:
-//
-//	bp := gosdk.NewDefaultBatchProcessor[MyTx, MyReceipt](
-//	    myExtBlockProcessor,
-//	    appInit.Multichain,
-//	    appInit.Subscriber,
-//	)
 func NewDefaultBatchProcessor[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	extBlockProc ExternalBlockProcessor,
 	multichain MultichainStateAccessor,
@@ -80,7 +61,6 @@ func (b *DefaultBatchProcessor[appTx, R]) ProcessBatch(
 		receipts[i] = res
 	}
 
-	// Process external blocks (filtered by subscriptions)
 	// Skip if multichain or external block processor or subscriber is not set
 	if b.multichain == nil || b.extBlockProc == nil || b.subscriber == nil {
 		return receipts, extTxs, nil
@@ -155,9 +135,6 @@ blockLoop:
 	return receipts, extTxs, nil
 }
 
-// ExternalBlockProcessor is the interface that appchains implement to process external blocks.
-// External blocks come from other chains (EVM, Solana) via the multichain oracle.
-// This is the only interface apps need to implement for state transitions.
 type ExternalBlockProcessor interface {
 	ProcessBlock(
 		block apptypes.ExternalBlock,
