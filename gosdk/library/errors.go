@@ -1,37 +1,35 @@
 package library
 
-import "bytes"
+import (
+	"bytes"
 
-type SDKError string
-
-func (e SDKError) Error() string {
-	return string(e)
-}
+	"github.com/0xAtelerix/sdk/gosdk/library/errors"
+)
 
 const (
-	ErrCorruptedFile  = SDKError("corrupted file")
-	ErrUnknownChain   = SDKError("unknown chain")
-	ErrMissingTxBatch = SDKError("missing tx batch")
-	ErrNoValidatorSet = SDKError("no valset")
+	ErrCorruptedFile  = errors.SDKError("corrupted file")
+	ErrUnknownChain   = errors.SDKError("unknown chain")
+	ErrMissingTxBatch = errors.SDKError("missing tx batch")
+	ErrNoValidatorSet = errors.SDKError("no valset")
 
-	ErrWrongBlock   = SDKError("wrong block hash")
-	ErrHashMismatch = SDKError("block hash mismatch: stored hash does not match computed hash")
+	ErrWrongBlock   = errors.SDKError("wrong block hash")
+	ErrHashMismatch = errors.SDKError("block hash mismatch: stored hash does not match computed hash")
 
-	ErrEmptyTxBatchDB = SDKError("tx batch db is nil")
+	ErrEmptyTxBatchDB = errors.SDKError("tx batch db is nil")
 
-	ErrUnsupportedEntityType = SDKError("unsupported entity type")
-	ErrMalformedKey          = SDKError("malformed key")
-	ErrUnsupportedFixture    = SDKError("unsupported type in FixtureWriter")
+	ErrUnsupportedEntityType = errors.SDKError("unsupported entity type")
+	ErrMalformedKey          = errors.SDKError("malformed key")
+	ErrUnsupportedFixture    = errors.SDKError("unsupported type in FixtureWriter")
 
-	ErrBlockMarshalling              = SDKError("failed to marshal block")
-	ErrBlockWrite                    = SDKError("failed to write block")
-	ErrBlockTransactionsWrite        = SDKError("failed to write block transactions")
-	ErrTransactionsMarshalling       = SDKError("failed to marshal transactions")
-	ErrTransactionLookupWrite        = SDKError("failed to write transaction lookup")
-	ErrExternalTransactionsGet       = SDKError("failed to get external transactions")
-	ErrExternalTransactionsUnmarshal = SDKError("failed to unmarshal external transactions")
+	ErrBlockMarshalling              = errors.SDKError("failed to marshal block")
+	ErrBlockWrite                    = errors.SDKError("failed to write block")
+	ErrBlockTransactionsWrite        = errors.SDKError("failed to write block transactions")
+	ErrTransactionsMarshalling       = errors.SDKError("failed to marshal transactions")
+	ErrTransactionLookupWrite        = errors.SDKError("failed to write transaction lookup")
+	ErrExternalTransactionsGet       = errors.SDKError("failed to get external transactions")
+	ErrExternalTransactionsUnmarshal = errors.SDKError("failed to unmarshal external transactions")
 
-	ErrNotImplemented = SDKError("not implemented")
+	ErrNotImplemented = errors.SDKError("not implemented")
 )
 
 //nolint:gochecknoglobals // read only

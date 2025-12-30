@@ -2,6 +2,7 @@ package library
 
 import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/evmtypes/fields"
 )
 
 const (
@@ -79,5 +80,14 @@ func EVMChains() map[apptypes.ChainType]struct{} {
 		GnosisChiadoChainID:     {},
 		FantomTestnetChainID:    {},
 		StavangerTestnetChainID: {},
+	}
+}
+
+func EVMCustomKindFor(chainID apptypes.ChainType) fields.EVMCustomKind {
+	switch chainID {
+	case EthereumChainID, EthereumSepoliaChainID, BaseChainID:
+		return fields.CustomEthereumFields
+	default:
+		return fields.CustomRawJSON
 	}
 }

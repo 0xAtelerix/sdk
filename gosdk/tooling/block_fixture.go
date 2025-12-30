@@ -20,6 +20,7 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk"
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/evmtypes"
+	"github.com/0xAtelerix/sdk/gosdk/evmtypes/fields"
 	"github.com/0xAtelerix/sdk/gosdk/library"
 	"github.com/0xAtelerix/sdk/gosdk/scheme"
 )
@@ -58,7 +59,8 @@ func (fw *FixtureWriter[T]) Run(ctx context.Context) error {
 
 func (fw *FixtureWriter[T]) writeOne(ctx context.Context, item T) error {
 	switch v := any(item).(type) {
-	case *evmtypes.Block:
+	case *evmtypes.Block[fields.EthereumCustomFields]:
+	case *evmtypes.Block[json.RawMessage]:
 		return fw.putEVMBlock(ctx, v)
 	case evmtypes.Block:
 		return fw.putEVMBlock(ctx, &v)
@@ -73,16 +75,23 @@ func (fw *FixtureWriter[T]) writeOne(ctx context.Context, item T) error {
 	}
 }
 
+type WritableEntity interface {
+	BlockNumber() uint64
+	BlockHash() [32]byte
+	json.Marshaler
+}
+
 // putEVMBlock writes an evmtypes.Block to the database
-func (fw *FixtureWriter[T]) putEVMBlock(ctx context.Context, b *evmtypes.Block) error {
-	num := b.Number.ToInt().Uint64()
+func (fw *FixtureWriter[T]) putEVMBlock(ctx context.Context, b WritableEntity) error {
+	num := b.BlockNumber()
 
 	var hash [32]byte
-	copy(hash[:], b.Hash[:])
+	blockHash := b.BlockHash()
+	copy(hash[:], blockHash[:])
 
 	k := gosdk.EVMBlockKey(num, hash)
 
-	enc, err := json.Marshal(b)
+	enc, err := b.MarshalJSON()
 	if err != nil {
 		return err
 	}
@@ -93,21 +102,24 @@ func (fw *FixtureWriter[T]) putEVMBlock(ctx context.Context, b *evmtypes.Block) 
 }
 
 // putEVMReceipts writes evmtypes.Receipts to the database
-func (fw *FixtureWriter[T]) putEVMReceipts(ctx context.Context, recs []*evmtypes.Receipt) error {
+func (fw *FixtureWriter[T]) putEVMReceipts(ctx context.Context, recs []WritableEntity) error {
 	if len(recs) == 0 {
 		return nil
 	}
 
-	num := uint64(recs[0].BlockNumber)
+	// TODO: номер блока и хэш передаем
+	num := recs[0].BlockNumber()
 
 	var blockHash [32]byte
-	copy(blockHash[:], recs[0].BlockHash[:])
+	hash := recs[0].BlockHash()
+	copy(blockHash[:], hash[:])
 
 	return fw.DB.Update(ctx, func(tx kv.RwTx) error {
 		for i, rc := range recs {
 			k := gosdk.EVMReceiptKey(num, blockHash, uint32(i))
 
-			enc, err := json.Marshal(rc)
+			// TODO: интерфейс переносим в ресит
+			enc, err := rc.MarshalJSON()
 			if err != nil {
 				return err
 			}

@@ -1,9 +1,11 @@
 package evmtypes
 
-import "errors"
+import (
+	"github.com/0xAtelerix/sdk/gosdk/library/errors"
+)
 
-// ErrFieldNotFound is returned when a custom field is not found in the raw JSON.
-var ErrFieldNotFound = errors.New("field not found")
-
-// ErrRawJSONNotAvailable is returned when Raw JSON is not set on a type.
-var ErrRawJSONNotAvailable = errors.New("raw JSON not available")
+const (
+	// ErrFieldNotFound is returned when a custom field is not found in the raw JSON.
+	ErrFieldNotFound    = errors.SDKError("field not found")
+	ErrEmptyCustomField = errors.SDKError("raw custom field is empty")
+)

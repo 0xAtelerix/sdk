@@ -1,12 +1,12 @@
 package tokens
 
 import (
-	"github.com/0xAtelerix/sdk/gosdk/library"
+	"github.com/0xAtelerix/sdk/gosdk/library/errors"
 )
 
 const (
-	ErrNonNilRequired        = library.SDKError("out must be non-nil pointer to struct")
-	ErrStructRequired        = library.SDKError("out must point to a struct")
-	ErrABIPlanTypeMismatched = library.SDKError("type mismatch")
-	ErrABIUnknownEvent       = library.SDKError("unknown event")
+	ErrNonNilRequired        = errors.SDKError("out must be non-nil pointer to struct")
+	ErrStructRequired        = errors.SDKError("out must point to a struct")
+	ErrABIPlanTypeMismatched = errors.SDKError("type mismatch")
+	ErrABIUnknownEvent       = errors.SDKError("unknown event")
 )

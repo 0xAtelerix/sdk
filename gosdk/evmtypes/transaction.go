@@ -3,11 +3,12 @@ package evmtypes
 import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/goccy/go-json"
+
+	"github.com/0xAtelerix/sdk/gosdk/evmtypes/fields"
 )
 
 // Transaction contains standard EVM transaction fields.
-type Transaction struct {
+type Transaction[T fields.CustomFields] struct {
 	Hash     common.Hash     `json:"hash"`
 	From     common.Address  `json:"from"`
 	To       *common.Address `json:"to"`
@@ -21,18 +22,22 @@ type Transaction struct {
 	MaxFeePerGas         *hexutil.Big    `json:"maxFeePerGas,omitempty"`         // EIP-1559
 	MaxPriorityFeePerGas *hexutil.Big    `json:"maxPriorityFeePerGas,omitempty"` // EIP-1559
 
-	Raw json.RawMessage `json:"-"` // Set by fetcher for GetCustomField()
+	Raw T `json:"-"` // Set by fetcher for GetCustomField()
 }
 
 // NewTransaction creates a new Transaction with basic fields.
-func NewTransaction(hash common.Hash, from common.Address) *Transaction {
-	return &Transaction{
+func NewTransaction[T fields.CustomFields](hash common.Hash, from common.Address) *Transaction[T] {
+	return &Transaction[T]{
 		Hash: hash,
 		From: from,
 	}
 }
 
+func (t *Transaction[T]) GetCustom() T {
+	return t.Raw
+}
+
 // GetCustomField extracts a chain-specific field from raw JSON.
-func (t *Transaction) GetCustomField(fieldName string) (any, error) {
-	return GetCustomFieldFromRaw(t.Raw, fieldName)
+func (t *Transaction[T]) GetCustomField(fieldName string) (any, error) {
+	return GetCustomField[T](t, fieldName)
 }

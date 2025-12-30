@@ -10,7 +10,7 @@ import (
 // This is a helper function used by all EVM types to avoid code duplication.
 func GetCustomFieldFromRaw(raw json.RawMessage, fieldName string) (any, error) {
 	if len(raw) == 0 {
-		return nil, ErrRawJSONNotAvailable
+		return nil, ErrEmptyCustomField
 	}
 
 	var data map[string]any
