@@ -33,7 +33,7 @@ Use the public example as a starting point. Replace placeholders with your own v
 git clone https://github.com/0xAtelerix/example my-appchain
 cd my-appchain
 
-# 2) Launch validator + fetcher + your appchain container
+# 2) Launch pelacli and your appchain
 docker compose up --build
 
 # 3) Probe health (HTTP server in your appchain's process)
@@ -53,12 +53,12 @@ docker compose build appchain && docker compose up appchain
 The Go SDK lives under `gosdk/`. The directories and modules below map to the core capabilities your appchain will plug together:
 
 - **Runtime harness (`gosdk/appchain.go`)** – orchestrates configuration, storage wiring, gRPC servers, and the main execution loop that pulls consensus batches into your state transition.
-- **Initialization (`gosdk/init.go`)** – provides `InitApp()` to bootstrap all common components (databases, multichain access, subscriber) with sensible defaults. Also defines path helpers for consistent directory layout.
+- **Initialization (`gosdk/init.go`)** – provides `InitApp()` to bootstrap all common components (databases, multichain access, subscriber) with sensible defaults.
 - **Core appchain types (`gosdk/apptypes/`)** – supplies shared interfaces for transactions, receipts, batches, and external payloads so your business logic can interoperate with the validator stack.
 - **Transaction pool (`gosdk/txpool/`)** – manages queued transactions, batching, and hash verification so validators stay in sync with the payloads your appchain will execute.
-- **Multichain access (`gosdk/multichain.go`, `gosdk/multichain_sql.go`)** – opens deterministic, read-only windows into Pelagos-hosted data sets for other chains (EVM, Solana, etc.). Supports both MDBX and SQLite backends via `MultichainStateAccessor` interface.
+- **Multichain access (`gosdk/multichain.go`, `gosdk/multichain_sql.go`)** – opens deterministic, read-only windows into Pelagos-hosted data sets for other chains (EVM, Solana, etc.). Uses SQLite for consistent, cross-platform access via the `MultichainStateAccessor` interface.
 - **Subscription control (`gosdk/subscriber.go`)** – lets you declare which external contracts, addresses, or topics must be tracked, ensuring multichain readers deliver the events your appchain requires.
-- **Receipt storage (`gosdk/receipt/`)** – persists execution receipts keyed by transaction hash so clients can audit outcomes and fetchers can relay external payloads.
+- **Receipt storage (`gosdk/receipt/`)** – persists execution receipts keyed by transaction hash so clients can audit outcomes.
 - **External transaction builders (`gosdk/external/`)** – helps encode cross-chain payloads (EVM, Solana, additional targets) that your batch processor may emit after state transitions succeed.
 - **JSON-RPC server (`gosdk/rpc/`)** – provides a scaffold for transaction submission, state queries, and health endpoints that you can extend with appchain-specific methods.
 - **Token helpers (`gosdk/library/tokens/`)** – includes reference codecs for reading token balances and transfers from multichain data sets when your appchain logic depends on them.
@@ -75,7 +75,7 @@ The fastest path to a working Pelagos appchain is to fork [`0xAtelerix/example`]
     - a fetcher that requests transaction batches and external payloads from validators,
     - your appchain container, built from the local Dockerfile, which links to the validator network, and supporting services (PostgreSQL, Redis, or other caches) when the example demonstrates richer workflows.
 
-3. **Run the stack.** From the example repository, execute `docker-compose up --build`. This compiles your appchain binary, builds the container image, and starts the validator, fetcher, and appchain services. Keep the compose logs open; they show consensus progress, batch ingestion, and RPC traffic for diagnosis.
+3. **Run the stack.** From the example repository, execute `docker-compose up --build`. This compiles your appchain binary, builds the container image, and starts pelacli and your appchain services. Keep the compose logs open; they show consensus progress, batch ingestion, and RPC traffic for diagnosis.
 
 4. **Insert your business logic.** Modify the Go modules inside the example project to:
     - implement your `Transaction` and `Receipt` types,
@@ -90,30 +90,23 @@ Once the template behaves as expected locally, you can push the forked repositor
 
 ## Data directory structure
 
-The SDK and pelacli share a common data directory (default: `/data`). Understanding this structure helps with debugging and configuration:
+The SDK and pelacli share a common data directory (default: `/data`). The SDK abstracts away the internal details, but understanding the high-level structure helps with configuration:
 
 ```
 ./data/
-├── multichain/           # External chain data (oracle writes, appchain reads)
-│   ├── index-db/         # Multichain oracle index database
-│   ├── 11155111/         # Ethereum Sepolia
-│   │   └── sqlite        # SQLite database with blocks and receipts
-│   └── 80002/            # Polygon Amoy
-│       └── sqlite
-├── consensus/            # Consensus layer data (pelacli writes, appchain reads)
-│   ├── events/           # Consensus events (snapshots, validator sets)
-│   ├── txbatch/          # Transaction batches from fetcher
-│   │   └── 42/           # Per-appchain (chainID=42)
-│   │       └── mdbx.dat
-│   └── fetcher-db/       # Pelacli fetcher database
-└── appchain/             # Appchain-specific data (appchain writes)
-    ├── db/               # Main appchain database (blocks, state, receipts)
-    │   └── mdbx.dat
-    └── txpool/           # Transaction pool database
-        └── mdbx.dat
+├── multichain/           # External chain data (accessed via storage.Multichain())
+│   ├── 11155111/         # Ethereum Sepolia blocks and receipts
+│   └── 80002/            # Polygon Amoy blocks and receipts
+├── consensus/            # Consensus data (read by SDK, written by pelacli)
+│   ├── events/           # Consensus snapshots and validator sets
+│   └── txbatch/          # Transaction batches for your appchain
+│       └── 42/           # Per-appchain (chainID=42)
+└── appchain/             # Your appchain's databases
+    ├── db/               # Main database (blocks, state, receipts)
+    └── txpool/           # Transaction pool
 ```
 
-The SDK provides path helper functions (in `gosdk/paths.go`) for accessing these directories consistently. See the package documentation for the full list.
+The SDK provides path helper functions (in `gosdk/paths.go`) for custom configurations. For most use cases, the defaults work out of the box.
 
 ## State management and batch processing
 
@@ -173,13 +166,6 @@ The `Storage` object provides accessor methods:
 ### Implementing your transaction type
 
 Your transaction type must implement `apptypes.AppTransaction`. Each transaction carries your domain-specific fields and a `Process` method that mutates state:
-
-The same example test also shows how to bootstrap multichain reads. You have two backends:
-
-- **MDBX (default)** – open with `NewMultichainStateAccessDB` or `NewMultichainStateAccessDBWith` (pass a custom opener). Then wrap with `NewMultichainStateAccess`.
-- **SQLite** – if your fetcher produces SQLite snapshots, open with `NewMultichainStateAccessSQLDB` and wrap with `NewMultichainStateAccessSQL` (implements the same `MultichainReader` interface).
-
-Once you have a `MultichainReader`, construct `MultichainStateAccess` (MDBX) or use the SQLite reader directly and hand it to `BatchProcesser`. Turning that into a real workflow involves three extra steps.
 
 ```go
 type MyTransaction[R MyReceipt] struct {
@@ -392,7 +378,7 @@ subscriber.SubscribeEthContract(gosdk.EthereumSepoliaChainID, gosdk.EthereumAddr
 subscriber.SubscribeSolanaAddress(gosdk.SolanaDevnetChainID, gosdk.SolanaAddress{/* bytes */})
 ```
 
-These declarations tell the fetcher which external data must be present before a batch is processed. The fetchers gate `ProcessBlock` until the referenced block is present, so your logic can safely assume the data exists.
+These declarations ensure the required external data is available before a batch is processed. The SDK gates `ProcessBlock` until the referenced block is present, so your logic can safely assume the data exists.
 
 ## External transactions
 
@@ -484,7 +470,7 @@ curl -s -X POST http://localhost:8080/rpc -H 'content-type: application/json' \
 
 3. **Replay consensus snapshots.** Point your config at archived validator outputs to replay problematic epochs.
 
-4. **Inspect MDBX state.** Use the multichain accessor methods (`EVMBlock`, `EVMReceipts`, `SolanaBlock`) for ad-hoc queries.
+4. **Inspect multichain state.** Use the multichain accessor methods (`EVMBlock`, `EVMReceipts`, `SolanaBlock`) for ad-hoc queries.
 
 5. **Enable observability.** Set a logger via `InitConfig.Logger` and optionally configure Prometheus metrics.
 
@@ -519,7 +505,7 @@ The SDK assumes every validator replays identical state transitions. Keep your l
 - **External block**: Reference to finalized data from another chain used in processing.
 - **Fetcher**: Service that writes transaction batches and external chain data to databases for appchain consumption.
 - **Storage**: Contains all databases and storage components (appchain DB, txpool, multichain accessor, subscriber). Returned by `InitApp()`.
-- **MultichainStateAccessor**: Interface for reading external chain data (EVM blocks/receipts, Solana blocks). Implementations: `MultichainStateAccessSQL` (SQLite), `MultichainStateAccess` (MDBX).
-- **Pelacli**: CLI tool that runs the consensus stub and fetcher for local development.
+- **MultichainStateAccessor**: Interface for reading external chain data (EVM blocks/receipts, Solana blocks). Implementation: `MultichainStateAccessSQL` (SQLite).
+- **Pelacli**: CLI tool that provides consensus, transaction batches, and external chain data for local development.
 - **Subscriber**: Component that tracks which external addresses/contracts your appchain cares about.
 - **TSS appchain**: Threshold-signing service that transports external transactions.
