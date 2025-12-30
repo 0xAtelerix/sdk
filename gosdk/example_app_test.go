@@ -21,6 +21,8 @@ import (
 )
 
 func TestExampleAppchain(t *testing.T) {
+	t.Parallel()
+
 	// Setup logging
 	ctx := SetupLogger(t.Context(), int(zerolog.InfoLevel))
 	logger := log.Ctx(ctx)
