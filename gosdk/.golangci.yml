@@ -34,7 +34,6 @@ linters:
     #- gomoddirectives # doesn't support nolint directives, replace directive is needed for erigon-lib
     - varnamelen # too many `ignore-name` cases have appeared
     # deprecated linters below
-    - paralleltest
     - tparallel
     - tagalign
   settings:

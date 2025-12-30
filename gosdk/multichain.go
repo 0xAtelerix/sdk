@@ -19,6 +19,7 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/evmtypes"
+	"github.com/0xAtelerix/sdk/gosdk/library"
 )
 
 const (
@@ -80,9 +81,9 @@ func NewMultichainStateAccessDBWith(
 		var tableCfg kv.TableCfg
 
 		switch {
-		case IsEvmChain(chainID):
+		case library.IsEvmChain(chainID):
 			tableCfg = EvmTables()
-		case IsSolanaChain(chainID):
+		case library.IsSolanaChain(chainID):
 			tableCfg = SolanaTables()
 		default:
 			log.Warn().
@@ -138,7 +139,7 @@ func (sa *MultichainStateAccess) EVMBlock(
 	defer sa.mu.RUnlock()
 
 	if _, ok := sa.stateAccessDB[apptypes.ChainType(block.ChainID)]; !ok {
-		return nil, fmt.Errorf("%w, no DB for chainID, %v", ErrUnknownChain, block.ChainID)
+		return nil, fmt.Errorf("%w, no DB for chainID, %v", library.ErrUnknownChain, block.ChainID)
 	}
 
 	key := EVMBlockKey(block.BlockNumber, block.BlockHash)
@@ -169,11 +170,12 @@ func (sa *MultichainStateAccess) EVMBlock(
 	computedHash := evmBlock.ComputeHash()
 	if computedHash != block.BlockHash {
 		return nil, fmt.Errorf(
-			"%w, chainID %d; block %d; computed hash %s does not match expected hash %s",
-			ErrHashMismatch,
+			"%w, chainID %d; got block number %d, hash %s; expected block number %d, hash %s",
+			library.ErrWrongBlock,
 			block.ChainID,
 			block.BlockNumber,
 			hex.EncodeToString(computedHash[:]),
+			block.BlockNumber,
 			hex.EncodeToString(block.BlockHash[:]),
 		)
 	}
@@ -191,7 +193,7 @@ func (sa *MultichainStateAccess) EVMReceipts(
 	defer sa.mu.RUnlock()
 
 	if _, ok := sa.stateAccessDB[apptypes.ChainType(block.ChainID)]; !ok {
-		return nil, fmt.Errorf("%w, no DB for chainID, %v", ErrUnknownChain, block.ChainID)
+		return nil, fmt.Errorf("%w, no DB for chainID, %v", library.ErrUnknownChain, block.ChainID)
 	}
 
 	key := EVMReceiptKey(block.BlockNumber, block.BlockHash)
@@ -201,8 +203,10 @@ func (sa *MultichainStateAccess) EVMReceipts(
 	err := sa.stateAccessDB[apptypes.ChainType(block.ChainID)].View(ctx, func(tx kv.Tx) error {
 		return tx.ForPrefix(EvmReceipts, key, func(_, v []byte) error {
 			receipt := evmtypes.Receipt{}
-			if err := json.Unmarshal(v, &receipt); err != nil {
-				return err
+
+			dbErr := json.Unmarshal(v, &receipt)
+			if dbErr != nil {
+				return dbErr
 			}
 
 			evmReceipts = append(evmReceipts, receipt)
@@ -226,7 +230,7 @@ func (sa *MultichainStateAccess) SolanaBlock(
 
 	db, ok := sa.stateAccessDB[apptypes.ChainType(block.ChainID)]
 	if !ok {
-		return nil, fmt.Errorf("%w, no DB for chainID, %v", ErrUnknownChain, block.ChainID)
+		return nil, fmt.Errorf("%w, no DB for chainID, %v", library.ErrUnknownChain, block.ChainID)
 	}
 
 	key := SolBlockKey(block.BlockNumber)
@@ -253,7 +257,7 @@ func (sa *MultichainStateAccess) SolanaBlock(
 	if !bytes.Equal(block.BlockHash[:], got) {
 		return nil, fmt.Errorf(
 			"%w: expected %s, got %s",
-			ErrWrongBlock,
+			library.ErrWrongBlock,
 			string(block.BlockHash[:]),
 			solBlock.Blockhash,
 		)
@@ -274,7 +278,7 @@ func (sa *MultichainStateAccess) ViewDB(
 
 	db, ok := sa.stateAccessDB[chainID]
 	if !ok {
-		return fmt.Errorf("%w, no DB for chainID, %d", ErrUnknownChain, chainID)
+		return fmt.Errorf("%w, no DB for chainID, %d", library.ErrUnknownChain, chainID)
 	}
 
 	return db.View(ctx, fn)

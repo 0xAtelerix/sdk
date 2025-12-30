@@ -4,6 +4,8 @@ gen:
 	buf generate proto
 buf:
 	go install github.com/bufbuild/buf/cmd/buf@latest
+get:
+	go mod download github.com/0xAtelerix/sdk/gosdk
 
 tidy:
 	GOWORK=off go mod tidy
@@ -12,10 +14,10 @@ tests-local:
 	go test -short -timeout 20m -failfast -shuffle=on -v ./... $(params)
 
 tests:
-	GOWORK=off go test -timeout 20m -failfast -shuffle=on -v ./... $(params)
+	go test -short -count=1 -timeout 20m -failfast -shuffle=on -v ./... $(params)
 
 race-tests:
-	go test -race -timeout 30m -failfast -shuffle=on -v ./... $(params)
+	go test -race -short -timeout 30m -failfast -shuffle=on -v ./... $(params)
 
 VERSION=v2.4.0
 
@@ -35,7 +37,7 @@ deps-ci:
 	GOPRIVATE=github.com/0xAtelerix/* go get google.golang.org/grpc@v1.75.0
 
 lints:
-	GOWORK=off $$(go env GOPATH)/bin/golangci-lint run ./gosdk/... -v --timeout 10m
+	$$(go env GOPATH)/bin/golangci-lint run ./gosdk/... -v --timeout 10m
 
 lints-fix:
 	$$(go env GOPATH)/bin/golangci-lint run ./gosdk/... -v --timeout 10m --fix

@@ -7,6 +7,8 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/library"
+	"github.com/0xAtelerix/sdk/gosdk/library/tokens"
 )
 
 type StateTransitionInterface[appTx apptypes.AppTransaction[R], R apptypes.Receipt] interface {
@@ -60,30 +62,50 @@ func (b BatchProcesser[appTx, R]) ProcessBatch(
 blockLoop:
 	for _, blk := range batch.ExternalBlocks {
 		switch {
-		case IsEvmChain(apptypes.ChainType(blk.ChainID)):
+		case library.IsEvmChain(apptypes.ChainType(blk.ChainID)):
 			// todo склоняестя ли наш вариант в сторону жесткого космос, где сильно ограничена модификация клиента?
 			evmReceipts, err := b.MultiChain.EVMReceipts(ctx, *blk)
 			if err != nil {
-				logger.Debug().Err(err).Msg("failed to process batch external receipts")
+				logger.Info().Err(err).Msg("failed to process batch external receipts")
 
 				continue
 			}
 
+			var ok bool
+
 			for _, rec := range evmReceipts {
-				// Check if sender is subscribed
-				if b.Subscriber.IsEthSubscription(apptypes.ChainType(blk.ChainID), EthereumAddress(rec.From)) {
-					ext, err := b.ProcessBlock(*blk, dbtx)
-					if err != nil {
-						return nil, nil, err
+				for _, lg := range rec.Logs {
+					emitter := library.EthereumAddress(lg.Address)
+					if !b.Subscriber.IsEthSubscription(apptypes.ChainType(blk.ChainID), emitter) {
+						continue
 					}
 
-					extTxs = append(extTxs, ext...)
+					events, matched, err := b.Subscriber.EVMEventRegistry.HandleLog(lg, rec.TxHash)
+					if err != nil {
+						logger.Info().Err(err).Msg("failed to decode external events")
 
-					continue blockLoop
+						continue
+					}
+
+					if !matched {
+						continue
+					}
+
+					ok = true
+
+					// dispatch by kind to handlers you stored on Subscriber
+					byName := map[string][]tokens.AppEvent{}
+					for _, e := range events {
+						byName[e.Name()] = append(byName[e.Name()], e)
+					}
+
+					for k, evs := range byName {
+						b.Subscriber.Handle(k, evs, dbtx)
+					}
 				}
 
-				// Check if recipient is subscribed (To is nil for contract creation)
-				if rec.To != nil && b.Subscriber.IsEthSubscription(apptypes.ChainType(blk.ChainID), EthereumAddress(*rec.To)) {
+				if ok {
+					// Optional for complex cases, most of the cases should be handled by Subscription.Handle
 					ext, err := b.ProcessBlock(*blk, dbtx)
 					if err != nil {
 						return nil, nil, err
@@ -95,10 +117,10 @@ blockLoop:
 				}
 			}
 
-		case IsSolanaChain(apptypes.ChainType(blk.ChainID)):
+		case library.IsSolanaChain(apptypes.ChainType(blk.ChainID)):
 			block, err := b.MultiChain.SolanaBlock(ctx, *blk)
 			if err != nil {
-				logger.Debug().Err(err).Msg("failed to get Solana block")
+				logger.Info().Err(err).Msg("failed to get Solana block")
 
 				continue
 			}
@@ -106,7 +128,7 @@ blockLoop:
 			for _, tx := range block.Transactions {
 				for i := range tx.Transaction.Message.Header.NumRequireSignatures {
 					pub := tx.Transaction.Message.Accounts[i]
-					ok := b.Subscriber.IsSolanaSubscription(apptypes.ChainType(blk.ChainID), SolanaAddress(pub))
+					ok := b.Subscriber.IsSolanaSubscription(apptypes.ChainType(blk.ChainID), library.SolanaAddress(pub))
 
 					if ok {
 						ext, err := b.ProcessBlock(*blk, dbtx)
