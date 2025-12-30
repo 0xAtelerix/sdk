@@ -44,9 +44,9 @@ type AppchainConfig struct {
 
 type Appchain[
 	AppTx apptypes.AppTransaction[R],
-	R apptypes.Receipt,
-	AppBlock apptypes.AppchainBlock,
 	BP BatchProcessor[AppTx, R],
+	AppBlock apptypes.AppchainBlock,
+	R apptypes.Receipt,
 ] struct {
 	storage        *Storage[AppTx, R]
 	config         *AppchainConfig
@@ -58,20 +58,20 @@ type Appchain[
 
 func NewAppchain[
 	AppTx apptypes.AppTransaction[R],
-	R apptypes.Receipt,
-	AppBlock apptypes.AppchainBlock,
 	BP BatchProcessor[AppTx, R],
+	AppBlock apptypes.AppchainBlock,
+	R apptypes.Receipt,
 ](
 	storage *Storage[AppTx, R],
 	config *AppchainConfig,
 	batchProcessor BP,
 	blockBuilder apptypes.AppchainBlockConstructor[AppTx, R, AppBlock],
-	options ...func(a *Appchain[AppTx, R, AppBlock, BP]),
-) Appchain[AppTx, R, AppBlock, BP] {
+	options ...func(a *Appchain[AppTx, BP, AppBlock, R]),
+) Appchain[AppTx, BP, AppBlock, R] {
 	emitterAPI := NewServer(storage.appchainDB, config.ChainID, storage.txPool)
 	emitterAPI.logger = config.Logger
 
-	appchain := Appchain[AppTx, R, AppBlock, BP]{
+	appchain := Appchain[AppTx, BP, AppBlock, R]{
 		storage:        storage,
 		config:         config,
 		batchProcessor: batchProcessor,
@@ -89,17 +89,17 @@ func NewAppchain[
 	return appchain
 }
 
-func (a *Appchain[AppTx, R, AppBlock, BP]) SetRootCalculator(rc apptypes.RootCalculator) {
+func (a *Appchain[AppTx, BP, AppBlock, R]) SetRootCalculator(rc apptypes.RootCalculator) {
 	a.rootCalculator = rc
 }
 
-func (a *Appchain[AppTx, R, AppBlock, BP]) Close() {
+func (a *Appchain[AppTx, BP, AppBlock, R]) Close() {
 	if a.storage != nil {
 		a.storage.Close()
 	}
 }
 
-func (a *Appchain[AppTx, R, AppBlock, BP]) Run(ctx context.Context) error {
+func (a *Appchain[AppTx, BP, AppBlock, R]) Run(ctx context.Context) error {
 	logger := log.Ctx(ctx)
 	logger.Info().Msg("Appchain run started")
 
@@ -264,7 +264,7 @@ runFor:
 	return nil
 }
 
-func (a *Appchain[AppTx, R, AppBlock, BP]) processBatch(
+func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 	ctx context.Context,
 	batch apptypes.Batch[AppTx, R],
 	previousBlockNumber *uint64,
@@ -423,12 +423,12 @@ func (a *Appchain[AppTx, R, AppBlock, BP]) processBatch(
 	BlockBytes.WithLabelValues(vid, cid).Observe(float64(len(blockBytes)))
 
 	*previousBlockNumber = blockNumber
-	*previousBlockHash = block.Hash()
+	*previousBlockHash = blockHash
 
 	return nil
 }
 
-func (a *Appchain[AppTx, R, AppBlock, BP]) runEmitterAPI(ctx context.Context, errCh chan error) {
+func (a *Appchain[AppTx, BP, AppBlock, R]) runEmitterAPI(ctx context.Context, errCh chan error) {
 	logger := log.Ctx(ctx)
 
 	lis, err := (&net.ListenConfig{}).Listen(ctx, "tcp", a.config.EmitterPort)
