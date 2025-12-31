@@ -1,17 +1,16 @@
 package receipt
 
 import (
-	"errors"
-
 	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/library/errors"
 )
 
 const ReceiptBucket = "receipts" // tx-hash -> receipt
 
-var ErrNoReceipts = errors.New("no receipts found")
+const ErrNoReceipts = errors.SDKError("no receipts found")
 
 func StoreReceipt[R apptypes.Receipt](tx kv.RwTx, receipt R) error {
 	key := receipt.TxHash()
