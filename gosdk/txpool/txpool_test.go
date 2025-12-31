@@ -21,6 +21,12 @@ func TestTxPool_PropertyBased(t *testing.T) {
 	t.Parallel()
 
 	rapid.Check(t, func(tr *rapid.T) {
+		// Генерируем случайное количество транзакций (1-100)
+		txsSlice := rapid.SliceOfNDistinct(
+			randomTransaction(), 1, 100,
+			func(tx CustomTransaction[Receipt]) [32]byte { return tx.Hash() },
+		).Draw(tr, "txs_distinct")
+
 		t.Run(tr.Name(), func(t *testing.T) {
 			t.Parallel()
 
@@ -43,12 +49,6 @@ func TestTxPool_PropertyBased(t *testing.T) {
 				require.NoError(tr, poolErr)
 			}()
 
-			// Генерируем случайное количество транзакций (1-100)
-			txsSlice := rapid.SliceOfNDistinct(
-				randomTransaction(), 1, 100,
-				func(tx CustomTransaction[Receipt]) [32]byte { return tx.Hash() },
-			).Draw(tr, "txs_distinct")
-
 			txs := make(map[[32]byte]*CustomTransaction[Receipt])
 			txHashes := make([][32]byte, 0, len(txsSlice))
 
@@ -57,7 +57,7 @@ func TestTxPool_PropertyBased(t *testing.T) {
 				txs[tx.Hash()] = &tx
 				txHashes = append(txHashes, tx.Hash())
 
-				if err = txPool.AddTransaction(t.Context(), tx); err != nil {
+				if err = txPool.AddTransaction(tr.Context(), tx); err != nil {
 					tr.Fatalf("Ошибка добавления транзакции: %v", err)
 				}
 			}
@@ -66,7 +66,7 @@ func TestTxPool_PropertyBased(t *testing.T) {
 			for hash, expectedTx := range txs {
 				var retrievedTx CustomTransaction[Receipt]
 
-				retrievedTx, err = txPool.GetTransaction(t.Context(), hash[:])
+				retrievedTx, err = txPool.GetTransaction(tr.Context(), hash[:])
 				if err != nil {
 					tr.Fatalf("Ошибка получения транзакции: %v", err)
 				}
@@ -77,7 +77,7 @@ func TestTxPool_PropertyBased(t *testing.T) {
 			}
 
 			// Проверяем, что GetPendingTransactions возвращает корректное количество
-			allTxs, err := txPool.GetPendingTransactions(t.Context())
+			allTxs, err := txPool.GetPendingTransactions(tr.Context())
 			if err != nil {
 				tr.Fatalf("Ошибка получения всех транзакций: %v", err)
 			}
@@ -96,7 +96,7 @@ func TestTxPool_PropertyBased(t *testing.T) {
 			}
 
 			for hash := range keysToDelete {
-				if err = txPool.RemoveTransaction(t.Context(), hash[:]); err != nil {
+				if err = txPool.RemoveTransaction(tr.Context(), hash[:]); err != nil {
 					tr.Fatalf("Ошибка удаления транзакции: %v", err)
 				}
 
@@ -105,7 +105,7 @@ func TestTxPool_PropertyBased(t *testing.T) {
 
 			// Проверяем, что удаленные транзакции отсутствуют
 			for hash := range keysToDelete {
-				_, err = txPool.GetTransaction(t.Context(), hash[:])
+				_, err = txPool.GetTransaction(tr.Context(), hash[:])
 				if err == nil {
 					tr.Fatalf("Ожидалась ошибка при получении удаленной транзакции %s", hash)
 				}
@@ -115,7 +115,7 @@ func TestTxPool_PropertyBased(t *testing.T) {
 			for hash, expectedTx := range txs {
 				var retrievedTx CustomTransaction[Receipt]
 
-				retrievedTx, err = txPool.GetTransaction(t.Context(), hash[:])
+				retrievedTx, err = txPool.GetTransaction(tr.Context(), hash[:])
 				if err != nil {
 					tr.Fatalf("Ошибка получения транзакции: %v", err)
 				}
@@ -126,7 +126,7 @@ func TestTxPool_PropertyBased(t *testing.T) {
 			}
 
 			// Проверяем, что GetPendingTransactions теперь возвращает уменьшенное количество
-			allTxs, err = txPool.GetPendingTransactions(t.Context())
+			allTxs, err = txPool.GetPendingTransactions(tr.Context())
 			if err != nil {
 				tr.Fatalf("Ошибка получения всех транзакций: %v", err)
 			}

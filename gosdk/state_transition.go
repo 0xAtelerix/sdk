@@ -11,34 +11,38 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/library/tokens"
 )
 
-type StateTransitionInterface[appTx apptypes.AppTransaction[R], R apptypes.Receipt] interface {
+type BatchProcessor[appTx apptypes.AppTransaction[R], R apptypes.Receipt] interface {
 	ProcessBatch(
 		ctx context.Context,
 		batch apptypes.Batch[appTx, R],
-		tx kv.RwTx,
+		dbtx kv.RwTx,
 	) ([]R, []apptypes.ExternalTransaction, error)
 }
 
-type BatchProcesser[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
-	StateTransitionSimplified
-
-	MultiChain MultichainStateAccessor
-	Subscriber *Subscriber
+type DefaultBatchProcessor[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
+	extBlockProc ExternalBlockProcessor
+	multichain   MultichainStateAccessor
+	subscriber   *Subscriber
 }
 
-func NewBatchProcesser[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
-	s StateTransitionSimplified,
-	m MultichainStateAccessor,
-	sb *Subscriber,
-) *BatchProcesser[appTx, R] {
-	return &BatchProcesser[appTx, R]{
-		StateTransitionSimplified: s,
-		MultiChain:                m,
-		Subscriber:                sb,
+func NewDefaultBatchProcessor[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
+	extBlockProc ExternalBlockProcessor,
+	multichain MultichainStateAccessor,
+	subscriber *Subscriber,
+) *DefaultBatchProcessor[appTx, R] {
+	return &DefaultBatchProcessor[appTx, R]{
+		extBlockProc: extBlockProc,
+		multichain:   multichain,
+		subscriber:   subscriber,
 	}
 }
 
-func (b BatchProcesser[appTx, R]) ProcessBatch(
+// ProcessBatch processes a batch of transactions and external blocks.
+// It handles:
+// 1. Processing app transactions (calls tx.Process() for each)
+// 2. Filtering external blocks by subscriptions (EVM/Solana address matching)
+// 3. Delegating matched blocks to ExternalBlockProcessor.ProcessBlock()
+func (b *DefaultBatchProcessor[appTx, R]) ProcessBatch(
 	ctx context.Context,
 	batch apptypes.Batch[appTx, R],
 	dbtx kv.RwTx,
@@ -47,8 +51,8 @@ func (b BatchProcesser[appTx, R]) ProcessBatch(
 
 	logger := log.Ctx(ctx)
 
+	// Process app transactions
 	receipts := make([]R, len(batch.Transactions))
-
 	for i, tx := range batch.Transactions {
 		res, ext, err := tx.Process(dbtx)
 		if err != nil {
@@ -59,14 +63,18 @@ func (b BatchProcesser[appTx, R]) ProcessBatch(
 		receipts[i] = res
 	}
 
+	// Skip if multichain or external block processor or subscriber is not set
+	if b.multichain == nil || b.extBlockProc == nil || b.subscriber == nil {
+		return receipts, extTxs, nil
+	}
+
 blockLoop:
 	for _, blk := range batch.ExternalBlocks {
 		switch {
 		case library.IsEvmChain(apptypes.ChainType(blk.ChainID)):
-			// todo склоняестя ли наш вариант в сторону жесткого космос, где сильно ограничена модификация клиента?
-			evmReceipts, err := b.MultiChain.EVMReceipts(ctx, *blk)
+			evmReceipts, err := b.multichain.EVMReceipts(ctx, *blk)
 			if err != nil {
-				logger.Info().Err(err).Msg("failed to process batch external receipts")
+				logger.Debug().Err(err).Msg("failed to get EVM receipts")
 
 				continue
 			}
@@ -76,11 +84,11 @@ blockLoop:
 			for _, rec := range evmReceipts {
 				for _, lg := range rec.Logs {
 					emitter := library.EthereumAddress(lg.Address)
-					if !b.Subscriber.IsEthSubscription(apptypes.ChainType(blk.ChainID), emitter) {
+					if !b.subscriber.IsEthSubscription(apptypes.ChainType(blk.ChainID), emitter) {
 						continue
 					}
 
-					events, matched, err := b.Subscriber.EVMEventRegistry.HandleLog(lg, rec.TxHash)
+					events, matched, err := b.subscriber.EVMEventRegistry.HandleLog(lg, rec.TxHash)
 					if err != nil {
 						logger.Info().Err(err).Msg("failed to decode external events")
 
@@ -100,13 +108,13 @@ blockLoop:
 					}
 
 					for k, evs := range byName {
-						b.Subscriber.Handle(k, evs, dbtx)
+						b.subscriber.Handle(k, evs, dbtx)
 					}
 				}
 
 				if ok {
 					// Optional for complex cases, most of the cases should be handled by Subscription.Handle
-					ext, err := b.ProcessBlock(*blk, dbtx)
+					ext, err := b.extBlockProc.ProcessBlock(*blk, dbtx)
 					if err != nil {
 						return nil, nil, err
 					}
@@ -118,7 +126,7 @@ blockLoop:
 			}
 
 		case library.IsSolanaChain(apptypes.ChainType(blk.ChainID)):
-			block, err := b.MultiChain.SolanaBlock(ctx, *blk)
+			block, err := b.multichain.SolanaBlock(ctx, *blk)
 			if err != nil {
 				logger.Info().Err(err).Msg("failed to get Solana block")
 
@@ -128,10 +136,10 @@ blockLoop:
 			for _, tx := range block.Transactions {
 				for i := range tx.Transaction.Message.Header.NumRequireSignatures {
 					pub := tx.Transaction.Message.Accounts[i]
-					ok := b.Subscriber.IsSolanaSubscription(apptypes.ChainType(blk.ChainID), library.SolanaAddress(pub))
+					ok := b.subscriber.IsSolanaSubscription(apptypes.ChainType(blk.ChainID), library.SolanaAddress(pub))
 
 					if ok {
-						ext, err := b.ProcessBlock(*blk, dbtx)
+						ext, err := b.extBlockProc.ProcessBlock(*blk, dbtx)
 						if err != nil {
 							return nil, nil, err
 						}
@@ -148,18 +156,12 @@ blockLoop:
 		}
 	}
 
-	/*
-		for _, checkpoint := range batch.Checkpoints {
-			checkpoint.ExternalTransactionsRoot
-		}
-	*/
-
 	return receipts, extTxs, nil
 }
 
-type StateTransitionSimplified interface {
+type ExternalBlockProcessor interface {
 	ProcessBlock(
 		block apptypes.ExternalBlock,
 		tx kv.RwTx,
-	) ([]apptypes.ExternalTransaction, error) // external blocks
+	) ([]apptypes.ExternalTransaction, error)
 }

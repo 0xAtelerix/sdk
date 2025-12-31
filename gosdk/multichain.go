@@ -146,12 +146,18 @@ func (sa *MultichainStateAccess) EVMBlock(
 
 	evmBlock := evmtypes.Block{}
 
+	var rawBlock json.RawMessage
+
 	for {
 		err := sa.stateAccessDB[apptypes.ChainType(block.ChainID)].View(ctx, func(tx kv.Tx) error {
 			v, err := tx.GetOne(EvmBlocks, key)
 			if err != nil {
 				return err
 			}
+
+			// Preserve raw JSON for GetCustomField() and ComputeHash()
+			rawBlock = make(json.RawMessage, len(v))
+			copy(rawBlock, v)
 
 			return json.Unmarshal(v, &evmBlock)
 		})
@@ -164,6 +170,9 @@ func (sa *MultichainStateAccess) EVMBlock(
 
 		break
 	}
+
+	evmBlock.Raw = rawBlock
+	evmBlock.Header.Raw = rawBlock
 
 	// Verify block integrity by computing hash from header fields
 	// This ensures the block data hasn't been tampered with
@@ -208,6 +217,10 @@ func (sa *MultichainStateAccess) EVMReceipts(
 			if dbErr != nil {
 				return dbErr
 			}
+
+			// Preserve raw JSON for GetCustomField() (Raw has json:"-" tag)
+			receipt.Raw = make(json.RawMessage, len(v))
+			copy(receipt.Raw, v)
 
 			evmReceipts = append(evmReceipts, receipt)
 

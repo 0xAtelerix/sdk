@@ -44,6 +44,7 @@ type EventStreamWrapperConstructor[appTx apptypes.AppTransaction[R], R apptypes.
 ) (Streamer[appTx, R], error)
 
 func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
+	ctx context.Context,
 	eventsPath string,
 	chainID uint32,
 	txBatchDB kv.RoDB,
@@ -62,7 +63,7 @@ func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Rece
 		votingCheckpoints: votingCheckpoints,
 	}
 
-	err := wrapper.InitReader(context.TODO())
+	err := wrapper.InitReader(ctx)
 	if err != nil {
 		return nil, err
 	}

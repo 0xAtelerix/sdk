@@ -12,6 +12,7 @@ import (
 
 	"github.com/blocto/solana-go-sdk/client"
 	"github.com/goccy/go-json"
+	_ "github.com/mattn/go-sqlite3" // SQLite driver for multichain state access
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
@@ -83,7 +84,11 @@ func (sa *MultichainStateAccessSQL) EVMBlock(
 		i++
 
 		if err := db.QueryRowContext(ctx, query, block.BlockHash[:], block.BlockNumber).Scan(&rawBlock, &num); err != nil {
-			log.Error().Err(err).Msg("block not found")
+			log.Error().
+				Err(err).
+				Uint64("block", block.BlockNumber).
+				Str("block", string(rawBlock)).
+				Msg("block not found")
 
 			if errors.Is(err, sql.ErrNoRows) {
 				continue
@@ -107,7 +112,12 @@ func (sa *MultichainStateAccessSQL) EVMBlock(
 
 		var evmBlock evmtypes.Block
 		if err := json.Unmarshal(rawBlock, &evmBlock); err != nil {
-			log.Error().Err(err).Msg("block not found")
+			log.Error().
+				Err(err).
+				Uint64("block", block.BlockNumber).
+				Str("block", string(rawBlock)).
+				Bytes("blockHash", block.BlockHash[:]).
+				Msg("cant unmarshal block")
 
 			return nil, fmt.Errorf("failed to unmarshal evm block: %w", err)
 		}

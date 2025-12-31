@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -21,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	"github.com/0xAtelerix/sdk/gosdk/library/errors"
 	"github.com/0xAtelerix/sdk/gosdk/receipt"
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
@@ -30,9 +30,9 @@ const (
 	testShouldNotReachMessage = "should not reach here"
 )
 
-var (
-	errInvalidParameterType = errors.New("invalid parameter type")
-	errMiddlewareFailed     = errors.New("middleware failed")
+const (
+	errInvalidParameterType = errors.SDKError("invalid parameter type")
+	errMiddlewareFailed     = errors.SDKError("middleware failed")
 )
 
 // TestTransaction - test transaction implementation

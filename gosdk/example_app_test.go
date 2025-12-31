@@ -3,8 +3,8 @@ package gosdk
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"os"
-	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -18,90 +18,76 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
-	"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
 
-//nolint:paralleltest //uses full application
 func TestExampleAppchain(t *testing.T) {
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	t.Parallel()
 
-	config := MakeAppchainConfig(42, map[apptypes.ChainType]string{
-		// EthereumChainID: args.EthereumBlocksPath, //TODO
-		// SolanaChainID:   args.SolBlocksPath, //TODO
-	})
+	// Setup logging
+	ctx := SetupLogger(t.Context(), int(zerolog.InfoLevel))
+	logger := log.Ctx(ctx)
 
 	tmp := t.TempDir()
 
-	localDB, err := mdbx.NewMDBX(mdbxlog.New()).
-		InMem(tmp).
-		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
-			return txpool.Tables()
-		}).
-		Open()
-	require.NoError(t, err)
+	// Create events directory (normally created by pelacli)
+	eventsPath := EventsPath(tmp)
+	require.NoError(t, os.MkdirAll(eventsPath, 0o755))
 
-	txPool := txpool.NewTxPool[ExampleTransaction[ExampleReceipt], ExampleReceipt](localDB)
-
-	// инициализируем базу на нашей стороне
-	appchainDBPath := filepath.Join(tmp, config.AppchainDBPath)
-	appchainDB, err := mdbx.NewMDBX(mdbxlog.New()).
-		Path(appchainDBPath).
-		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
-			return DefaultTables()
-		}).
-		Open()
-	require.NoError(t, err)
-
-	txStreamDirPath := filepath.Join(tmp, config.TxStreamDir)
+	// Create txbatch database (normally created by pelacli)
+	// We create and close it so InitApp can open it
+	txBatchPath := TxBatchPathForChain(tmp, DefaultAppchainID)
+	require.NoError(t, os.MkdirAll(txBatchPath, 0o755))
 
 	txBatchDB, err := mdbx.NewMDBX(mdbxlog.New()).
-		Path(txStreamDirPath).
+		Path(txBatchPath).
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg {
 			return TxBucketsTables()
 		}).
 		Open()
-	if err != nil {
-		log.Panic().Err(err).Msg("Failed to tx batch mdbx database")
-	}
-
-	sub, err := NewSubscriber(t.Context(), appchainDB)
 	require.NoError(t, err)
+	txBatchDB.Close() // Close it so InitApp can open it
 
-	chainDBs, err := NewMultichainStateAccessDB(config.MultichainStateDB)
-	require.NoError(t, err)
-
-	multichainDB := NewMultichainStateAccess(chainDBs)
-
-	require.NoError(t, err)
-
-	stateTransition := NewBatchProcesser[ExampleTransaction[ExampleReceipt], ExampleReceipt](
-		NewStateTransition(multichainDB),
-		multichainDB,
-		sub,
+	chainID := DefaultAppchainID
+	appInit, err := InitApp[ExampleTransaction[ExampleReceipt]](
+		ctx,
+		InitConfig{
+			ChainID:        &chainID,
+			DataDir:        tmp,
+			EmitterPort:    DefaultEmitterPort,
+			RequiredChains: []uint64{}, // Skip multichain requirement for this test
+		},
 	)
+	require.NoError(t, err)
 
-	log.Info().Msg("Creating appchain...")
+	defer appInit.Close()
+
+	logger.Info().Msg("Creating appchain...")
+
+	// Create no-op multichain for test (test doesn't process external blocks)
+	multichain := NewMultichainStateAccessSQL(make(map[apptypes.ChainType]*sql.DB))
 
 	appchainExample := NewAppchain(
-		stateTransition,
+		appInit.Storage,
+		appInit.Config,
+		NewDefaultBatchProcessor[ExampleTransaction[ExampleReceipt]](
+			NewExtBlockProcessor(multichain),
+			multichain,
+			appInit.Storage.Subscriber(),
+		),
 		func(_ uint64, _ [32]byte, _ [32]byte, _ apptypes.Batch[ExampleTransaction[ExampleReceipt], ExampleReceipt]) *ExampleBlock {
 			return &ExampleBlock{}
 		},
-		txPool,
-		config,
-		appchainDB,
-		sub,
-		multichainDB,
-		txBatchDB,
 	)
 
-	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer appchainExample.Close()
+
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 
 	// Run appchain in goroutine
 	runErr := make(chan error, 1)
 
-	log.Info().Msg("Starting appchain...")
+	logger.Info().Msg("Starting appchain...")
 
 	go func() {
 		assert.NotPanics(t, func() {
@@ -111,9 +97,7 @@ func TestExampleAppchain(t *testing.T) {
 
 	err = <-runErr
 
-	appchainExample.Shutdown()
-
-	log.Info().Err(err).Msg("Appchain exited")
+	logger.Info().Err(err).Msg("Appchain exited")
 }
 
 type ExampleTransaction[R ExampleReceipt] struct {
@@ -147,15 +131,6 @@ func (ExampleReceipt) Error() string {
 	return ""
 }
 
-type ExampleBatchProcesser[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct{}
-
-func (ExampleBatchProcesser[appTx, R]) ProcessBatch(
-	_ apptypes.Batch[appTx, R],
-	_ kv.RwTx,
-) ([]R, []apptypes.ExternalTransaction, error) {
-	return nil, nil, nil
-}
-
 type ExampleBlock struct{}
 
 func (*ExampleBlock) Number() uint64 {
@@ -174,18 +149,20 @@ func (*ExampleBlock) Bytes() []byte {
 	return []byte{}
 }
 
-type StateTransition struct {
-	MultiChain *MultichainStateAccess
+// Verify ExtBlockProcessor implements ExternalBlockProcessor interface.
+var _ ExternalBlockProcessor = &ExtBlockProcessor{}
+
+type ExtBlockProcessor struct {
+	MultiChain MultichainStateAccessor
 }
 
-func NewStateTransition(multiChain *MultichainStateAccess) *StateTransition {
-	return &StateTransition{
+func NewExtBlockProcessor(multiChain MultichainStateAccessor) *ExtBlockProcessor {
+	return &ExtBlockProcessor{
 		MultiChain: multiChain,
 	}
 }
 
-// how to external chains blocks
-func (*StateTransition) ProcessBlock(
+func (*ExtBlockProcessor) ProcessBlock(
 	_ apptypes.ExternalBlock,
 	_ kv.RwTx,
 ) ([]apptypes.ExternalTransaction, error) {
