@@ -3,6 +3,8 @@ package library
 import (
 	"slices"
 
+	"github.com/ethereum/go-ethereum/crypto"
+
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
@@ -100,4 +102,10 @@ func CollectChainTopicsGrouped(
 	}
 
 	return out
+}
+
+// EventTopic computes the topic0 (event signature hash) from an event signature string.
+// Example: EventTopic("Transfer(address,address,uint256)") returns the keccak256 hash.
+func EventTopic(signature string) EthereumTopic {
+	return EthereumTopic(crypto.Keccak256Hash([]byte(signature)))
 }
