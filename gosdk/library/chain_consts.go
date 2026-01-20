@@ -47,6 +47,7 @@ const (
 	BaseChainID      = apptypes.ChainType(8453)  // Base Mainnet
 
 	// testnets
+	AnvilChainID           = apptypes.ChainType(31337)    // Anvil Local
 	EthereumSepoliaChainID = apptypes.ChainType(11155111) // Ethereum Sepolia Testnet
 	PolygonMumbaiChainID   = apptypes.ChainType(80001)    // Polygon Mumbai Testnet
 	PolygonAmoyChainID     = apptypes.ChainType(80002)    // Polygon Amoy Testnet
@@ -71,6 +72,7 @@ func EVMChains() map[apptypes.ChainType]struct{} {
 		GnosisChainID:           {},
 		FantomChainID:           {},
 		BaseChainID:             {},
+		AnvilChainID:            {},
 		EthereumSepoliaChainID:  {},
 		PolygonMumbaiChainID:    {},
 		PolygonAmoyChainID:      {},
