@@ -70,8 +70,10 @@ func (b *DefaultBatchProcessor[appTx, R]) ProcessBatch(
 
 blockLoop:
 	for _, blk := range batch.ExternalBlocks {
+		chainID := apptypes.ChainType(blk.ChainID)
+
 		switch {
-		case library.IsEvmChain(apptypes.ChainType(blk.ChainID)):
+		case library.IsEvmChain(chainID):
 			evmReceipts, err := b.multichain.EVMReceipts(ctx, *blk)
 			if err != nil {
 				logger.Debug().Err(err).Msg("failed to get EVM receipts")
@@ -79,53 +81,57 @@ blockLoop:
 				continue
 			}
 
-			var ok bool
+			var subFound bool
 
+			hasHandlers := b.subscriber.HasEVMHandlers()
+
+		receiptLoop:
 			for _, rec := range evmReceipts {
 				for _, lg := range rec.Logs {
+					if lg == nil || len(lg.Topics) == 0 {
+						continue
+					}
+
 					emitter := library.EthereumAddress(lg.Address)
-					if !b.subscriber.IsEthSubscription(apptypes.ChainType(blk.ChainID), emitter) {
+					topic0 := library.EthereumTopic(lg.Topics[0])
+
+					if !b.subscriber.IsEthSubscription(chainID, emitter, topic0) {
 						continue
 					}
 
+					subFound = true
+
+					// If no handlers but subscription matched, break to skip remaining receipts and call ProcessBlock
+					if !hasHandlers {
+						break receiptLoop
+					}
+
+					// Process through EVMEventRegistry for handler dispatch
 					events, matched, err := b.subscriber.EVMEventRegistry.HandleLog(lg, rec.TxHash)
-					if err != nil {
-						logger.Info().Err(err).Msg("failed to decode external events")
+					if err == nil && matched {
+						byName := map[string][]tokens.AppEvent{}
+						for _, e := range events {
+							byName[e.Name()] = append(byName[e.Name()], e)
+						}
 
-						continue
+						for k, evs := range byName {
+							b.subscriber.Handle(k, evs, dbtx)
+						}
 					}
-
-					if !matched {
-						continue
-					}
-
-					ok = true
-
-					// dispatch by kind to handlers you stored on Subscriber
-					byName := map[string][]tokens.AppEvent{}
-					for _, e := range events {
-						byName[e.Name()] = append(byName[e.Name()], e)
-					}
-
-					for k, evs := range byName {
-						b.subscriber.Handle(k, evs, dbtx)
-					}
-				}
-
-				if ok {
-					// Optional for complex cases, most of the cases should be handled by Subscription.Handle
-					ext, err := b.extBlockProc.ProcessBlock(*blk, dbtx)
-					if err != nil {
-						return nil, nil, err
-					}
-
-					extTxs = append(extTxs, ext...)
-
-					continue blockLoop
 				}
 			}
 
-		case library.IsSolanaChain(apptypes.ChainType(blk.ChainID)):
+			if subFound {
+				// Optional for complex cases, most of the cases should be handled by Subscription.Handle
+				ext, err := b.extBlockProc.ProcessBlock(*blk, dbtx)
+				if err != nil {
+					return nil, nil, err
+				}
+
+				extTxs = append(extTxs, ext...)
+			}
+
+		case library.IsSolanaChain(chainID):
 			block, err := b.multichain.SolanaBlock(ctx, *blk)
 			if err != nil {
 				logger.Info().Err(err).Msg("failed to get Solana block")
@@ -136,9 +142,9 @@ blockLoop:
 			for _, tx := range block.Transactions {
 				for i := range tx.Transaction.Message.Header.NumRequireSignatures {
 					pub := tx.Transaction.Message.Accounts[i]
-					ok := b.subscriber.IsSolanaSubscription(apptypes.ChainType(blk.ChainID), library.SolanaAddress(pub))
+					subFound := b.subscriber.IsSolanaSubscription(chainID, library.SolanaAddress(pub))
 
-					if ok {
+					if subFound {
 						ext, err := b.extBlockProc.ProcessBlock(*blk, dbtx)
 						if err != nil {
 							return nil, nil, err

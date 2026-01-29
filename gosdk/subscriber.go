@@ -417,6 +417,10 @@ func (s *Subscriber) Handle(eventName string, evs []tokens.AppEvent, tx kv.RwTx)
 	h.Handle(evs, tx)
 }
 
+func (s *Subscriber) HasEVMHandlers() bool {
+	return len(s.evmHandlers) > 0
+}
+
 // loadAllSubscriptions reads the whole subscription bucket and returns
 // two in-memory sets: EVM and Solana, keyed by chainID then address.
 func loadAllSubscriptions(tx kv.Tx) (
