@@ -3,7 +3,6 @@ package gosdk
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"os"
 	"strconv"
 	"testing"
@@ -64,13 +63,15 @@ func TestExampleAppchain(t *testing.T) {
 	logger.Info().Msg("Creating appchain...")
 
 	// Create no-op multichain for test (test doesn't process external blocks)
-	multichain := NewMultichainStateAccessSQL(make(map[apptypes.ChainType]*sql.DB))
+	multichain, err := NewMultichainStateAccessSQL(ctx, MultichainConfig{})
+	require.NoError(t, err)
 
 	appchainExample := NewAppchain(
 		appInit.Storage,
 		appInit.Config,
 		NewDefaultBatchProcessor[ExampleTransaction[ExampleReceipt]](
 			NewExtBlockProcessor(multichain),
+			nil, // no CEX processor
 			multichain,
 			appInit.Storage.Subscriber(),
 		),

@@ -21,17 +21,20 @@ type BatchProcessor[appTx apptypes.AppTransaction[R], R apptypes.Receipt] interf
 
 type DefaultBatchProcessor[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	extBlockProc ExternalBlockProcessor
+	cexProc      CEXStreamProcessor
 	multichain   MultichainStateAccessor
 	subscriber   *Subscriber
 }
 
 func NewDefaultBatchProcessor[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	extBlockProc ExternalBlockProcessor,
+	cexProc CEXStreamProcessor,
 	multichain MultichainStateAccessor,
 	subscriber *Subscriber,
 ) *DefaultBatchProcessor[appTx, R] {
 	return &DefaultBatchProcessor[appTx, R]{
 		extBlockProc: extBlockProc,
+		cexProc:      cexProc,
 		multichain:   multichain,
 		subscriber:   subscriber,
 	}
@@ -162,12 +165,30 @@ blockLoop:
 		}
 	}
 
+	// Process CEX order book refs if processor is set
+	if b.cexProc != nil && len(batch.CEXOrderBookRefs) > 0 {
+		cexExt, cexErr := b.cexProc.ProcessCEXStream(ctx, batch.CEXOrderBookRefs, dbtx)
+		if cexErr != nil {
+			logger.Error().Err(cexErr).Msg("CEX stream processing failed")
+		} else {
+			extTxs = append(extTxs, cexExt...)
+		}
+	}
+
 	return receipts, extTxs, nil
 }
 
 type ExternalBlockProcessor interface {
 	ProcessBlock(
 		block apptypes.ExternalBlock,
+		tx kv.RwTx,
+	) ([]apptypes.ExternalTransaction, error)
+}
+
+type CEXStreamProcessor interface {
+	ProcessCEXStream(
+		ctx context.Context,
+		refs []apptypes.CEXOrderBookRef,
 		tx kv.RwTx,
 	) ([]apptypes.ExternalTransaction, error)
 }

@@ -20,10 +20,17 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/library"
 )
 
-func NewMultichainStateAccessSQLDB(
+type MultichainStateAccessSQL struct {
+	mu            sync.RWMutex
+	stateAccessDB map[apptypes.ChainType]*sql.DB
+}
+
+// NewMultichainStateAccessSQL opens read-only SQLite databases for each chain
+// in the config and returns a ready-to-use accessor.
+func NewMultichainStateAccessSQL(
 	ctx context.Context,
 	cfg MultichainConfig,
-) (map[apptypes.ChainType]*sql.DB, error) {
+) (*MultichainStateAccessSQL, error) {
 	stateAccessDBs := make(map[apptypes.ChainType]*sql.DB)
 
 	for chainID, path := range cfg {
@@ -31,24 +38,20 @@ func NewMultichainStateAccessSQLDB(
 
 		db, err := openSQLite(ctx, dbPath, "ro")
 		if err != nil {
+			// Close any already-opened DBs on failure.
+			for _, opened := range stateAccessDBs {
+				opened.Close()
+			}
+
 			return nil, err
 		}
 
 		stateAccessDBs[chainID] = db
 	}
 
-	return stateAccessDBs, nil
-}
-
-type MultichainStateAccessSQL struct {
-	mu            sync.RWMutex
-	stateAccessDB map[apptypes.ChainType]*sql.DB
-}
-
-func NewMultichainStateAccessSQL(dbMap map[apptypes.ChainType]*sql.DB) *MultichainStateAccessSQL {
 	return &MultichainStateAccessSQL{
-		stateAccessDB: dbMap,
-	}
+		stateAccessDB: stateAccessDBs,
+	}, nil
 }
 
 func (sa *MultichainStateAccessSQL) EVMBlock(

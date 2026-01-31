@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
@@ -166,12 +167,23 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 		Msg("Multichain databases configured")
 
 	if len(multichainConfig) > 0 {
-		chainDBs, err := NewMultichainStateAccessSQLDB(ctx, multichainConfig)
+		multichain, err := NewMultichainStateAccessSQL(ctx, multichainConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create multichain db: %w", err)
 		}
 
-		storage.multichain = NewMultichainStateAccessSQL(chainDBs)
+		storage.multichain = multichain
+	}
+
+	// Open CEX SQLite for order book data access (read-only, best-effort).
+	cexDBPath := filepath.Join(MultichainCEXPath(multichainRoot), "sqlite")
+	if _, statErr := os.Stat(cexDBPath); statErr == nil {
+		cexAccessor, cexErr := NewCEXDataAccessSQL(ctx, cexDBPath)
+		if cexErr != nil {
+			logger.Warn().Err(cexErr).Msg("CEX data accessor not available")
+		} else {
+			storage.cexData = cexAccessor
+		}
 	}
 
 	tables := DefaultTables()

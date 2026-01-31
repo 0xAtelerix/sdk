@@ -86,13 +86,11 @@ CREATE TABLE receipts (
 	require.NoError(t, err)
 
 	// Open through the SQL multichain helper and read back.
-	dbs, err := NewMultichainStateAccessSQLDB(
+	msa, err := NewMultichainStateAccessSQL(
 		ctx,
 		MultichainConfig{library.EthereumChainID: chainDir},
 	)
 	require.NoError(t, err)
-
-	msa := NewMultichainStateAccessSQL(dbs)
 
 	extBlock := apptypes.ExternalBlock{
 		ChainID:     uint64(library.EthereumChainID),

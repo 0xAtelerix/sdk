@@ -29,8 +29,9 @@ type Batch[appTx AppTransaction[R], R Receipt] struct {
 	Checkpoints    []*Checkpoint    `cbor:"4,keyasint"`
 	// todo add crossappchain tx
 	// ExternalTransactions [][]byte
-	EndOffset   int64 `cbor:"5,keyasint"`
-	TxEndOffset int64 `cbor:"6,keyasint"` // txReader.position после чтения
+	EndOffset        int64             `cbor:"5,keyasint"`
+	TxEndOffset      int64             `cbor:"6,keyasint"` // txReader.position после чтения
+	CEXOrderBookRefs []CEXOrderBookRef `cbor:"7,keyasint"`
 }
 
 type ExternalEntity interface {
@@ -180,6 +181,8 @@ type Event struct {
 	BlockVotes []ExternalBlock `json:"blockVotes" cbor:"6,keyasint"`
 
 	Signature [64]byte `json:"signature" cbor:"7,keyasint"`
+
+	CEXOrderBookRefs []CEXOrderBookRef `json:"cexOrderBookRefs" cbor:"8,keyasint"`
 }
 
 func (e Event) Bytes() ([]byte, error) {
@@ -207,6 +210,27 @@ type BaseEvent struct {
 type AppchainAddresses struct {
 	ChainID        uint32 `cbor:"1,keyasint"`
 	EmitterAddress string `cbor:"2,keyasint"`
+}
+
+type CEXPriceLevel struct {
+	Price    string `cbor:"1,keyasint"`
+	Quantity string `cbor:"2,keyasint"`
+}
+
+type CEXOrderBookSnapshot struct {
+	Exchange     string          `cbor:"1,keyasint"`
+	Symbol       string          `cbor:"2,keyasint"`
+	LastUpdateID int64           `cbor:"3,keyasint"`
+	Bids         []CEXPriceLevel `cbor:"4,keyasint"`
+	Asks         []CEXPriceLevel `cbor:"5,keyasint"`
+	FetchedAt    int64           `cbor:"6,keyasint"`
+}
+
+// CEXOrderBookRef is a lightweight reference to a CEX order book snapshot.
+type CEXOrderBookRef struct {
+	Exchange  string `cbor:"1,keyasint"`
+	Symbol    string `cbor:"2,keyasint"`
+	FetchedAt int64  `cbor:"3,keyasint"`
 }
 
 type ChainType uint32

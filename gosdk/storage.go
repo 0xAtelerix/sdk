@@ -23,6 +23,7 @@ type Storage[AppTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	txPoolDB       kv.RwDB
 	txPool         apptypes.TxPoolInterface[AppTx, R]
 	multichain     MultichainStateAccessor
+	cexData        CEXDataAccessor
 	subscriber     *Subscriber
 	eventStreamDir string
 	txStreamDir    string
@@ -35,6 +36,7 @@ func NewStorage[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	txPoolDB kv.RwDB,
 	txPool apptypes.TxPoolInterface[AppTx, R],
 	multichain MultichainStateAccessor,
+	cexData CEXDataAccessor,
 	subscriber *Subscriber,
 	eventStreamDir string,
 	txStreamDir string,
@@ -45,6 +47,7 @@ func NewStorage[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 		txPoolDB:       txPoolDB,
 		txPool:         txPool,
 		multichain:     multichain,
+		cexData:        cexData,
 		subscriber:     subscriber,
 		eventStreamDir: eventStreamDir,
 		txStreamDir:    txStreamDir,
@@ -67,6 +70,10 @@ func (s *Storage[AppTx, R]) Multichain() MultichainStateAccessor {
 	return s.multichain
 }
 
+func (s *Storage[AppTx, R]) CEXData() CEXDataAccessor {
+	return s.cexData
+}
+
 func (s *Storage[AppTx, R]) Subscriber() *Subscriber {
 	return s.subscriber
 }
@@ -76,6 +83,10 @@ func (s *Storage[AppTx, R]) SetTxBatchDB(db kv.RoDB) {
 }
 
 func (s *Storage[AppTx, R]) Close() {
+	if s.cexData != nil {
+		s.cexData.Close()
+	}
+
 	if s.multichain != nil {
 		s.multichain.Close()
 	}
