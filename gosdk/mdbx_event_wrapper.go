@@ -134,6 +134,8 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 	var newValset []byte
 
+	var cexOrderBookRefs []apptypes.CEXOrderBookRef
+
 	for _, eventBatch := range eventBatches {
 		ews.logger.Debug().
 			Str("atropos", hex.EncodeToString(eventBatch.Atropos[4:])).
@@ -267,6 +269,9 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 					evt.Base.Creator,
 				)
 			}
+
+			// Accumulate CEX order book refs (no voting, direct passthrough)
+			cexOrderBookRefs = append(cexOrderBookRefs, evt.CEXOrderBookRefs...)
 		}
 
 		MdbxEventParseDuration.WithLabelValues(vid, cid).Observe(time.Since(tParseEvt).Seconds())
@@ -417,12 +422,16 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 		}
 
 		result = append(result, apptypes.Batch[appTx, R]{
-			Atropos:        eventBatch.Atropos,
-			Transactions:   allParsedTxs,
-			ExternalBlocks: ews.votingBlocks.PopFinalized(),      // return only finalized
-			Checkpoints:    ews.votingCheckpoints.PopFinalized(), // return only finalized
-			EndOffset:      eventBatch.EndOffset,
+			Atropos:          eventBatch.Atropos,
+			Transactions:     allParsedTxs,
+			ExternalBlocks:   ews.votingBlocks.PopFinalized(),      // return only finalized
+			Checkpoints:      ews.votingCheckpoints.PopFinalized(), // return only finalized
+			EndOffset:        eventBatch.EndOffset,
+			CEXOrderBookRefs: cexOrderBookRefs,
 		})
+
+		// Reset for next batch
+		cexOrderBookRefs = cexOrderBookRefs[:0]
 	}
 
 	if newEpoch > 0 {

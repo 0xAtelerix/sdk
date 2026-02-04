@@ -7,6 +7,7 @@ import (
 
 const (
 	MultichainDirName = "multichain" // external chain data directory
+	CEXDirName        = "cex"        // multichain/cex for CEX order book data
 
 	ConsensusDirName = "consensus" // Consensus data directory
 	EventsDirName    = "events"    // consensus/events for consensus events
@@ -24,6 +25,11 @@ func MultichainPath(dataDir string) string {
 
 func MultichainChainPath(multichainRoot string, chainID uint64) string {
 	return filepath.Join(multichainRoot, strconv.FormatUint(chainID, 10))
+}
+
+// MultichainCEXPath returns the path for CEX order book data: multichain/cex.
+func MultichainCEXPath(multichainRoot string) string {
+	return filepath.Join(multichainRoot, CEXDirName)
 }
 
 // Consensus paths.
