@@ -81,7 +81,9 @@ func AppendCEXPairSubscriptions(filePath string, newPairs []CEXPairSubscription)
 	}
 
 	dir := filepath.Dir(filePath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+
+	err = os.MkdirAll(dir, 0o755)
+	if err != nil {
 		return fmt.Errorf("create cex subscriptions dir: %w", err)
 	}
 
