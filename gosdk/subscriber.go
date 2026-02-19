@@ -418,7 +418,26 @@ func (s *Subscriber) Handle(eventName string, evs []tokens.AppEvent, tx kv.RwTx)
 }
 
 func (s *Subscriber) HasEVMHandlers() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	return len(s.evmHandlers) > 0
+}
+
+// HasEthSubscriptions reports whether any EVM subscriptions exist for the given chain.
+func (s *Subscriber) HasEthSubscriptions(chainID apptypes.ChainType) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return len(s.ethContracts[chainID]) > 0
+}
+
+// HasSolanaSubscriptions reports whether any Solana subscriptions exist for the given chain.
+func (s *Subscriber) HasSolanaSubscriptions(chainID apptypes.ChainType) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return len(s.solAddresses[chainID]) > 0
 }
 
 // loadAllSubscriptions reads the whole subscription bucket and returns
