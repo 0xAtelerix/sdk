@@ -71,7 +71,6 @@ func (b *DefaultBatchProcessor[appTx, R]) ProcessBatch(
 		return receipts, extTxs, nil
 	}
 
-blockLoop:
 	for _, blk := range batch.ExternalBlocks {
 		chainID := apptypes.ChainType(blk.ChainID)
 
@@ -79,46 +78,53 @@ blockLoop:
 		case library.IsEvmChain(chainID):
 			evmReceipts, err := b.multichain.EVMReceipts(ctx, *blk)
 			if err != nil {
-				logger.Debug().Err(err).Msg("failed to get EVM receipts")
+				logger.Warn().Err(err).Msg("failed to get EVM receipts")
 
 				continue
 			}
 
+			hasSubscriptions := b.subscriber.HasEthSubscriptions(chainID)
+
+			// No subscriptions = default "listen to all", no receipts = empty block is still an event.
+			// In both cases skip the receipt loop and pass the block through to ProcessBlock.
 			var subFound bool
+			if !hasSubscriptions || len(evmReceipts) == 0 {
+				subFound = true
+			} else {
+				hasHandlers := b.subscriber.HasEVMHandlers()
 
-			hasHandlers := b.subscriber.HasEVMHandlers()
-
-		receiptLoop:
-			for _, rec := range evmReceipts {
-				for _, lg := range rec.Logs {
-					if lg == nil || len(lg.Topics) == 0 {
-						continue
-					}
-
-					emitter := library.EthereumAddress(lg.Address)
-					topic0 := library.EthereumTopic(lg.Topics[0])
-
-					if !b.subscriber.IsEthSubscription(chainID, emitter, topic0) {
-						continue
-					}
-
-					subFound = true
-
-					// If no handlers but subscription matched, break to skip remaining receipts and call ProcessBlock
-					if !hasHandlers {
-						break receiptLoop
-					}
-
-					// Process through EVMEventRegistry for handler dispatch
-					events, matched, err := b.subscriber.EVMEventRegistry.HandleLog(lg, rec.TxHash)
-					if err == nil && matched {
-						byName := map[string][]tokens.AppEvent{}
-						for _, e := range events {
-							byName[e.Name()] = append(byName[e.Name()], e)
+			receiptLoop:
+				for _, rec := range evmReceipts {
+					for _, lg := range rec.Logs {
+						if lg == nil || len(lg.Topics) == 0 {
+							continue
 						}
 
-						for k, evs := range byName {
-							b.subscriber.Handle(k, evs, dbtx)
+						emitter := library.EthereumAddress(lg.Address)
+						topic0 := library.EthereumTopic(lg.Topics[0])
+
+						if !b.subscriber.IsEthSubscription(chainID, emitter, topic0) {
+							continue
+						}
+
+						subFound = true
+
+						// If no handlers but subscription matched, break to skip remaining receipts and call ProcessBlock
+						if !hasHandlers {
+							break receiptLoop
+						}
+
+						// Process through EVMEventRegistry for handler dispatch
+						events, matched, err := b.subscriber.EVMEventRegistry.HandleLog(lg, rec.TxHash)
+						if err == nil && matched {
+							byName := map[string][]tokens.AppEvent{}
+							for _, e := range events {
+								byName[e.Name()] = append(byName[e.Name()], e)
+							}
+
+							for k, evs := range byName {
+								b.subscriber.Handle(k, evs, dbtx)
+							}
 						}
 					}
 				}
@@ -137,27 +143,40 @@ blockLoop:
 		case library.IsSolanaChain(chainID):
 			block, err := b.multichain.SolanaBlock(ctx, *blk)
 			if err != nil {
-				logger.Info().Err(err).Msg("failed to get Solana block")
+				logger.Warn().Err(err).Msg("failed to get Solana block")
 
 				continue
 			}
 
-			for _, tx := range block.Transactions {
-				for i := range tx.Transaction.Message.Header.NumRequireSignatures {
-					pub := tx.Transaction.Message.Accounts[i]
-					subFound := b.subscriber.IsSolanaSubscription(chainID, library.SolanaAddress(pub))
+			hasSubscriptions := b.subscriber.HasSolanaSubscriptions(chainID)
 
-					if subFound {
-						ext, err := b.extBlockProc.ProcessBlock(*blk, dbtx)
-						if err != nil {
-							return nil, nil, err
+			var solSubFound bool
+			if !hasSubscriptions || len(block.Transactions) == 0 {
+				solSubFound = true
+			} else {
+				for _, tx := range block.Transactions {
+					for i := range tx.Transaction.Message.Header.NumRequireSignatures {
+						pub := tx.Transaction.Message.Accounts[i]
+						if b.subscriber.IsSolanaSubscription(chainID, library.SolanaAddress(pub)) {
+							solSubFound = true
+
+							break
 						}
+					}
 
-						extTxs = append(extTxs, ext...)
-
-						continue blockLoop
+					if solSubFound {
+						break
 					}
 				}
+			}
+
+			if solSubFound {
+				ext, err := b.extBlockProc.ProcessBlock(*blk, dbtx)
+				if err != nil {
+					return nil, nil, err
+				}
+
+				extTxs = append(extTxs, ext...)
 			}
 
 		default:
