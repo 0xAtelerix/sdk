@@ -34,7 +34,10 @@ type MultichainStateAccessor interface {
 	EVMReceipts(ctx context.Context, block apptypes.ExternalBlock) ([]evmtypes.Receipt, error)
 	SolanaBlock(ctx context.Context, block apptypes.ExternalBlock) (*client.Block, error)
 	MidnightBlockByHash(ctx context.Context, block apptypes.ExternalBlock) (*MidnightBlock, error)
-	MidnightContractActions(ctx context.Context, block apptypes.ExternalBlock) ([]MidnightContractAction, error)
+	MidnightContractActions(
+		ctx context.Context,
+		block apptypes.ExternalBlock,
+	) ([]MidnightContractAction, error)
 	Close()
 }
 
