@@ -344,8 +344,9 @@ This ensures demos work out of the box. For production, always explicitly specif
 
 ### Supported chains
 
-The SDK validates chain IDs against known EVM and Solana chains:
-- See `gosdk/chain_consts.go` for the full list of supported networks
+The SDK validates chain IDs against known EVM, Solana, and Midnight chains:
+See `gosdk/chain_consts.go` for the full list of supported networks.
+This project integrates with the Midnight Network.
 
 ### How it works
 

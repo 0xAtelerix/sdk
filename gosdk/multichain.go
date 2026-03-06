@@ -279,6 +279,30 @@ func (sa *MultichainStateAccess) SolanaBlock(
 	return &solBlock, nil
 }
 
+// MidnightBlockByHash is not supported for the MDBX-backed multichain store.
+func (*MultichainStateAccess) MidnightBlockByHash(
+	_ context.Context,
+	block apptypes.ExternalBlock,
+) (*MidnightBlock, error) {
+	return nil, fmt.Errorf(
+		"%w, midnight not available in mdbx backend for chainID %d",
+		library.ErrUnknownChain,
+		block.ChainID,
+	)
+}
+
+// MidnightContractActions is not supported for the MDBX-backed multichain store.
+func (*MultichainStateAccess) MidnightContractActions(
+	_ context.Context,
+	block apptypes.ExternalBlock,
+) ([]MidnightContractAction, error) {
+	return nil, fmt.Errorf(
+		"%w, midnight not available in mdbx backend for chainID %d",
+		library.ErrUnknownChain,
+		block.ChainID,
+	)
+}
+
 // ViewDB may be not deterministic because on diffenet validators you may have different tip.
 // You can rely on received finalized external blocks that you have received from consensus.
 func (sa *MultichainStateAccess) ViewDB(
