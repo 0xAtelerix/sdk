@@ -140,7 +140,9 @@ func InitApp[AppTx apptypes.AppTransaction[R], R apptypes.Receipt](
 
 	for _, chainID := range cfg.RequiredChains {
 		chainType := apptypes.ChainType(chainID)
-		if !library.IsEvmChain(chainType) && !library.IsSolanaChain(chainType) {
+		if !library.IsEvmChain(chainType) &&
+			!library.IsSolanaChain(chainType) &&
+			!library.IsMidnightChain(chainType) {
 			return nil, fmt.Errorf("chain ID %d: %w", chainID, library.ErrUnknownChain)
 		}
 

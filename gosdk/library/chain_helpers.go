@@ -28,6 +28,19 @@ func IsSolanaChain(chainID apptypes.ChainType) bool {
 	return ok
 }
 
+func MidnightChains() map[apptypes.ChainType]struct{} {
+	return map[apptypes.ChainType]struct{}{
+		MidnightPreviewChainID: {},
+		MidnightPreProdChainID: {},
+	}
+}
+
+func IsMidnightChain(chainID apptypes.ChainType) bool {
+	_, ok := MidnightChains()[chainID]
+
+	return ok
+}
+
 func CmpAddr[T Address](a, b T) int {
 	for i := range len(a) {
 		if a[i] < b[i] {

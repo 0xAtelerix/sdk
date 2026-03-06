@@ -61,6 +61,9 @@ const (
 	SolanaDevnetChainID  = apptypes.ChainType(123231)
 	SolanaTestnetChainID = apptypes.ChainType(123234)
 	SolanaChainID        = apptypes.ChainType(1232342)
+
+	MidnightPreviewChainID = apptypes.ChainType(799)
+	MidnightPreProdChainID = apptypes.ChainType(800)
 )
 
 func EVMChains() map[apptypes.ChainType]struct{} {
