@@ -373,6 +373,14 @@ func openSQLite(ctx context.Context, dbPath, mode string) (*sql.DB, error) {
 			if _, err := db.ExecContext(ctx, "PRAGMA query_only = ON;"); err != nil {
 				log.Warn().Err(err).Msg("Unable to enforce query_only; continue anyway")
 			}
+
+			// Disable auto-checkpoint on read-only connections.
+			// Without this the reader may trigger a FULL checkpoint that
+			// blocks on the writer, causing 80%+ CPU in cgocall wait.
+			// The writer (pelacli/multichain oracle) handles checkpointing.
+			if _, err := db.ExecContext(ctx, "PRAGMA wal_autocheckpoint = 0;"); err != nil {
+				log.Warn().Err(err).Msg("Unable to disable wal_autocheckpoint; continue anyway")
+			}
 		}
 
 		return db, nil
