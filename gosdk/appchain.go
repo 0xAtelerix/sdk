@@ -42,6 +42,11 @@ type AppchainConfig struct {
 	PrometheusPort string
 	ValidatorID    string // Optional validator identifier for metrics/logs
 	Logger         *zerolog.Logger
+
+	// EmitterListener is an optional pre-created listener for the emitter gRPC server.
+	// When set, EmitterPort is ignored and the server uses this listener directly.
+	// This eliminates TOCTOU port races in test infrastructure.
+	EmitterListener net.Listener
 }
 
 type Appchain[
@@ -433,11 +438,23 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 func (a *Appchain[AppTx, BP, AppBlock, R]) runEmitterAPI(ctx context.Context, errCh chan error) {
 	logger := log.Ctx(ctx)
 
-	lis, err := (&net.ListenConfig{}).Listen(ctx, "tcp", a.config.EmitterPort)
-	if err != nil {
-		errCh <- fmt.Errorf("failed to create listener: %w, port %q", err, a.config.EmitterPort)
+	var lis net.Listener
 
-		return
+	if a.config.EmitterListener != nil {
+		lis = a.config.EmitterListener
+		// Update EmitterPort from the listener so subsequent Run() calls (restarts)
+		// bind to the same address without needing a new held listener.
+		a.config.EmitterPort = lis.Addr().String()
+		a.config.EmitterListener = nil
+	} else {
+		var err error
+
+		lis, err = (&net.ListenConfig{}).Listen(ctx, "tcp", a.config.EmitterPort)
+		if err != nil {
+			errCh <- fmt.Errorf("failed to create listener: %w, port %q", err, a.config.EmitterPort)
+
+			return
+		}
 	}
 
 	close(errCh)
@@ -481,7 +498,7 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) runEmitterAPI(ctx context.Context, er
 
 		<-serveErr
 
-	case err = <-serveErr:
+	case err := <-serveErr:
 		if err != nil {
 			logger.Panic().Err(err).Msg("gRPC server crashed")
 		}

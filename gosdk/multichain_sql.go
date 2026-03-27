@@ -90,7 +90,7 @@ func (sa *MultichainStateAccessSQL) EVMBlock(
 			log.Error().
 				Err(err).
 				Uint64("block", block.BlockNumber).
-				Str("block", string(rawBlock)).
+				Uint64("chain", block.ChainID).
 				Msg("block not found")
 
 			if errors.Is(err, sql.ErrNoRows) {
@@ -176,17 +176,42 @@ func (sa *MultichainStateAccessSQL) EVMReceipts(
 
 	for rows.Next() {
 		var raw []byte
-		if err := rows.Scan(&raw); err != nil {
-			return nil, fmt.Errorf("scan receipt raw: %w", err)
+
+		scanErr := rows.Scan(&raw)
+		if scanErr != nil {
+			if errors.Is(scanErr, sql.ErrNoRows) {
+				log.Error().
+					Err(scanErr).
+					Uint64("block", block.BlockNumber).
+					Uint64("chain", block.ChainID).
+					Msg("receipt not found")
+				time.Sleep(100 * time.Millisecond)
+
+				continue
+			}
+
+			return nil, fmt.Errorf(
+				"failed to read eth block: %w, chainID %d, block number %d, block hash %s",
+				scanErr,
+				block.ChainID,
+				block.BlockNumber,
+				hex.EncodeToString(block.BlockHash[:]),
+			)
 		}
 
 		if raw == nil {
+			log.Error().
+				Uint64("block", block.BlockNumber).
+				Uint64("chain", block.ChainID).
+				Msg("receipt not found")
+			time.Sleep(100 * time.Millisecond)
+
 			continue
 		}
 
 		r := evmtypes.Receipt{}
 
-		err := json.Unmarshal(raw, &r)
+		err = json.Unmarshal(raw, &r)
 		if err != nil {
 			return nil, fmt.Errorf("decode receipt: %w", err)
 		}
@@ -372,6 +397,14 @@ func openSQLite(ctx context.Context, dbPath, mode string) (*sql.DB, error) {
 		if mode == "ro" {
 			if _, err := db.ExecContext(ctx, "PRAGMA query_only = ON;"); err != nil {
 				log.Warn().Err(err).Msg("Unable to enforce query_only; continue anyway")
+			}
+
+			// Disable auto-checkpoint on read-only connections.
+			// Without this the reader may trigger a FULL checkpoint that
+			// blocks on the writer, causing 80%+ CPU in cgocall wait.
+			// The writer (pelacli/multichain oracle) handles checkpointing.
+			if _, err := db.ExecContext(ctx, "PRAGMA wal_autocheckpoint = 0;"); err != nil {
+				log.Warn().Err(err).Msg("Unable to disable wal_autocheckpoint; continue anyway")
 			}
 		}
 
