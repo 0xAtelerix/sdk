@@ -176,20 +176,23 @@ func (sa *MultichainStateAccessSQL) EVMReceipts(
 
 	for rows.Next() {
 		var raw []byte
-		if err := rows.Scan(&raw); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
+
+		scanErr := rows.Scan(&raw)
+		if scanErr != nil {
+			if errors.Is(scanErr, sql.ErrNoRows) {
 				log.Error().
-					Err(err).
+					Err(scanErr).
 					Uint64("block", block.BlockNumber).
 					Uint64("chain", block.ChainID).
 					Msg("receipt not found")
 				time.Sleep(100 * time.Millisecond)
+
 				continue
 			}
 
 			return nil, fmt.Errorf(
 				"failed to read eth block: %w, chainID %d, block number %d, block hash %s",
-				err,
+				scanErr,
 				block.ChainID,
 				block.BlockNumber,
 				hex.EncodeToString(block.BlockHash[:]),
@@ -198,17 +201,17 @@ func (sa *MultichainStateAccessSQL) EVMReceipts(
 
 		if raw == nil {
 			log.Error().
-				Err(err).
 				Uint64("block", block.BlockNumber).
 				Uint64("chain", block.ChainID).
 				Msg("receipt not found")
 			time.Sleep(100 * time.Millisecond)
+
 			continue
 		}
 
 		r := evmtypes.Receipt{}
 
-		err := json.Unmarshal(raw, &r)
+		err = json.Unmarshal(raw, &r)
 		if err != nil {
 			return nil, fmt.Errorf("decode receipt: %w", err)
 		}
