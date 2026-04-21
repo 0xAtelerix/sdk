@@ -48,6 +48,7 @@ const (
 
 	// testnets
 	AnvilChainID           = apptypes.ChainType(31337)    // Anvil Local
+	AnvilBaseChainID       = apptypes.ChainType(31338)    // Anvil Local (Base fork)
 	EthereumSepoliaChainID = apptypes.ChainType(11155111) // Ethereum Sepolia Testnet
 	PolygonMumbaiChainID   = apptypes.ChainType(80001)    // Polygon Mumbai Testnet
 	PolygonAmoyChainID     = apptypes.ChainType(80002)    // Polygon Amoy Testnet
@@ -76,6 +77,7 @@ func EVMChains() map[apptypes.ChainType]struct{} {
 		FantomChainID:           {},
 		BaseChainID:             {},
 		AnvilChainID:            {},
+		AnvilBaseChainID:        {},
 		EthereumSepoliaChainID:  {},
 		PolygonMumbaiChainID:    {},
 		PolygonAmoyChainID:      {},
