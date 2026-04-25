@@ -468,7 +468,11 @@ func TestGetExternalTransactions_PropertyBased(t *testing.T) {
 					transactionMap[blockNumber] = append(transactionMap[blockNumber], tx)
 				}
 
-				if _, err = WriteExternalTransactions(tx, blockNumber, transactionMap[blockNumber]); err != nil {
+				if _, err = WriteExternalTransactions(
+					tx,
+					blockNumber,
+					transactionMap[blockNumber],
+				); err != nil {
 					tr.Fatalf("external transaction storing to the DB failed: %v", err)
 				}
 			}

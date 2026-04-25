@@ -125,7 +125,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 	ews.logger.Debug().Int("batches", len(eventBatches)).Msg("got new batches")
 
-	var result []apptypes.Batch[appTx, R] //nolint:prealloc // hard to predict also many cases will be with empty batches
+	var result []apptypes.Batch[appTx, R]
 
 	// getting the valset for the epoch
 	var valset *ValidatorSet

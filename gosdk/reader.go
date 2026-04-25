@@ -167,7 +167,7 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 
 // readNewBatches читает новые батчи, но не более `limit` за один вызов.
 func (er *EventReader) readNewBatches(ctx context.Context, limit int) ([]ReadBatch, error) {
-	var batches []ReadBatch //nolint:prealloc // hard to predict also many cases will be with empty batches
+	var batches []ReadBatch
 
 	logger := log.Ctx(ctx)
 	vid := utility.ValidatorIDFromCtx(ctx)
