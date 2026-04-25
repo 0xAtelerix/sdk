@@ -128,7 +128,10 @@ func (s *StandardRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 			if errors.As(err, &middlewareErr) {
 				responses[i] = newErrorResponse(middlewareErr, responses[i].ID)
 			} else {
-				responses[i] = newErrorResponse(&Error{Code: -32603, Message: err.Error()}, responses[i].ID)
+				responses[i] = newErrorResponse(
+					&Error{Code: -32603, Message: err.Error()},
+					responses[i].ID,
+				)
 			}
 		}
 	}

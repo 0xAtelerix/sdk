@@ -86,7 +86,8 @@ func (sa *MultichainStateAccessSQL) EVMBlock(
 
 		i++
 
-		if err := db.QueryRowContext(ctx, query, block.BlockHash[:], block.BlockNumber).Scan(&rawBlock, &num); err != nil {
+		if err := db.QueryRowContext(ctx, query, block.BlockHash[:], block.BlockNumber).
+			Scan(&rawBlock, &num); err != nil {
 			log.Error().
 				Err(err).
 				Uint64("block", block.BlockNumber).

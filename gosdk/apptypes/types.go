@@ -174,9 +174,9 @@ type Event struct {
 	PrevEpochHash *[32]byte `json:"prevEpochHash" cbor:"3,keyasint"`
 
 	// батчи транзакций, которые были уже переданы другим валидаторам и у нас есть подпись, что они получены
-	TxPool []AppchainTxPoolBatch `json:"txPool"     cbor:"4,keyasint"`
+	TxPool []AppchainTxPoolBatch `json:"txPool" cbor:"4,keyasint"`
 	// обновления состояния аппчейна, какой новый стейт рут, блок и внешние транзакции
-	Appchains []Checkpoint `json:"appchains"  cbor:"5,keyasint"`
+	Appchains []Checkpoint `json:"appchains" cbor:"5,keyasint"`
 	// внешние блоки
 	BlockVotes []ExternalBlock `json:"blockVotes" cbor:"6,keyasint"`
 
