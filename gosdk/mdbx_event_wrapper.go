@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
@@ -123,6 +125,8 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 		return nil, err
 	}
 
+	eventBatchReadDone := time.Now()
+
 	ews.logger.Debug().Int("batches", len(eventBatches)).Msg("got new batches")
 
 	var result []apptypes.Batch[appTx, R]
@@ -164,12 +168,24 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 		tParseEvt := time.Now()
 
-		for _, rawEvent := range eventBatch.Events {
+		for eventIndex, rawEvent := range eventBatch.Events {
+			eventDecodeStart := time.Now()
+
 			var evt apptypes.Event
 
 			if err = cbor.Unmarshal(rawEvent, &evt); err != nil {
 				return nil, fmt.Errorf("failed to decode event: %w", err)
 			}
+
+			eventDecodeDone := time.Now()
+			ews.logCEXEventAdmitted(
+				eventBatch,
+				eventIndex,
+				evt,
+				eventBatchReadDone,
+				eventDecodeStart,
+				eventDecodeDone,
+			)
 
 			var notFoundCycleValset int
 
@@ -457,6 +473,90 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 	}
 
 	return result, nil
+}
+
+func (ews *MdbxEventStreamWrapper[appTx, R]) logCEXEventAdmitted(
+	eventBatch ReadBatch,
+	eventIndex int,
+	evt apptypes.Event,
+	eventBatchReadDone time.Time,
+	eventDecodeStart time.Time,
+	eventDecodeDone time.Time,
+) {
+	if len(evt.CEXOrderBookRefs) == 0 {
+		return
+	}
+
+	stats := collectCEXRefStats(evt.CEXOrderBookRefs, eventDecodeDone)
+
+	ews.logger.Info().
+		Str("path", "appchain_event_handoff").
+		Hex("event_id", evt.Base.ID[:]).
+		Hex("event_batch_atropos", eventBatch.Atropos[:]).
+		Int("event_index", eventIndex).
+		Int("event_count", len(eventBatch.Events)).
+		Int64("event_batch_offset", eventBatch.Offset).
+		Int64("event_batch_end_offset", eventBatch.EndOffset).
+		Int("cex_refs", len(evt.CEXOrderBookRefs)).
+		Int64("event_batch_read_done_time_ms", eventBatchReadDone.UnixMilli()).
+		Int64("event_decode_start_time_ms", eventDecodeStart.UnixMilli()).
+		Int64("event_decode_done_time_ms", eventDecodeDone.UnixMilli()).
+		Int64("event_decode_ms", eventDecodeDone.Sub(eventDecodeStart).Milliseconds()).
+		Int64("appchain_event_admit_time_ms", eventDecodeDone.UnixMilli()).
+		Int64("ref_min_fetched_at_ms", stats.minFetchedAtMs).
+		Int64("ref_max_fetched_at_ms", stats.maxFetchedAtMs).
+		Int64("ref_newest_age_ms", stats.newestAgeMs).
+		Int64("ref_oldest_age_ms", stats.oldestAgeMs).
+		Str("symbols", strings.Join(stats.symbols, ",")).
+		Msg("CEX event admitted by appchain")
+}
+
+type cexRefStats struct {
+	minFetchedAtMs int64
+	maxFetchedAtMs int64
+	newestAgeMs    int64
+	oldestAgeMs    int64
+	symbols        []string
+}
+
+func collectCEXRefStats(refs []apptypes.CEXOrderBookRef, at time.Time) cexRefStats {
+	minFetchedAt := refs[0].FetchedAt
+	maxFetchedAt := refs[0].FetchedAt
+	symbolSet := make(map[string]struct{}, len(refs))
+
+	for _, ref := range refs {
+		if ref.FetchedAt < minFetchedAt {
+			minFetchedAt = ref.FetchedAt
+		}
+
+		if ref.FetchedAt > maxFetchedAt {
+			maxFetchedAt = ref.FetchedAt
+		}
+
+		key := strings.TrimSpace(ref.Exchange) + ":" + strings.TrimSpace(ref.Symbol)
+		if key != ":" {
+			symbolSet[key] = struct{}{}
+		}
+	}
+
+	symbols := make([]string, 0, len(symbolSet))
+	for symbol := range symbolSet {
+		symbols = append(symbols, symbol)
+	}
+
+	slices.Sort(symbols)
+
+	atMs := at.UnixMilli()
+	minFetchedAtMs := minFetchedAt / int64(time.Millisecond)
+	maxFetchedAtMs := maxFetchedAt / int64(time.Millisecond)
+
+	return cexRefStats{
+		minFetchedAtMs: minFetchedAtMs,
+		maxFetchedAtMs: maxFetchedAtMs,
+		oldestAgeMs:    atMs - minFetchedAtMs,
+		newestAgeMs:    atMs - maxFetchedAtMs,
+		symbols:        symbols,
+	}
 }
 
 func (ews *MdbxEventStreamWrapper[appTx, R]) Close() error {
