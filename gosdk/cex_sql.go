@@ -111,7 +111,12 @@ func (c *CEXDataAccessSQL) ReadCEXOrderBook(
 		FetchedAt: fetchedAt,
 	}})
 	if len(errs) == 0 {
-		return nil, fmt.Errorf("read order book %s/%s@%d: empty read result", exchange, symbol, fetchedAt)
+		return nil, fmt.Errorf(
+			"read order book %s/%s@%d: empty read result",
+			exchange,
+			symbol,
+			fetchedAt,
+		)
 	}
 
 	return snapshots[0], errs[0]
@@ -123,6 +128,7 @@ func (c *CEXDataAccessSQL) ReadCEXOrderBooks(
 	refs []apptypes.CEXOrderBookRef,
 ) ([]*apptypes.CEXOrderBookSnapshot, []error) {
 	snapshots := make([]*apptypes.CEXOrderBookSnapshot, len(refs))
+
 	errs := make([]error, len(refs))
 	if len(refs) == 0 {
 		return snapshots, errs
@@ -144,7 +150,8 @@ func (c *CEXDataAccessSQL) ReadCEXOrderBooks(
 	}
 
 	defer func() {
-		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil &&
+			!errors.Is(rollbackErr, sql.ErrTxDone) {
 			log.Ctx(ctx).Warn().Err(rollbackErr).Msg("rollback cex sqlite read tx")
 		}
 	}()
@@ -250,6 +257,7 @@ func (c *CEXDataAccessSQL) readCEXOrderBookRowsTx(
 	}
 
 	conditions := make(sq.Or, 0, len(refs))
+
 	seen := make(map[cexOrderBookRefKey]struct{}, len(refs))
 	for _, ref := range refs {
 		key := cexOrderBookRefKey{
@@ -279,10 +287,12 @@ func (c *CEXDataAccessSQL) readCEXOrderBookRowsTx(
 	}
 
 	queryStart := time.Now()
+
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return rowsByRef, time.Since(queryStart), err
 	}
+
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
 			log.Ctx(ctx).Warn().Err(closeErr).Msg("close cex orderbook batch rows")
@@ -337,6 +347,7 @@ func (c *CEXDataAccessSQL) readCEXOrderBookMissTx(
 	diag.NearestProbeDuration = time.Since(probeStart)
 	if probeErr == nil {
 		diag.NearestOlderFetchedAt = older
+
 		diag.NearestNewerFetchedAt = newer
 		if older > 0 && ref.FetchedAt >= older {
 			diag.NearestOlderDeltaNs = ref.FetchedAt - older

@@ -26,11 +26,13 @@ func TestEventReaderBlockingUsesConfiguredPollIntervalWhenWatcherIsQuiet(t *test
 		pollInterval: 5 * time.Millisecond,
 		position:     8,
 	}
+
 	t.Cleanup(func() {
 		require.NoError(t, reader.Close())
 	})
 
 	var atropos [32]byte
+
 	atropos[31] = 1
 
 	go func() {

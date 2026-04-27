@@ -254,17 +254,11 @@ runFor:
 			logger.Debug().Int("batch", i).Int("tx", len(batch.Transactions)).Int("blocks", len(batch.ExternalBlocks)).Msg("received new batch")
 
 			start := time.Now()
-			logger.Info().
-				Str("path", "appchain_batch_process_start").
-				Int64("process_start_time_ms", start.UnixMilli()).
-				Uint64("expected_block_number", previousBlockNumber+1).
-				Hex("event_batch_atropos", batch.Atropos[:]).
-				Int64("event_batch_end_offset", batch.EndOffset).
-				Int("tx_count", len(batch.Transactions)).
-				Int("external_block_count", len(batch.ExternalBlocks)).
-				Int("checkpoint_count", len(batch.Checkpoints)).
-				Int("cex_ref_count", len(batch.CEXOrderBookRefs)).
-				Msg("appchain batch processing started")
+
+			BatchTransactions.WithLabelValues(vid, cid).Observe(float64(len(batch.Transactions)))
+			BatchExternalBlocks.WithLabelValues(vid, cid).Observe(float64(len(batch.ExternalBlocks)))
+			BatchCheckpoints.WithLabelValues(vid, cid).Observe(float64(len(batch.Checkpoints)))
+			BatchCEXOrderBookRefs.WithLabelValues(vid, cid).Observe(float64(len(batch.CEXOrderBookRefs)))
 
 			err = a.processBatch(ctx, batch, &previousBlockNumber, &previousBlockHash, eventStream, votingBlocks, votingCheckpoints, vid, cid)
 			if err != nil {
