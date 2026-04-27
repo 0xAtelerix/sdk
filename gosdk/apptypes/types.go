@@ -21,7 +21,11 @@ type Receipt interface {
 	Error() string
 }
 
-// Batch contains app transactions, external block references, checkpoints, and CEX refs.
+// Batch is the serializable appchain batch payload.
+//
+// It contains app transactions, external block references, checkpoints, and
+// CEX refs. Cross-appchain transactions are still intentionally left as a TODO
+// below, matching the original contract note.
 type Batch[appTx AppTransaction[R], R Receipt] struct {
 	Atropos        [32]byte         `cbor:"1,keyasint"`
 	Transactions   []appTx          `cbor:"2,keyasint"`
@@ -75,6 +79,9 @@ type ExternalID struct {
 }
 
 // AppchainBlock is the minimal appchain block interface used by the SDK.
+//
+// For DAG-style appchains, this can represent the interval between two
+// atroposes, not only a linear block.
 type AppchainBlock interface {
 	Hash() [32]byte
 	StateRoot() [32]byte
@@ -92,17 +99,28 @@ type AppchainBlockConstructor[appTx AppTransaction[R], R Receipt, block Appchain
 	txsBatch Batch[appTx, R]) block
 
 // ExternalTransaction stores an external chain transaction payload.
+//
+// For connected L1/L2 chains, callers must be able to unmarshal the Tx field
+// into the native transaction type. For inter-appchain payloads, Tx is inserted
+// as-is.
 type ExternalTransaction struct {
 	ChainID ChainType `cbor:"1,keyasint"`
 	Tx      []byte    `cbor:"2,keyasint"`
 }
 
 // RootCalculator calculates the state root from an MDBX transaction.
+//
+// State-root ownership is intentionally abstract here: the concrete appchain
+// may provide a replaceable implementation. The open design options preserved
+// from the original note are:
+// 1. one state table with prefixes for different modules;
+// 2. multiple state tables plus an explicit list of which tables participate in
+// the state root.
 type RootCalculator interface {
 	StateRootCalculator(tx kv.RwTx) ([32]byte, error)
 }
 
-// AppchainTxPoolBatch identifies a transaction-pool batch to process.
+// AppchainTxPoolBatch identifies the hash of the transaction-pool batch to process.
 type AppchainTxPoolBatch struct {
 	ChainID uint64   `cbor:"1,keyasint"`
 	Hash    [32]byte `cbor:"2,keyasint"`
@@ -136,7 +154,7 @@ type TxPoolInterface[T AppTransaction[R], R Receipt] interface {
 	Close() error
 }
 
-// Checkpoint captures appchain state finalization metadata.
+// Checkpoint captures finalization of an appchain state transition.
 type Checkpoint struct {
 	ChainID                  uint64   `json:"chainId"                  cbor:"1,keyasint"`
 	BlockNumber              uint64   `json:"blockNumber"              cbor:"2,keyasint"`

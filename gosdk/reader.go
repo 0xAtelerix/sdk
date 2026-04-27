@@ -17,12 +17,13 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
-// BatchReader is called by the appchain to retrieve new batches.
+// BatchReader is called by the appchain to retrieve new transaction batches.
 type BatchReader[appTx apptypes.AppTransaction[R], R apptypes.Receipt] interface {
 	GetNewBatchesBlocking(limit int) ([]apptypes.Batch[appTx, R], error)
 }
 
-// EventReader reads append-only event batches from one epoch data file.
+// EventReader reads append-only event batches from one epoch data file using
+// fsnotify plus a polling fallback.
 type EventReader struct {
 	// dataFile is the open epoch data file.
 	dataFile *os.File
@@ -36,7 +37,8 @@ type EventReader struct {
 	pollInterval time.Duration
 	// position points to the start of the next unread batch.
 	position int64
-	// reachedEOF records whether the last read reached EOF and should block.
+	// reachedEOF records whether the reader reached the file end and should wait
+	// on fsnotify or the poll fallback before trying again.
 	reachedEOF bool
 }
 
@@ -53,7 +55,7 @@ func DefaultEventReaderConfig() EventReaderConfig {
 	}
 }
 
-// NewEventReader инициализирует reader с возможностью задать начальную позицию.
+// NewEventReader initializes a reader with a configurable starting position.
 func NewEventReader(dataFilePath string, startPosition int64) (*EventReader, error) {
 	return NewEventReaderWithConfig(dataFilePath, startPosition, DefaultEventReaderConfig())
 }
@@ -135,7 +137,7 @@ func (er *EventReader) GetNewBatchesNonBlocking(
 	return er.readNewBatches(ctx, limit)
 }
 
-// GetNewBatchesBlocking ждёт, пока появятся новые батчи.
+// GetNewBatchesBlocking waits until new batches appear.
 func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]ReadBatch, error) {
 	logger := log.Ctx(ctx)
 
@@ -217,7 +219,7 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 	}
 }
 
-// readNewBatches читает новые батчи, но не более `limit` за один вызов.
+// readNewBatches reads new batches, up to limit per call.
 func (er *EventReader) readNewBatches(ctx context.Context, limit int) ([]ReadBatch, error) {
 	var batches []ReadBatch
 
