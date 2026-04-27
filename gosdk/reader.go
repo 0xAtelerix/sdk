@@ -24,14 +24,27 @@ type BatchReader[appTx apptypes.AppTransaction[R], R apptypes.Receipt] interface
 
 // EventReader with fsnotify
 type EventReader struct {
-	dataFile   *os.File
-	watcher    *fsnotify.Watcher
-	position   int64 // Указывает на начало последнего прочитанного батча
-	reachedEOF bool  // Достигли ли мы конца файла? Нужно, чтобы переключаться на fnotify блокировку
+	dataFile      *os.File
+	watcher       *fsnotify.Watcher
+	watcherEvents <-chan fsnotify.Event
+	watcherErrors <-chan error
+	pollInterval  time.Duration
+	position      int64 // Указывает на начало последнего прочитанного батча
+	reachedEOF    bool  // Достигли ли мы конца файла? Нужно, чтобы переключаться на fnotify блокировку
 }
+
+const defaultEventReaderPollInterval = 10 * time.Millisecond
 
 // NewEventReader инициализирует reader с возможностью задать начальную позицию.
 func NewEventReader(dataFilePath string, startPosition int64) (*EventReader, error) {
+	return NewEventReaderWithPollInterval(dataFilePath, startPosition, defaultEventReaderPollInterval)
+}
+
+func NewEventReaderWithPollInterval(
+	dataFilePath string,
+	startPosition int64,
+	pollInterval time.Duration,
+) (*EventReader, error) {
 	f, err := os.OpenFile(dataFilePath, os.O_RDONLY, 0o644)
 	if err != nil {
 		return nil, err
@@ -51,11 +64,18 @@ func NewEventReader(dataFilePath string, startPosition int64) (*EventReader, err
 		startPosition = 8
 	}
 
+	if pollInterval <= 0 {
+		pollInterval = defaultEventReaderPollInterval
+	}
+
 	return &EventReader{
-		dataFile:   f,
-		watcher:    watcher,
-		position:   startPosition,
-		reachedEOF: false,
+		dataFile:      f,
+		watcher:       watcher,
+		watcherEvents: watcher.Events,
+		watcherErrors: watcher.Errors,
+		pollInterval:  pollInterval,
+		position:      startPosition,
+		reachedEOF:    false,
 	}, nil
 }
 
@@ -63,6 +83,10 @@ func (er *EventReader) Close() error {
 	err := er.dataFile.Close()
 	if err != nil {
 		return err
+	}
+
+	if er.watcher == nil {
+		return nil
 	}
 
 	return er.watcher.Close()
@@ -120,7 +144,7 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 
 		// 2. EOF: включаем/перезапускаем таймер ровно ОДИН раз
 		if timer == nil {
-			timer = time.NewTimer(100 * time.Millisecond)
+			timer = time.NewTimer(er.pollInterval)
 			timerCh = timer.C
 		} else {
 			if !timer.Stop() && timerCh != nil {
@@ -134,14 +158,14 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 				logger.Debug().Msg("drained channel")
 			}
 
-			timer.Reset(100 * time.Millisecond)
+			timer.Reset(er.pollInterval)
 		}
 
 		logger.Debug().Msg("Locking: readNewBatches return 0 batches")
 
 		// 3. Ждём либо fsnotify-событие, либо истечение тайм-аутa
 		select {
-		case ev := <-er.watcher.Events:
+		case ev := <-er.watcherEvents:
 			logger.Debug().Str("watcher", ev.String()).Msg("watcher event")
 
 			if ev.Op&(fsnotify.Write|fsnotify.Rename|fsnotify.Create) != 0 {
@@ -154,7 +178,7 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 			// Таймаут прошёл — снова в начало for (polling)
 			continue
 
-		case err := <-er.watcher.Errors:
+		case err := <-er.watcherErrors:
 			logger.Warn().Err(err).Msg("fsnotify error")
 
 		case <-ctx.Done():
