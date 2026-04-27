@@ -40,9 +40,11 @@ type MdbxEventStreamWrapperConfig struct {
 	TxBatchPollInterval time.Duration
 }
 
-// DefaultMdbxEventStreamWrapperConfig is used by NewMdbxEventStreamWrapper.
-var DefaultMdbxEventStreamWrapperConfig = MdbxEventStreamWrapperConfig{
-	TxBatchPollInterval: 50 * time.Millisecond,
+// DefaultMdbxEventStreamWrapperConfig returns the production MDBX stream defaults.
+func DefaultMdbxEventStreamWrapperConfig() MdbxEventStreamWrapperConfig {
+	return MdbxEventStreamWrapperConfig{
+		TxBatchPollInterval: 50 * time.Millisecond,
+	}
 }
 
 type EventStreamWrapperConstructor[appTx apptypes.AppTransaction[R], R apptypes.Receipt] func(
@@ -74,7 +76,7 @@ func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Rece
 		appchainDB:        appchainDB,
 		votingBlocks:      votingBlocks,
 		votingCheckpoints: votingCheckpoints,
-		config:            DefaultMdbxEventStreamWrapperConfig,
+		config:            DefaultMdbxEventStreamWrapperConfig(),
 	}
 
 	err := wrapper.InitReader(ctx)
@@ -312,7 +314,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 		pollInterval := ews.config.TxBatchPollInterval
 		if pollInterval <= 0 {
-			pollInterval = DefaultMdbxEventStreamWrapperConfig.TxBatchPollInterval
+			pollInterval = DefaultMdbxEventStreamWrapperConfig().TxBatchPollInterval
 		}
 
 		var notFoundCycle uint64

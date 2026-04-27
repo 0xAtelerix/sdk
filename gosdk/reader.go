@@ -46,14 +46,16 @@ type EventReaderConfig struct {
 	PollInterval time.Duration
 }
 
-// DefaultEventReaderConfig is used by NewEventReader.
-var DefaultEventReaderConfig = EventReaderConfig{
-	PollInterval: 10 * time.Millisecond,
+// DefaultEventReaderConfig returns the production EventReader defaults.
+func DefaultEventReaderConfig() EventReaderConfig {
+	return EventReaderConfig{
+		PollInterval: 10 * time.Millisecond,
+	}
 }
 
 // NewEventReader инициализирует reader с возможностью задать начальную позицию.
 func NewEventReader(dataFilePath string, startPosition int64) (*EventReader, error) {
-	return NewEventReaderWithConfig(dataFilePath, startPosition, DefaultEventReaderConfig)
+	return NewEventReaderWithConfig(dataFilePath, startPosition, DefaultEventReaderConfig())
 }
 
 func NewEventReaderWithPollInterval(
@@ -91,7 +93,7 @@ func NewEventReaderWithConfig(
 	}
 
 	if config.PollInterval <= 0 {
-		config.PollInterval = DefaultEventReaderConfig.PollInterval
+		config.PollInterval = DefaultEventReaderConfig().PollInterval
 	}
 
 	return &EventReader{

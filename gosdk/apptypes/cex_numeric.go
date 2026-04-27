@@ -22,9 +22,6 @@ const (
 // UInt256BE is one fixed-width unsigned 256-bit big-endian value.
 type UInt256BE [UInt256BEBytes]byte
 
-// ZeroUInt256BE is the canonical zero word used for direct comparisons.
-var ZeroUInt256BE UInt256BE
-
 // NewUInt256BE converts a non-negative bigint into a fixed-width 32-byte word.
 func NewUInt256BE(value *big.Int) (UInt256BE, error) {
 	if value == nil || value.Sign() == 0 {
@@ -53,7 +50,7 @@ func (u UInt256BE) BigInt() *big.Int {
 
 // IsZero reports whether the word is zero.
 func (u UInt256BE) IsZero() bool {
-	return u == ZeroUInt256BE
+	return u == UInt256BE{}
 }
 
 // String renders the canonical base-10 integer form.
