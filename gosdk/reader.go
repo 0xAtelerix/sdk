@@ -37,7 +37,11 @@ const defaultEventReaderPollInterval = 10 * time.Millisecond
 
 // NewEventReader инициализирует reader с возможностью задать начальную позицию.
 func NewEventReader(dataFilePath string, startPosition int64) (*EventReader, error) {
-	return NewEventReaderWithPollInterval(dataFilePath, startPosition, defaultEventReaderPollInterval)
+	return NewEventReaderWithPollInterval(
+		dataFilePath,
+		startPosition,
+		defaultEventReaderPollInterval,
+	)
 }
 
 func NewEventReaderWithPollInterval(

@@ -43,6 +43,46 @@ var (
 		},
 		[]string{"validator_id", "chain_id"},
 	)
+	BatchTransactions = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "appchain",
+			Subsystem: "run",
+			Name:      "batch_transactions",
+			Help:      "Transactions per appchain batch",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 12),
+		},
+		[]string{"validator_id", "chain_id"},
+	)
+	BatchExternalBlocks = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "appchain",
+			Subsystem: "run",
+			Name:      "batch_external_blocks",
+			Help:      "External blocks per appchain batch",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 12),
+		},
+		[]string{"validator_id", "chain_id"},
+	)
+	BatchCheckpoints = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "appchain",
+			Subsystem: "run",
+			Name:      "batch_checkpoints",
+			Help:      "Checkpoints per appchain batch",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 12),
+		},
+		[]string{"validator_id", "chain_id"},
+	)
+	BatchCEXOrderBookRefs = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "appchain",
+			Subsystem: "run",
+			Name:      "batch_cex_order_book_refs",
+			Help:      "CEX order book refs per appchain batch",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 12),
+		},
+		[]string{"validator_id", "chain_id"},
+	)
 	EventStreamBlockingDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "appchain",
@@ -185,6 +225,46 @@ var (
 		},
 		[]string{"validator_id", "chain_id"},
 	)
+	MdbxCEXEventHandoffRefs = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "appchain",
+			Subsystem: "mdbx",
+			Name:      "cex_event_handoff_refs",
+			Help:      "CEX order book refs per admitted CEX event",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 12),
+		},
+		[]string{"validator_id", "chain_id"},
+	)
+	MdbxCEXEventHandoffDecodeDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "appchain",
+			Subsystem: "mdbx",
+			Name:      "cex_event_handoff_decode_duration_seconds",
+			Help:      "Time to decode an admitted CEX event",
+			Buckets:   prometheus.DefBuckets,
+		},
+		[]string{"validator_id", "chain_id"},
+	)
+	MdbxCEXEventHandoffNewestAge = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "appchain",
+			Subsystem: "mdbx",
+			Name:      "cex_event_handoff_newest_age_seconds",
+			Help:      "Age of the newest CEX ref in an admitted CEX event",
+			Buckets:   prometheus.DefBuckets,
+		},
+		[]string{"validator_id", "chain_id"},
+	)
+	MdbxCEXEventHandoffOldestAge = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "appchain",
+			Subsystem: "mdbx",
+			Name:      "cex_event_handoff_oldest_age_seconds",
+			Help:      "Age of the oldest CEX ref in an admitted CEX event",
+			Buckets:   prometheus.DefBuckets,
+		},
+		[]string{"validator_id", "chain_id"},
+	)
 )
 
 func init() {
@@ -193,6 +273,10 @@ func init() {
 		ProcessedTransactions,
 		BlockProcessingDuration,
 		BatchProcessingDuration,
+		BatchTransactions,
+		BatchExternalBlocks,
+		BatchCheckpoints,
+		BatchCEXOrderBookRefs,
 		EventStreamBlockingDuration,
 
 		HeadBlockNumber, EventStreamPosition,
@@ -201,5 +285,9 @@ func init() {
 
 		MdbxWaitCyclesTotal, MdbxWaitTimeSeconds, MdbxTxLookupDuration,
 		MdbxTxBatchesExpectedTotal, MdbxTxBatchesFoundTotal, MdbxEventParseDuration,
+		MdbxCEXEventHandoffRefs,
+		MdbxCEXEventHandoffDecodeDuration,
+		MdbxCEXEventHandoffNewestAge,
+		MdbxCEXEventHandoffOldestAge,
 	)
 }
