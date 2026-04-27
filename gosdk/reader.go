@@ -17,7 +17,7 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
-// Что должен дергать апчейн, чтобы получить транзакции
+// BatchReader is called by the appchain to retrieve new batches.
 type BatchReader[appTx apptypes.AppTransaction[R], R apptypes.Receipt] interface {
 	GetNewBatchesBlocking(limit int) ([]apptypes.Batch[appTx, R], error)
 }
@@ -120,7 +120,7 @@ func (er *EventReader) Close() error {
 	return er.watcher.Close()
 }
 
-// Batch содержит атропос и события
+// ReadBatch contains one atropos and its event payloads.
 type ReadBatch struct {
 	Atropos   [32]byte
 	Events    [][]byte

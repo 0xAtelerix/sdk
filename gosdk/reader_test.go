@@ -37,7 +37,11 @@ func TestEventReaderBlockingUsesConfiguredPollIntervalWhenWatcherIsQuiet(t *test
 
 	go func() {
 		time.Sleep(20 * time.Millisecond)
-		require.NoError(t, appendEventReaderBatch(path, atropos, [][]byte{[]byte("event")}))
+
+		appendErr := appendEventReaderBatch(path, atropos, [][]byte{[]byte("event")})
+		if appendErr != nil {
+			t.Errorf("append event reader batch: %v", appendErr)
+		}
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)

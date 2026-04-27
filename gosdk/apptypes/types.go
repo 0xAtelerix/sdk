@@ -21,7 +21,7 @@ type Receipt interface {
 	Error() string
 }
 
-// AppTransaction should be serializible
+// Batch contains app transactions, external block references, checkpoints, and CEX refs.
 type Batch[appTx AppTransaction[R], R Receipt] struct {
 	Atropos        [32]byte         `cbor:"1,keyasint"`
 	Transactions   []appTx          `cbor:"2,keyasint"`
@@ -74,7 +74,7 @@ type ExternalID struct {
 	BlockHash   [32]byte `cbor:"3,keyasint"`
 }
 
-// For DAG it represents an interval between two Atroposes
+// AppchainBlock is the minimal appchain block interface used by the SDK.
 type AppchainBlock interface {
 	Hash() [32]byte
 	StateRoot() [32]byte
@@ -91,24 +91,18 @@ type AppchainBlockConstructor[appTx AppTransaction[R], R Receipt, block Appchain
 	previousBlockHash [32]byte,
 	txsBatch Batch[appTx, R]) block
 
-// Для подключенных L1/L2 мы должны  уметь анмаршалить поле tx.
-// Для межапчейновых - вставляем, как есть.
+// ExternalTransaction stores an external chain transaction payload.
 type ExternalTransaction struct {
 	ChainID ChainType `cbor:"1,keyasint"`
 	Tx      []byte    `cbor:"2,keyasint"`
 }
 
-//3) Calculate state root
-//Мы определяем или кто-то другой? Возможно нужен какой-то интерфейс, который можно подменять
-/*
-	Вариант 1) одна табличка стейта и префиксы для разных модулей
-	Вариант 2) много табличек стейта и указывать, какие из них буду участвовать в стейт руте?
-*/
+// RootCalculator calculates the state root from an MDBX transaction.
 type RootCalculator interface {
 	StateRootCalculator(tx kv.RwTx) ([32]byte, error)
 }
 
-// Батч хеш батча транзакций, который надо обработать
+// AppchainTxPoolBatch identifies a transaction-pool batch to process.
 type AppchainTxPoolBatch struct {
 	ChainID uint64   `cbor:"1,keyasint"`
 	Hash    [32]byte `cbor:"2,keyasint"`
@@ -142,7 +136,7 @@ type TxPoolInterface[T AppTransaction[R], R Receipt] interface {
 	Close() error
 }
 
-// финализация перезода состояния аппчейна
+// Checkpoint captures appchain state finalization metadata.
 type Checkpoint struct {
 	ChainID                  uint64   `json:"chainId"                  cbor:"1,keyasint"`
 	BlockNumber              uint64   `json:"blockNumber"              cbor:"2,keyasint"`
