@@ -43,12 +43,12 @@ func TestCEXPackedNumericSideRoundTrip(t *testing.T) {
 
 	levels := []CEXNumericPriceLevel{
 		{
-			Price:    MustUInt256BE(big.NewInt(123456789)),
-			Quantity: MustUInt256BE(big.NewInt(987654321)),
+			Price:    requireUInt256BE(t, big.NewInt(123456789)),
+			Quantity: requireUInt256BE(t, big.NewInt(987654321)),
 		},
 		{
-			Price:    MustUInt256BE(new(big.Int).Lsh(big.NewInt(1), 200)),
-			Quantity: MustUInt256BE(new(big.Int).Lsh(big.NewInt(1), 128)),
+			Price:    requireUInt256BE(t, new(big.Int).Lsh(big.NewInt(1), 200)),
+			Quantity: requireUInt256BE(t, new(big.Int).Lsh(big.NewInt(1), 128)),
 		},
 	}
 
@@ -89,12 +89,12 @@ func FuzzCEXPackedNumericSideRoundTrip(f *testing.F) {
 
 		levels := []CEXNumericPriceLevel{
 			{
-				Price:    MustUInt256BE(new(big.Int).SetUint64(price1)),
-				Quantity: MustUInt256BE(new(big.Int).SetUint64(qty1)),
+				Price:    requireUInt256BE(t, new(big.Int).SetUint64(price1)),
+				Quantity: requireUInt256BE(t, new(big.Int).SetUint64(qty1)),
 			},
 			{
-				Price:    MustUInt256BE(new(big.Int).SetUint64(price2)),
-				Quantity: MustUInt256BE(new(big.Int).SetUint64(qty2)),
+				Price:    requireUInt256BE(t, new(big.Int).SetUint64(price2)),
+				Quantity: requireUInt256BE(t, new(big.Int).SetUint64(qty2)),
 			},
 		}
 
@@ -107,6 +107,15 @@ func FuzzCEXPackedNumericSideRoundTrip(f *testing.F) {
 		require.NoError(t, err)
 		require.Equal(t, packed.Bytes(), reparsed.Bytes())
 	})
+}
+
+func requireUInt256BE(t *testing.T, value *big.Int) UInt256BE {
+	t.Helper()
+
+	word, err := NewUInt256BE(value)
+	require.NoError(t, err)
+
+	return word
 }
 
 func FuzzParseCEXPackedNumericSide(f *testing.F) {

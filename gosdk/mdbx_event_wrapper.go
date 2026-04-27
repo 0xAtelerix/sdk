@@ -30,6 +30,19 @@ type MdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 	votingBlocks      *Voting[apptypes.ExternalBlock]
 	votingCheckpoints *Voting[apptypes.Checkpoint]
 	currentEpoch      uint32
+	config            MdbxEventStreamWrapperConfig
+}
+
+// MdbxEventStreamWrapperConfig contains polling tunables for MDBX event replay.
+type MdbxEventStreamWrapperConfig struct {
+	// TxBatchPollInterval is the fallback cadence while waiting for referenced
+	// tx batches to appear in MDBX after an event batch has been read.
+	TxBatchPollInterval time.Duration
+}
+
+// DefaultMdbxEventStreamWrapperConfig is used by NewMdbxEventStreamWrapper.
+var DefaultMdbxEventStreamWrapperConfig = MdbxEventStreamWrapperConfig{
+	TxBatchPollInterval: 50 * time.Millisecond,
 }
 
 type EventStreamWrapperConstructor[appTx apptypes.AppTransaction[R], R apptypes.Receipt] func(
@@ -61,6 +74,7 @@ func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Rece
 		appchainDB:        appchainDB,
 		votingBlocks:      votingBlocks,
 		votingCheckpoints: votingCheckpoints,
+		config:            DefaultMdbxEventStreamWrapperConfig,
 	}
 
 	err := wrapper.InitReader(ctx)
@@ -296,7 +310,10 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 		waitStart := time.Now()
 
-		const pollInterval = 50 * time.Millisecond
+		pollInterval := ews.config.TxBatchPollInterval
+		if pollInterval <= 0 {
+			pollInterval = DefaultMdbxEventStreamWrapperConfig.TxBatchPollInterval
+		}
 
 		var notFoundCycle uint64
 

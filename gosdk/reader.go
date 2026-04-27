@@ -22,32 +22,54 @@ type BatchReader[appTx apptypes.AppTransaction[R], R apptypes.Receipt] interface
 	GetNewBatchesBlocking(limit int) ([]apptypes.Batch[appTx, R], error)
 }
 
-// EventReader with fsnotify
+// EventReader reads append-only event batches from one epoch data file.
 type EventReader struct {
-	dataFile      *os.File
-	watcher       *fsnotify.Watcher
+	// dataFile is the open epoch data file.
+	dataFile *os.File
+	// watcher wakes the blocking reader when the file is appended or replaced.
+	watcher *fsnotify.Watcher
+	// watcherEvents is watcher.Events captured for tests and alternate constructors.
 	watcherEvents <-chan fsnotify.Event
+	// watcherErrors is watcher.Errors captured for tests and alternate constructors.
 	watcherErrors <-chan error
-	pollInterval  time.Duration
-	position      int64 // Указывает на начало последнего прочитанного батча
-	reachedEOF    bool  // Достигли ли мы конца файла? Нужно, чтобы переключаться на fnotify блокировку
+	// pollInterval is the fallback poll cadence when fsnotify is quiet.
+	pollInterval time.Duration
+	// position points to the start of the next unread batch.
+	position int64
+	// reachedEOF records whether the last read reached EOF and should block.
+	reachedEOF bool
 }
 
-const defaultEventReaderPollInterval = 10 * time.Millisecond
+// EventReaderConfig contains tunables for EventReader.
+type EventReaderConfig struct {
+	// PollInterval is the fallback poll cadence when fsnotify misses an append.
+	PollInterval time.Duration
+}
+
+// DefaultEventReaderConfig is used by NewEventReader.
+var DefaultEventReaderConfig = EventReaderConfig{
+	PollInterval: 10 * time.Millisecond,
+}
 
 // NewEventReader инициализирует reader с возможностью задать начальную позицию.
 func NewEventReader(dataFilePath string, startPosition int64) (*EventReader, error) {
-	return NewEventReaderWithPollInterval(
-		dataFilePath,
-		startPosition,
-		defaultEventReaderPollInterval,
-	)
+	return NewEventReaderWithConfig(dataFilePath, startPosition, DefaultEventReaderConfig)
 }
 
 func NewEventReaderWithPollInterval(
 	dataFilePath string,
 	startPosition int64,
 	pollInterval time.Duration,
+) (*EventReader, error) {
+	return NewEventReaderWithConfig(dataFilePath, startPosition, EventReaderConfig{
+		PollInterval: pollInterval,
+	})
+}
+
+func NewEventReaderWithConfig(
+	dataFilePath string,
+	startPosition int64,
+	config EventReaderConfig,
 ) (*EventReader, error) {
 	f, err := os.OpenFile(dataFilePath, os.O_RDONLY, 0o644)
 	if err != nil {
@@ -68,8 +90,8 @@ func NewEventReaderWithPollInterval(
 		startPosition = 8
 	}
 
-	if pollInterval <= 0 {
-		pollInterval = defaultEventReaderPollInterval
+	if config.PollInterval <= 0 {
+		config.PollInterval = DefaultEventReaderConfig.PollInterval
 	}
 
 	return &EventReader{
@@ -77,7 +99,7 @@ func NewEventReaderWithPollInterval(
 		watcher:       watcher,
 		watcherEvents: watcher.Events,
 		watcherErrors: watcher.Errors,
-		pollInterval:  pollInterval,
+		pollInterval:  config.PollInterval,
 		position:      startPosition,
 		reachedEOF:    false,
 	}, nil

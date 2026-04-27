@@ -13,20 +13,17 @@ const (
 	UInt256BEBytes = 32
 	// CEXPackedNumericLevelBytes stores one fixed-width price/quantity pair.
 	CEXPackedNumericLevelBytes = UInt256BEBytes * 2
-)
 
-var (
-	ErrUInt256BENegative = sdkerrors.SDKError(
-		"uint256 big-endian value cannot be negative",
-	)
-	ErrUInt256BEOverflow = sdkerrors.SDKError(
-		"uint256 big-endian value exceeds 32 bytes",
-	)
-	ErrCEXPackedNumericSideMalformed = sdkerrors.SDKError("malformed packed cex numeric side")
+	ErrUInt256BENegative             sdkerrors.SDKError = "uint256 big-endian value cannot be negative"
+	ErrUInt256BEOverflow             sdkerrors.SDKError = "uint256 big-endian value exceeds 32 bytes"
+	ErrCEXPackedNumericSideMalformed sdkerrors.SDKError = "malformed packed cex numeric side"
 )
 
 // UInt256BE is one fixed-width unsigned 256-bit big-endian value.
 type UInt256BE [UInt256BEBytes]byte
+
+// ZeroUInt256BE is the canonical zero word used for direct comparisons.
+var ZeroUInt256BE UInt256BE
 
 // NewUInt256BE converts a non-negative bigint into a fixed-width 32-byte word.
 func NewUInt256BE(value *big.Int) (UInt256BE, error) {
@@ -49,16 +46,6 @@ func NewUInt256BE(value *big.Int) (UInt256BE, error) {
 	return out, nil
 }
 
-// MustUInt256BE converts a bigint into a fixed-width word or panics.
-func MustUInt256BE(value *big.Int) UInt256BE {
-	out, err := NewUInt256BE(value)
-	if err != nil {
-		panic(err)
-	}
-
-	return out
-}
-
 // BigInt returns the numeric value as a new bigint.
 func (u UInt256BE) BigInt() *big.Int {
 	return new(big.Int).SetBytes(u[:])
@@ -66,13 +53,7 @@ func (u UInt256BE) BigInt() *big.Int {
 
 // IsZero reports whether the word is zero.
 func (u UInt256BE) IsZero() bool {
-	for _, b := range u {
-		if b != 0 {
-			return false
-		}
-	}
-
-	return true
+	return u == ZeroUInt256BE
 }
 
 // String renders the canonical base-10 integer form.
