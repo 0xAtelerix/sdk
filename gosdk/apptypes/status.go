@@ -19,7 +19,7 @@ const (
 func (s TxStatus) String() string {
 	switch s {
 	case Unknown:
-		return unknownTxStatusString()
+		return unknown
 	case Pending:
 		return "Pending"
 	case Batched:
@@ -28,9 +28,9 @@ func (s TxStatus) String() string {
 		return "Processed"
 	case Failed:
 		return failed
-	default:
-		return unknown
 	}
+
+	return unknown
 }
 
 type TxReceiptStatus uint8
@@ -44,16 +44,12 @@ const (
 func (s TxReceiptStatus) String() string {
 	switch s {
 	case ReceiptUnknown:
-		return unknownTxStatusString()
+		return unknown
 	case ReceiptFailed:
 		return failed
 	case ReceiptConfirmed:
 		return confirmed
-	default:
-		return unknown
 	}
-}
 
-func unknownTxStatusString() string {
 	return unknown
 }
