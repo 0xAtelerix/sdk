@@ -19,7 +19,7 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
-// Server с поддержкой MDBX
+// AppchainEmitterServer is an emitter server with MDBX-backed storage.
 type AppchainEmitterServer[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	emitterproto.UnimplementedEmitterServer
 
@@ -29,7 +29,7 @@ type AppchainEmitterServer[appTx apptypes.AppTransaction[R], R apptypes.Receipt]
 	logger     *zerolog.Logger
 }
 
-// Создание нового сервера с MDBX
+// NewServer creates a new MDBX-backed appchain emitter server.
 func NewServer[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	db kv.RwDB,
 	chainID uint64,
@@ -43,7 +43,7 @@ func NewServer[appTx apptypes.AppTransaction[R], R apptypes.Receipt](
 	}
 }
 
-// Метод GetCheckpoints: выбираем все чекпоинты >= LatestBlockNumber
+// GetCheckpoints returns checkpoints with block numbers >= LatestBlockNumber.
 func (s *AppchainEmitterServer[appTx, R]) GetCheckpoints(
 	ctx context.Context,
 	req *emitterproto.GetCheckpointsRequest,
@@ -120,7 +120,7 @@ func (s *AppchainEmitterServer[appTx, R]) GetCheckpoints(
 	return &emitterproto.CheckpointResponse{Checkpoints: checkpoints}, nil
 }
 
-// Метод GetExternalTransactions: выбираем все транзакции >= LatestPreviousBlockNumber
+// GetExternalTransactions returns transactions with block numbers >= LatestPreviousBlockNumber.
 func (s *AppchainEmitterServer[appTx, R]) GetExternalTransactions(
 	ctx context.Context,
 	req *emitterproto.GetExternalTransactionsRequest,

@@ -9,7 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// Token standards we emit
+// Standard is a token standard emitted by token transfer extraction.
 type Standard string
 
 const (

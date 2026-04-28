@@ -305,7 +305,7 @@ func (m *TransactionMethods[appTx, R]) GetTransactionStatus(
 		case apptypes.ReceiptFailed:
 			return apptypes.Failed.String(), nil
 		case apptypes.ReceiptUnknown:
-			return apptypes.Unknown.String(), nil
+			return unknownTransactionStatusString(), nil
 		default:
 			return apptypes.Unknown.String(), nil
 		}
@@ -324,6 +324,10 @@ func (m *TransactionMethods[appTx, R]) GetTransactionStatus(
 
 	// Database error occurred
 	return nil, fmt.Errorf("failed to check transaction status: %w", err)
+}
+
+func unknownTransactionStatusString() string {
+	return apptypes.Unknown.String()
 }
 
 // AddTransactionMethods adds all transaction-related methods to the RPC server.

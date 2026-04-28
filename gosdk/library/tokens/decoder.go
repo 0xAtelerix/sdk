@@ -74,7 +74,7 @@ func DecodeEventInto[T any](
 		default:
 			// dynamic indexed types (string/bytes/arrays) are hashed in topics;
 			// you cannot recover the original value. Return the hash.
-			idxVals[i] = topic
+			idxVals[i] = indexedDynamicTopicValue(topic)
 		}
 	}
 
@@ -100,6 +100,10 @@ func DecodeEventInto[T any](
 	}
 
 	return dst, true, nil
+}
+
+func indexedDynamicTopicValue(topic common.Hash) common.Hash {
+	return topic
 }
 
 // DecodeAndMap decodes into T then maps (T, Meta) -> R with user-provided mapper.

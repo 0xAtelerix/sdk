@@ -194,6 +194,11 @@ linters:
       - linters:
           - lll
         source: "^//go:generate "
+      # Preserve the public gosdk/library/errors package path and package name.
+      - path: gosdk/library/errors/error\.go
+        linters:
+          - revive
+        text: "package-naming:"
 formatters:
   # Enable specific formatter.
   # Default: [] (uses standard Go formatting)
