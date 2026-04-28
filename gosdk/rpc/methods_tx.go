@@ -306,9 +306,11 @@ func (m *TransactionMethods[appTx, R]) GetTransactionStatus(
 			return apptypes.Failed.String(), nil
 		case apptypes.ReceiptUnknown:
 			return apptypes.Unknown.String(), nil
-		}
+		default:
+			status := apptypes.Unknown.String()
 
-		return apptypes.Unknown.String(), nil
+			return status, nil
+		}
 	}
 
 	// Step 2: No receipt found, check txpool for pending status

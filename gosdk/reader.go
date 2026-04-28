@@ -221,7 +221,7 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 
 // readNewBatches reads new batches, up to limit per call.
 func (er *EventReader) readNewBatches(ctx context.Context, limit int) ([]ReadBatch, error) {
-	var batches []ReadBatch
+	batches := make([]ReadBatch, 0, limit)
 
 	logger := log.Ctx(ctx)
 	vid := utility.ValidatorIDFromCtx(ctx)

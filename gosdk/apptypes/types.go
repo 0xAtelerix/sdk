@@ -185,11 +185,14 @@ type Event struct {
 	CreationTime  uint64    `json:"creationTime"  cbor:"2,keyasint"`
 	PrevEpochHash *[32]byte `json:"prevEpochHash" cbor:"3,keyasint"`
 
-	// батчи транзакций, которые были уже переданы другим валидаторам и у нас есть подпись, что они получены
+	// Transaction batches already sent to other validators, with signatures
+	// proving that those validators received them.
 	TxPool []AppchainTxPoolBatch `json:"txPool" cbor:"4,keyasint"`
-	// обновления состояния аппчейна, какой новый стейт рут, блок и внешние транзакции
+
+	// Appchain state updates: new state root, block, and external transactions.
 	Appchains []Checkpoint `json:"appchains" cbor:"5,keyasint"`
-	// внешние блоки
+
+	// External blocks.
 	BlockVotes []ExternalBlock `json:"blockVotes" cbor:"6,keyasint"`
 
 	Signature [64]byte `json:"signature" cbor:"7,keyasint"`
