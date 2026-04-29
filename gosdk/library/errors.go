@@ -3,35 +3,37 @@ package library
 import (
 	"bytes"
 
-	"github.com/0xAtelerix/sdk/gosdk/library/errors"
+	sdkerrors "github.com/0xAtelerix/sdk/gosdk/library/errors"
 )
 
 const (
-	ErrCorruptedFile  = errors.SDKError("corrupted file")
-	ErrUnknownChain   = errors.SDKError("unknown chain")
-	ErrMissingTxBatch = errors.SDKError("missing tx batch")
-	ErrNoValidatorSet = errors.SDKError("no valset")
+	ErrCorruptedFile  = sdkerrors.SDKError("corrupted file")
+	ErrUnknownChain   = sdkerrors.SDKError("unknown chain")
+	ErrMissingTxBatch = sdkerrors.SDKError("missing tx batch")
+	ErrNoValidatorSet = sdkerrors.SDKError("no valset")
 
-	ErrWrongBlock   = errors.SDKError("wrong block hash")
-	ErrHashMismatch = errors.SDKError(
+	ErrWrongBlock   = sdkerrors.SDKError("wrong block hash")
+	ErrHashMismatch = sdkerrors.SDKError(
 		"block hash mismatch: stored hash does not match computed hash",
 	)
 
-	ErrEmptyTxBatchDB = errors.SDKError("tx batch db is nil")
+	ErrEmptyTxBatchDB = sdkerrors.SDKError("tx batch db is nil")
 
-	ErrUnsupportedEntityType = errors.SDKError("unsupported entity type")
-	ErrMalformedKey          = errors.SDKError("malformed key")
-	ErrUnsupportedFixture    = errors.SDKError("unsupported type in FixtureWriter")
+	ErrUnsupportedEntityType = sdkerrors.SDKError("unsupported entity type")
+	ErrMalformedKey          = sdkerrors.SDKError("malformed key")
+	ErrUnsupportedFixture    = sdkerrors.SDKError("unsupported type in FixtureWriter")
 
-	ErrBlockMarshalling              = errors.SDKError("failed to marshal block")
-	ErrBlockWrite                    = errors.SDKError("failed to write block")
-	ErrBlockTransactionsWrite        = errors.SDKError("failed to write block transactions")
-	ErrTransactionsMarshalling       = errors.SDKError("failed to marshal transactions")
-	ErrTransactionLookupWrite        = errors.SDKError("failed to write transaction lookup")
-	ErrExternalTransactionsGet       = errors.SDKError("failed to get external transactions")
-	ErrExternalTransactionsUnmarshal = errors.SDKError("failed to unmarshal external transactions")
+	ErrBlockMarshalling              = sdkerrors.SDKError("failed to marshal block")
+	ErrBlockWrite                    = sdkerrors.SDKError("failed to write block")
+	ErrBlockTransactionsWrite        = sdkerrors.SDKError("failed to write block transactions")
+	ErrTransactionsMarshalling       = sdkerrors.SDKError("failed to marshal transactions")
+	ErrTransactionLookupWrite        = sdkerrors.SDKError("failed to write transaction lookup")
+	ErrExternalTransactionsGet       = sdkerrors.SDKError("failed to get external transactions")
+	ErrExternalTransactionsUnmarshal = sdkerrors.SDKError(
+		"failed to unmarshal external transactions",
+	)
 
-	ErrNotImplemented = errors.SDKError("not implemented")
+	ErrNotImplemented = sdkerrors.SDKError("not implemented")
 )
 
 //nolint:gochecknoglobals // read only

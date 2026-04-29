@@ -17,21 +17,64 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
-// Что должен дергать апчейн, чтобы получить транзакции
+// BatchReader is called by the appchain to retrieve new transaction batches.
 type BatchReader[appTx apptypes.AppTransaction[R], R apptypes.Receipt] interface {
 	GetNewBatchesBlocking(limit int) ([]apptypes.Batch[appTx, R], error)
 }
 
-// EventReader with fsnotify
+// EventReader reads append-only event batches from one epoch data file using
+// fsnotify plus a polling fallback.
 type EventReader struct {
-	dataFile   *os.File
-	watcher    *fsnotify.Watcher
-	position   int64 // Указывает на начало последнего прочитанного батча
-	reachedEOF bool  // Достигли ли мы конца файла? Нужно, чтобы переключаться на fnotify блокировку
+	// dataFile is the open epoch data file.
+	dataFile *os.File
+	// watcher wakes the blocking reader when the file is appended or replaced.
+	watcher *fsnotify.Watcher
+	// watcherEvents is watcher.Events captured for tests and alternate constructors.
+	watcherEvents <-chan fsnotify.Event
+	// watcherErrors is watcher.Errors captured for tests and alternate constructors.
+	watcherErrors <-chan error
+	// pollInterval is the fallback poll cadence when fsnotify is quiet.
+	pollInterval time.Duration
+	// position points to the start of the next unread batch.
+	position int64
+	// reachedEOF records whether the reader reached the file end and should wait
+	// on fsnotify or the poll fallback before trying again.
+	reachedEOF bool
 }
 
-// NewEventReader инициализирует reader с возможностью задать начальную позицию.
+// EventReaderConfig contains tunables for EventReader.
+type EventReaderConfig struct {
+	// PollInterval is the fallback poll cadence when fsnotify misses an append.
+	PollInterval time.Duration
+}
+
+// DefaultEventReaderConfig returns the production EventReader defaults.
+func DefaultEventReaderConfig() EventReaderConfig {
+	return EventReaderConfig{
+		PollInterval: 10 * time.Millisecond,
+	}
+}
+
+// NewEventReader initializes a reader with a configurable starting position.
 func NewEventReader(dataFilePath string, startPosition int64) (*EventReader, error) {
+	return NewEventReaderWithConfig(dataFilePath, startPosition, DefaultEventReaderConfig())
+}
+
+func NewEventReaderWithPollInterval(
+	dataFilePath string,
+	startPosition int64,
+	pollInterval time.Duration,
+) (*EventReader, error) {
+	return NewEventReaderWithConfig(dataFilePath, startPosition, EventReaderConfig{
+		PollInterval: pollInterval,
+	})
+}
+
+func NewEventReaderWithConfig(
+	dataFilePath string,
+	startPosition int64,
+	config EventReaderConfig,
+) (*EventReader, error) {
 	f, err := os.OpenFile(dataFilePath, os.O_RDONLY, 0o644)
 	if err != nil {
 		return nil, err
@@ -51,11 +94,18 @@ func NewEventReader(dataFilePath string, startPosition int64) (*EventReader, err
 		startPosition = 8
 	}
 
+	if config.PollInterval <= 0 {
+		config.PollInterval = DefaultEventReaderConfig().PollInterval
+	}
+
 	return &EventReader{
-		dataFile:   f,
-		watcher:    watcher,
-		position:   startPosition,
-		reachedEOF: false,
+		dataFile:      f,
+		watcher:       watcher,
+		watcherEvents: watcher.Events,
+		watcherErrors: watcher.Errors,
+		pollInterval:  config.PollInterval,
+		position:      startPosition,
+		reachedEOF:    false,
 	}, nil
 }
 
@@ -65,10 +115,14 @@ func (er *EventReader) Close() error {
 		return err
 	}
 
+	if er.watcher == nil {
+		return nil
+	}
+
 	return er.watcher.Close()
 }
 
-// Batch содержит атропос и события
+// ReadBatch contains one atropos and its event payloads.
 type ReadBatch struct {
 	Atropos   [32]byte
 	Events    [][]byte
@@ -83,7 +137,7 @@ func (er *EventReader) GetNewBatchesNonBlocking(
 	return er.readNewBatches(ctx, limit)
 }
 
-// GetNewBatchesBlocking ждёт, пока появятся новые батчи.
+// GetNewBatchesBlocking waits until new batches appear.
 func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]ReadBatch, error) {
 	logger := log.Ctx(ctx)
 
@@ -120,7 +174,7 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 
 		// 2. EOF: включаем/перезапускаем таймер ровно ОДИН раз
 		if timer == nil {
-			timer = time.NewTimer(100 * time.Millisecond)
+			timer = time.NewTimer(er.pollInterval)
 			timerCh = timer.C
 		} else {
 			if !timer.Stop() && timerCh != nil {
@@ -134,14 +188,14 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 				logger.Debug().Msg("drained channel")
 			}
 
-			timer.Reset(100 * time.Millisecond)
+			timer.Reset(er.pollInterval)
 		}
 
 		logger.Debug().Msg("Locking: readNewBatches return 0 batches")
 
 		// 3. Ждём либо fsnotify-событие, либо истечение тайм-аутa
 		select {
-		case ev := <-er.watcher.Events:
+		case ev := <-er.watcherEvents:
 			logger.Debug().Str("watcher", ev.String()).Msg("watcher event")
 
 			if ev.Op&(fsnotify.Write|fsnotify.Rename|fsnotify.Create) != 0 {
@@ -154,7 +208,7 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 			// Таймаут прошёл — снова в начало for (polling)
 			continue
 
-		case err := <-er.watcher.Errors:
+		case err := <-er.watcherErrors:
 			logger.Warn().Err(err).Msg("fsnotify error")
 
 		case <-ctx.Done():
@@ -165,9 +219,9 @@ func (er *EventReader) GetNewBatchesBlocking(ctx context.Context, limit int) ([]
 	}
 }
 
-// readNewBatches читает новые батчи, но не более `limit` за один вызов.
+// readNewBatches reads new batches, up to limit per call.
 func (er *EventReader) readNewBatches(ctx context.Context, limit int) ([]ReadBatch, error) {
-	var batches []ReadBatch //nolint:prealloc // hard to predict also many cases will be with empty batches
+	batches := make([]ReadBatch, 0, limit)
 
 	logger := log.Ctx(ctx)
 	vid := utility.ValidatorIDFromCtx(ctx)

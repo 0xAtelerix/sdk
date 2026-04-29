@@ -255,6 +255,11 @@ runFor:
 
 			start := time.Now()
 
+			BatchTransactions.WithLabelValues(vid, cid).Observe(float64(len(batch.Transactions)))
+			BatchExternalBlocks.WithLabelValues(vid, cid).Observe(float64(len(batch.ExternalBlocks)))
+			BatchCheckpoints.WithLabelValues(vid, cid).Observe(float64(len(batch.Checkpoints)))
+			BatchCEXOrderBookRefs.WithLabelValues(vid, cid).Observe(float64(len(batch.CEXOrderBookRefs)))
+
 			err = a.processBatch(ctx, batch, &previousBlockNumber, &previousBlockHash, eventStream, votingBlocks, votingCheckpoints, vid, cid)
 			if err != nil {
 				logger.Error().Err(err).Msg("Failed to handle batch")
@@ -518,7 +523,10 @@ func startPrometheusServer(ctx context.Context, addr string) {
 	go func() {
 		<-ctx.Done()
 
-		_ = srv.Shutdown(context.Background()) //nolint:contextcheck //it's a shutdown
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+
+		_ = srv.Shutdown(shutdownCtx)
 	}()
 
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

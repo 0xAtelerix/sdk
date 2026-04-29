@@ -46,7 +46,7 @@ const (
 	FantomChainID    = apptypes.ChainType(250)   // Fantom Opera
 	BaseChainID      = apptypes.ChainType(8453)  // Base Mainnet
 
-	// testnets
+	// AnvilChainID and the following constants identify test and local chains.
 	AnvilChainID           = apptypes.ChainType(31337)    // Anvil Local
 	AnvilBaseChainID       = apptypes.ChainType(31338)    // Anvil Local (Base fork)
 	EthereumSepoliaChainID = apptypes.ChainType(11155111) // Ethereum Sepolia Testnet

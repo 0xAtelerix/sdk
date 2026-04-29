@@ -2,15 +2,15 @@ package gosdk
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"net"
 	"os"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -123,8 +123,7 @@ func TestEmitterCall(t *testing.T) {
 	require.NoError(t, err)
 
 	// Запускаем gRPC сервер
-	wg := sync.WaitGroup{}
-	wg.Add(1)
+	ready := make(chan struct{})
 
 	go func() {
 		var listener net.Listener
@@ -132,6 +131,7 @@ func TestEmitterCall(t *testing.T) {
 		listener, err = (&net.ListenConfig{}).Listen(t.Context(), "tcp", ":50051")
 		if err != nil {
 			t.Errorf("Ошибка запуска сервера: %v", err)
+			close(ready)
 
 			return
 		}
@@ -141,7 +141,7 @@ func TestEmitterCall(t *testing.T) {
 
 		log.Info().Msg("Сервер слушает на порту 50051...")
 
-		wg.Done()
+		close(ready)
 
 		if err = grpcServer.Serve(listener); err != nil {
 			t.Errorf("Ошибка gRPC сервера: %v", err)
@@ -152,7 +152,7 @@ func TestEmitterCall(t *testing.T) {
 		log.Info().Msg("Сервер на порту 50051 закрыт.")
 	}()
 
-	wg.Wait()
+	<-ready
 	time.Sleep(time.Second * 3)
 
 	// Подключение к серверу
@@ -323,8 +323,8 @@ func TestEmitterCall_PropertyBased(t *testing.T) {
 			require.NoError(tr, err)
 
 			// Сортируем чекпоинты по LatestBlockNumber
-			sort.Slice(checkpoints, func(i, j int) bool {
-				return checkpoints[i].BlockNumber < checkpoints[j].BlockNumber
+			slices.SortFunc(checkpoints, func(a, b apptypes.Checkpoint) int {
+				return cmp.Compare(a.BlockNumber, b.BlockNumber)
 			})
 
 			// Подключение к серверу
@@ -468,7 +468,11 @@ func TestGetExternalTransactions_PropertyBased(t *testing.T) {
 					transactionMap[blockNumber] = append(transactionMap[blockNumber], tx)
 				}
 
-				if _, err = WriteExternalTransactions(tx, blockNumber, transactionMap[blockNumber]); err != nil {
+				if _, err = WriteExternalTransactions(
+					tx,
+					blockNumber,
+					transactionMap[blockNumber],
+				); err != nil {
 					tr.Fatalf("external transaction storing to the DB failed: %v", err)
 				}
 			}

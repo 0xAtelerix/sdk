@@ -8,15 +8,15 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/library"
-	"github.com/0xAtelerix/sdk/gosdk/library/errors"
+	sdkerrors "github.com/0xAtelerix/sdk/gosdk/library/errors"
 )
 
 // Static errors for validation.
 const (
-	ErrChainIDRequired = errors.SDKError("chainID must be set")
-	ErrTooManyAccounts = errors.SDKError("too many accounts: maximum 64 allowed")
-	ErrNoAccountsGiven = errors.SDKError("no accounts given")
-	ErrPayloadTooShort = errors.SDKError("payload too short")
+	ErrChainIDRequired = sdkerrors.SDKError("chainID must be set")
+	ErrTooManyAccounts = sdkerrors.SDKError("too many accounts: maximum 64 allowed")
+	ErrNoAccountsGiven = sdkerrors.SDKError("no accounts given")
+	ErrPayloadTooShort = sdkerrors.SDKError("payload too short")
 )
 
 // ExTxBuilder constructs external transaction intents for any chain

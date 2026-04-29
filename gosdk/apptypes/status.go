@@ -29,7 +29,9 @@ func (s TxStatus) String() string {
 	case Unknown:
 		return unknown
 	default:
-		return unknown
+		fallback := unknown
+
+		return fallback
 	}
 }
 
@@ -43,13 +45,15 @@ const (
 
 func (s TxReceiptStatus) String() string {
 	switch s {
-	case ReceiptUnknown:
-		return unknown
 	case ReceiptFailed:
 		return failed
 	case ReceiptConfirmed:
 		return confirmed
-	default:
+	case ReceiptUnknown:
 		return unknown
+	default:
+		fallback := unknown
+
+		return fallback
 	}
 }

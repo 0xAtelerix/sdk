@@ -30,7 +30,7 @@ type Entity[T apptypes.ExternalEntity] struct {
 	Signers  []Signer     `cbor:"2,keyasint"` // sorted
 }
 
-// epoch + creator identifies a signer
+// Signer is identified by epoch and creator.
 type Signer struct {
 	Epoch   uint32 `cbor:"1,keyasint"`
 	Creator uint32 `cbor:"2,keyasint"`

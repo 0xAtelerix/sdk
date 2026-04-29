@@ -1,4 +1,4 @@
-package gosdk
+package tooling
 
 import (
 	"bytes"
@@ -124,7 +124,7 @@ func makeEvmBlock(t *testing.T, num uint64) *evmtypes.Block {
 
 	header := &evmtypes.Header{
 		Number:           (*hexutil.Big)(new(big.Int).SetUint64(num)),
-		ParentHash:       common.BytesToHash([]byte(fmt.Sprintf("parent-%d", num-1))),
+		ParentHash:       common.BytesToHash(fmt.Appendf(nil, "parent-%d", num-1)),
 		Sha3Uncles:       emptyUnclesHash,
 		Miner:            common.Address{},
 		StateRoot:        emptyTrieRoot,

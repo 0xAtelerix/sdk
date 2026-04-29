@@ -21,7 +21,11 @@ type Receipt interface {
 	Error() string
 }
 
-// AppTransaction should be serializible
+// Batch is the serializable appchain batch payload.
+//
+// It contains app transactions, external block references, checkpoints, and
+// CEX refs. Cross-appchain transactions are still intentionally left as a TODO
+// below, matching the original contract note.
 type Batch[appTx AppTransaction[R], R Receipt] struct {
 	Atropos        [32]byte         `cbor:"1,keyasint"`
 	Transactions   []appTx          `cbor:"2,keyasint"`
@@ -74,7 +78,10 @@ type ExternalID struct {
 	BlockHash   [32]byte `cbor:"3,keyasint"`
 }
 
-// For DAG it represents an interval between two Atroposes
+// AppchainBlock is the minimal appchain block interface used by the SDK.
+//
+// For DAG-style appchains, this can represent the interval between two
+// atroposes, not only a linear block.
 type AppchainBlock interface {
 	Hash() [32]byte
 	StateRoot() [32]byte
@@ -91,24 +98,29 @@ type AppchainBlockConstructor[appTx AppTransaction[R], R Receipt, block Appchain
 	previousBlockHash [32]byte,
 	txsBatch Batch[appTx, R]) block
 
-// Для подключенных L1/L2 мы должны  уметь анмаршалить поле tx.
-// Для межапчейновых - вставляем, как есть.
+// ExternalTransaction stores an external chain transaction payload.
+//
+// For connected L1/L2 chains, callers must be able to unmarshal the Tx field
+// into the native transaction type. For inter-appchain payloads, Tx is inserted
+// as-is.
 type ExternalTransaction struct {
 	ChainID ChainType `cbor:"1,keyasint"`
 	Tx      []byte    `cbor:"2,keyasint"`
 }
 
-//3) Calculate state root
-//Мы определяем или кто-то другой? Возможно нужен какой-то интерфейс, который можно подменять
-/*
-	Вариант 1) одна табличка стейта и префиксы для разных модулей
-	Вариант 2) много табличек стейта и указывать, какие из них буду участвовать в стейт руте?
-*/
+// RootCalculator calculates the state root from an MDBX transaction.
+//
+// State-root ownership is intentionally abstract here: the concrete appchain
+// may provide a replaceable implementation. The open design options preserved
+// from the original note are:
+// 1. one state table with prefixes for different modules;
+// 2. multiple state tables plus an explicit list of which tables participate in
+// the state root.
 type RootCalculator interface {
 	StateRootCalculator(tx kv.RwTx) ([32]byte, error)
 }
 
-// Батч хеш батча транзакций, который надо обработать
+// AppchainTxPoolBatch identifies the hash of the transaction-pool batch to process.
 type AppchainTxPoolBatch struct {
 	ChainID uint64   `cbor:"1,keyasint"`
 	Hash    [32]byte `cbor:"2,keyasint"`
@@ -142,7 +154,7 @@ type TxPoolInterface[T AppTransaction[R], R Receipt] interface {
 	Close() error
 }
 
-// финализация перезода состояния аппчейна
+// Checkpoint captures finalization of an appchain state transition.
 type Checkpoint struct {
 	ChainID                  uint64   `json:"chainId"                  cbor:"1,keyasint"`
 	BlockNumber              uint64   `json:"blockNumber"              cbor:"2,keyasint"`
@@ -173,11 +185,14 @@ type Event struct {
 	CreationTime  uint64    `json:"creationTime"  cbor:"2,keyasint"`
 	PrevEpochHash *[32]byte `json:"prevEpochHash" cbor:"3,keyasint"`
 
-	// батчи транзакций, которые были уже переданы другим валидаторам и у нас есть подпись, что они получены
-	TxPool []AppchainTxPoolBatch `json:"txPool"     cbor:"4,keyasint"`
-	// обновления состояния аппчейна, какой новый стейт рут, блок и внешние транзакции
-	Appchains []Checkpoint `json:"appchains"  cbor:"5,keyasint"`
-	// внешние блоки
+	// Transaction batches already sent to other validators, with signatures
+	// proving that those validators received them.
+	TxPool []AppchainTxPoolBatch `json:"txPool" cbor:"4,keyasint"`
+
+	// Appchain state updates: new state root, block, and external transactions.
+	Appchains []Checkpoint `json:"appchains" cbor:"5,keyasint"`
+
+	// External blocks.
 	BlockVotes []ExternalBlock `json:"blockVotes" cbor:"6,keyasint"`
 
 	Signature [64]byte `json:"signature" cbor:"7,keyasint"`

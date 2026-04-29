@@ -30,6 +30,21 @@ type MdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 	votingBlocks      *Voting[apptypes.ExternalBlock]
 	votingCheckpoints *Voting[apptypes.Checkpoint]
 	currentEpoch      uint32
+	config            MdbxEventStreamWrapperConfig
+}
+
+// MdbxEventStreamWrapperConfig contains polling tunables for MDBX event replay.
+type MdbxEventStreamWrapperConfig struct {
+	// TxBatchPollInterval is the fallback cadence while waiting for referenced
+	// tx batches to appear in MDBX after an event batch has been read.
+	TxBatchPollInterval time.Duration
+}
+
+// DefaultMdbxEventStreamWrapperConfig returns the production MDBX stream defaults.
+func DefaultMdbxEventStreamWrapperConfig() MdbxEventStreamWrapperConfig {
+	return MdbxEventStreamWrapperConfig{
+		TxBatchPollInterval: 50 * time.Millisecond,
+	}
 }
 
 type EventStreamWrapperConstructor[appTx apptypes.AppTransaction[R], R apptypes.Receipt] func(
@@ -61,6 +76,7 @@ func NewMdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Rece
 		appchainDB:        appchainDB,
 		votingBlocks:      votingBlocks,
 		votingCheckpoints: votingCheckpoints,
+		config:            DefaultMdbxEventStreamWrapperConfig(),
 	}
 
 	err := wrapper.InitReader(ctx)
@@ -125,7 +141,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 	ews.logger.Debug().Int("batches", len(eventBatches)).Msg("got new batches")
 
-	var result []apptypes.Batch[appTx, R] //nolint:prealloc // hard to predict also many cases will be with empty batches
+	result := make([]apptypes.Batch[appTx, R], 0, len(eventBatches))
 
 	// getting the valset for the epoch
 	var valset *ValidatorSet
@@ -165,11 +181,22 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 		tParseEvt := time.Now()
 
 		for _, rawEvent := range eventBatch.Events {
+			eventDecodeStart := time.Now()
+
 			var evt apptypes.Event
 
 			if err = cbor.Unmarshal(rawEvent, &evt); err != nil {
 				return nil, fmt.Errorf("failed to decode event: %w", err)
 			}
+
+			eventDecodeDone := time.Now()
+			logCEXEventAdmitted(
+				evt,
+				vid,
+				cid,
+				eventDecodeStart,
+				eventDecodeDone,
+			)
 
 			var notFoundCycleValset int
 
@@ -285,7 +312,10 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 		waitStart := time.Now()
 
-		const pollInterval = 50 * time.Millisecond
+		pollInterval := ews.config.TxBatchPollInterval
+		if pollInterval <= 0 {
+			pollInterval = DefaultMdbxEventStreamWrapperConfig().TxBatchPollInterval
+		}
 
 		var notFoundCycle uint64
 
@@ -457,6 +487,57 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 	}
 
 	return result, nil
+}
+
+func logCEXEventAdmitted(
+	evt apptypes.Event,
+	vid string,
+	cid string,
+	eventDecodeStart time.Time,
+	eventDecodeDone time.Time,
+) {
+	if len(evt.CEXOrderBookRefs) == 0 {
+		return
+	}
+
+	stats := collectCEXRefStats(evt.CEXOrderBookRefs, eventDecodeDone)
+
+	MdbxCEXEventHandoffRefs.WithLabelValues(vid, cid).Observe(float64(len(evt.CEXOrderBookRefs)))
+	MdbxCEXEventHandoffDecodeDuration.WithLabelValues(vid, cid).
+		Observe(eventDecodeDone.Sub(eventDecodeStart).Seconds())
+	MdbxCEXEventHandoffNewestAge.WithLabelValues(vid, cid).
+		Observe(float64(stats.newestAgeMs) / float64(time.Second/time.Millisecond))
+	MdbxCEXEventHandoffOldestAge.WithLabelValues(vid, cid).
+		Observe(float64(stats.oldestAgeMs) / float64(time.Second/time.Millisecond))
+}
+
+type cexRefStats struct {
+	newestAgeMs int64
+	oldestAgeMs int64
+}
+
+func collectCEXRefStats(refs []apptypes.CEXOrderBookRef, at time.Time) cexRefStats {
+	minFetchedAt := refs[0].FetchedAt
+	maxFetchedAt := refs[0].FetchedAt
+
+	for _, ref := range refs {
+		if ref.FetchedAt < minFetchedAt {
+			minFetchedAt = ref.FetchedAt
+		}
+
+		if ref.FetchedAt > maxFetchedAt {
+			maxFetchedAt = ref.FetchedAt
+		}
+	}
+
+	atMs := at.UnixMilli()
+	minFetchedAtMs := minFetchedAt / int64(time.Millisecond)
+	maxFetchedAtMs := maxFetchedAt / int64(time.Millisecond)
+
+	return cexRefStats{
+		oldestAgeMs: atMs - minFetchedAtMs,
+		newestAgeMs: atMs - maxFetchedAtMs,
+	}
 }
 
 func (ews *MdbxEventStreamWrapper[appTx, R]) Close() error {

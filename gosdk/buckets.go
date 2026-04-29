@@ -16,11 +16,10 @@ const (
 	Snapshot         = "snapshot"
 	TxSnapshot       = "tx_snapshot"
 
-	// chainID -> []{address|contract}
+	// SubscriptionBucket stores chainID -> []{address|contract} subscriptions.
 	SubscriptionBucket = "subscription_bucket"
 
-	// chainID|sha(contract|eventName) -> event	ExternalBlockVotingBucket   = "external_block_voting_bucket"
-	// Chain|Block|Hash -> {votedStake, []{Epoch, Signer}}
+	// SubscriptionEventLibraryBucket stores chainID|sha(contract|eventName) -> event.
 	SubscriptionEventLibraryBucket = "subscription_kinds_bucket"
 
 	ValsetBucket              = "validator_set_bucket"         // Epoch -> map[validatorID][stake] // map[uint32][uint64]

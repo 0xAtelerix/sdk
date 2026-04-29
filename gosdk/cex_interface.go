@@ -15,6 +15,10 @@ type CEXDataAccessor interface {
 		symbol string,
 		fetchedAt int64,
 	) (*apptypes.CEXOrderBookSnapshot, error)
+	ReadCEXOrderBooks(
+		ctx context.Context,
+		refs []apptypes.CEXOrderBookRef,
+	) ([]*apptypes.CEXOrderBookSnapshot, []error)
 	Close()
 }
 

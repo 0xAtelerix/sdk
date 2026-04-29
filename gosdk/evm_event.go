@@ -8,7 +8,7 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/library"
 )
 
-// returns a prefix if no abi given
+// EVMEventKey returns a prefix if no ABI is given.
 func EVMEventKey(
 	chainID apptypes.ChainType,
 	contract library.EthereumAddress,

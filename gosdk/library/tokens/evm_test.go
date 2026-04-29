@@ -2,7 +2,7 @@ package tokens
 
 import (
 	"math/big"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
@@ -152,8 +152,8 @@ func TestExtractErc1155Batch(t *testing.T) {
 	require.Len(t, x.Balances.IDs, len(ids))
 
 	// sort by tokenId to make assertions stable
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].Balances.TokenID.Cmp(out[j].Balances.TokenID) < 0
+	slices.SortFunc(out, func(a, b EvmTransfer) int {
+		return a.Balances.TokenID.Cmp(b.Balances.TokenID)
 	})
 
 	for i := range ids {
@@ -358,11 +358,11 @@ func TestDefaultRegistry_ERC1155_Batch(t *testing.T) {
 	require.Len(t, res, len(ids))
 
 	// sort by tokenId for stable checks
-	sort.Slice(res, func(i, j int) bool {
-		ai := res[i].(EvmTransfer).Balances.TokenID
-		aj := res[j].(EvmTransfer).Balances.TokenID
+	slices.SortFunc(res, func(a, b AppEvent) int {
+		ai := a.(EvmTransfer).Balances.TokenID
+		aj := b.(EvmTransfer).Balances.TokenID
 
-		return ai.Cmp(aj) < 0
+		return ai.Cmp(aj)
 	})
 
 	for i := range ids {

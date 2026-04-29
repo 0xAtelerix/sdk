@@ -40,7 +40,11 @@ func NewMultichainStateAccessSQL(
 		if err != nil {
 			// Close any already-opened DBs on failure.
 			for _, opened := range stateAccessDBs {
-				opened.Close()
+				if closeErr := opened.Close(); closeErr != nil {
+					log.Ctx(ctx).Warn().
+						Err(closeErr).
+						Msg("close multichain sqlite db after open failure")
+				}
 			}
 
 			return nil, err
@@ -86,7 +90,8 @@ func (sa *MultichainStateAccessSQL) EVMBlock(
 
 		i++
 
-		if err := db.QueryRowContext(ctx, query, block.BlockHash[:], block.BlockNumber).Scan(&rawBlock, &num); err != nil {
+		if err := db.QueryRowContext(ctx, query, block.BlockHash[:], block.BlockNumber).
+			Scan(&rawBlock, &num); err != nil {
 			log.Error().
 				Err(err).
 				Uint64("block", block.BlockNumber).
