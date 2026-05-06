@@ -2,7 +2,7 @@ package tokens
 
 import (
 	"math/big"
-	"sort"
+	"slices"
 
 	"github.com/blocto/solana-go-sdk/client"
 )
@@ -120,8 +120,8 @@ func ExtractSplTransfers(tx client.BlockTransaction) []SolTransfer {
 		}
 
 		// Sort for deterministic pairing (largest first helps reduce fragmentation)
-		sort.Slice(outs, func(i, j int) bool { return outs[i].amount.Cmp(outs[j].amount) > 0 })
-		sort.Slice(ins, func(i, j int) bool { return ins[i].amount.Cmp(ins[j].amount) > 0 })
+		slices.SortFunc(outs, func(a, b item) int { return b.amount.Cmp(a.amount) })
+		slices.SortFunc(ins, func(a, b item) int { return b.amount.Cmp(a.amount) })
 
 		// Greedy matching
 		for oi := 0; oi < len(outs); oi++ {

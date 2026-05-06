@@ -18,7 +18,7 @@ const (
 	TxPoolDirName     = "txpool"   // appchain/txpool for transaction pool
 )
 
-// Multichain paths.
+// MultichainPath returns the multichain data path.
 func MultichainPath(dataDir string) string {
 	return filepath.Join(dataDir, MultichainDirName)
 }
@@ -32,7 +32,7 @@ func MultichainCEXPath(multichainRoot string) string {
 	return filepath.Join(multichainRoot, CEXDirName)
 }
 
-// Consensus paths.
+// ConsensusPath returns the consensus data path.
 func ConsensusPath(dataDir string) string {
 	return filepath.Join(dataDir, ConsensusDirName)
 }
@@ -49,7 +49,7 @@ func TxBatchPathForChain(dataDir string, chainID uint64) string {
 	return filepath.Join(TxBatchPath(dataDir), strconv.FormatUint(chainID, 10))
 }
 
-// Appchain paths.
+// AppchainPath returns the appchain data path.
 func AppchainPath(dataDir string) string {
 	return filepath.Join(dataDir, AppchainDirName)
 }

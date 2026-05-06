@@ -307,7 +307,9 @@ func (m *TransactionMethods[appTx, R]) GetTransactionStatus(
 		case apptypes.ReceiptUnknown:
 			return apptypes.Unknown.String(), nil
 		default:
-			return apptypes.Unknown.String(), nil
+			status := apptypes.Unknown.String()
+
+			return status, nil
 		}
 	}
 

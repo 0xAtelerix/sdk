@@ -1,21 +1,21 @@
 package rpc
 
-import "github.com/0xAtelerix/sdk/gosdk/library/errors"
+import sdkerrors "github.com/0xAtelerix/sdk/gosdk/library/errors"
 
 const (
-	ErrMethodNotFound                 = errors.SDKError("method not found")
-	ErrHashParameterMustBeString      = errors.SDKError("hash parameter must be a string")
-	ErrInvalidHashFormat              = errors.SDKError("invalid hash format")
-	ErrInvalidTransactionData         = errors.SDKError("invalid transaction data")
-	ErrFailedToParseTransaction       = errors.SDKError("failed to parse transaction")
-	ErrFailedToAddTransaction         = errors.SDKError("failed to add transaction")
-	ErrFailedToGetReceipt             = errors.SDKError("failed to get receipt")
-	ErrFailedToGetPendingTransactions = errors.SDKError("failed to get pending transactions")
-	ErrReceiptNotFound                = errors.SDKError("receipt not found")
-	ErrTransactionNotFound            = errors.SDKError("transaction not found")
-	ErrWrongParamsCount               = errors.SDKError("wrong number of parameters")
-	ErrBlockNotFound                  = errors.SDKError("block not found")
-	ErrInvalidBlockNumber             = errors.SDKError("invalid block number")
-	ErrBlockHasNoTransactions         = errors.SDKError("block has no transactions")
-	ErrTransactionIndexOutOfBounds    = errors.SDKError("transaction index out of bounds")
+	ErrMethodNotFound                 = sdkerrors.SDKError("method not found")
+	ErrHashParameterMustBeString      = sdkerrors.SDKError("hash parameter must be a string")
+	ErrInvalidHashFormat              = sdkerrors.SDKError("invalid hash format")
+	ErrInvalidTransactionData         = sdkerrors.SDKError("invalid transaction data")
+	ErrFailedToParseTransaction       = sdkerrors.SDKError("failed to parse transaction")
+	ErrFailedToAddTransaction         = sdkerrors.SDKError("failed to add transaction")
+	ErrFailedToGetReceipt             = sdkerrors.SDKError("failed to get receipt")
+	ErrFailedToGetPendingTransactions = sdkerrors.SDKError("failed to get pending transactions")
+	ErrReceiptNotFound                = sdkerrors.SDKError("receipt not found")
+	ErrTransactionNotFound            = sdkerrors.SDKError("transaction not found")
+	ErrWrongParamsCount               = sdkerrors.SDKError("wrong number of parameters")
+	ErrBlockNotFound                  = sdkerrors.SDKError("block not found")
+	ErrInvalidBlockNumber             = sdkerrors.SDKError("invalid block number")
+	ErrBlockHasNoTransactions         = sdkerrors.SDKError("block has no transactions")
+	ErrTransactionIndexOutOfBounds    = sdkerrors.SDKError("transaction index out of bounds")
 )

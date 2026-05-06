@@ -1,4 +1,4 @@
-package gosdk
+package tooling
 
 import (
 	"bufio"

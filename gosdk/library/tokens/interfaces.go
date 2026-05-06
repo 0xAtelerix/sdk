@@ -1,6 +1,6 @@
 package tokens
 
-// Unifying result interface for ALL events your app cares about.
+// AppEvent is the unifying result interface for all events an app cares about.
 type AppEvent interface {
 	Name() string
 }

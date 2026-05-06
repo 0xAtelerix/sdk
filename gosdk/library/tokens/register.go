@@ -7,7 +7,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// User should define T as an event type
+// Event wraps a user-defined event type T.
 // - Kind: a short string you choose at registration time (e.g. "erc20.approval")
 // - Contract/TxHash/LogIndex: provenance
 // - SubscribedEvent: the decoded ABI struct T (whatever the user defined)
@@ -21,10 +21,10 @@ type Event[T any] struct {
 	LogIndex  uint
 }
 
-// Implement AppEvent.
+// Name implements AppEvent.
 func (e Event[T]) Name() string { return e.EventName }
 
-// A typed filter for pulling Event[T] out of a []AppEvent.
+// EventFilter is a typed filter for pulling Event[T] out of a []AppEvent.
 type EventFilter[T any] func([]AppEvent) []Event[T]
 
 // RegisterEvent registers an event decoder for T and maps it into AppEvent.

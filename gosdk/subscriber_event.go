@@ -69,7 +69,8 @@ func addEVMEvent[T any](
 	return sig, nil
 }
 
-// should be called by a user on application init stage for all events. Events and handlers are in 1-1 relations.
+// LoadEVMEvent should be called during application init for all events.
+// Events and handlers are in one-to-one relations.
 func LoadEVMEvent[T any](
 	ctx context.Context,
 	s *Subscriber,

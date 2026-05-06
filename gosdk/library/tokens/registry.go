@@ -15,7 +15,7 @@ type Meta struct {
 	LogIndex uint           // lg.Index
 }
 
-// R is whatever the user wants to produce.
+// Handler maps decoded event metadata and value into whatever result R the user wants to produce.
 type Handler[R any] func(meta Meta, val any) ([]R, error)
 
 type EventType any

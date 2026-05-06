@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
-	"github.com/0xAtelerix/sdk/gosdk/library/errors"
+	sdkerrors "github.com/0xAtelerix/sdk/gosdk/library/errors"
 	"github.com/0xAtelerix/sdk/gosdk/receipt"
 	"github.com/0xAtelerix/sdk/gosdk/txpool"
 )
@@ -31,8 +31,8 @@ const (
 )
 
 const (
-	errInvalidParameterType = errors.SDKError("invalid parameter type")
-	errMiddlewareFailed     = errors.SDKError("middleware failed")
+	errInvalidParameterType = sdkerrors.SDKError("invalid parameter type")
+	errMiddlewareFailed     = sdkerrors.SDKError("middleware failed")
 )
 
 // TestTransaction - test transaction implementation
@@ -162,7 +162,12 @@ func makeJSONRPCRequest(
 	reqBody, err := json.Marshal(request)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/rpc",
+		bytes.NewBuffer(reqBody),
+	)
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
@@ -433,7 +438,12 @@ func TestStandardRPCServer_invalidJSONRPC(t *testing.T) {
 	defer cleanup()
 
 	// Test invalid JSON
-	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBufferString("invalid json"))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/rpc",
+		bytes.NewBufferString("invalid json"),
+	)
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
@@ -456,7 +466,7 @@ func TestStandardRPCServer_wrongHTTPMethod(t *testing.T) {
 	server, _, cleanup := setupTestEnvironment(t)
 	defer cleanup()
 
-	req := httptest.NewRequest(http.MethodGet, "/rpc", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/rpc", nil)
 	rr := httptest.NewRecorder()
 	server.handleRPC(rr, req)
 
@@ -571,7 +581,12 @@ func TestStandardRPCServer_batchRequests(t *testing.T) {
 	reqBody, err := json.Marshal(batchReq)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/rpc",
+		bytes.NewBuffer(reqBody),
+	)
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
@@ -636,7 +651,12 @@ func TestStandardRPCServer_batchRequestsWithErrors(t *testing.T) {
 	reqBody, err := json.Marshal(batchReq)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/rpc",
+		bytes.NewBuffer(reqBody),
+	)
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
@@ -681,7 +701,12 @@ func TestStandardRPCServer_emptyBatchRequest(t *testing.T) {
 	reqBody, err := json.Marshal(batchReq)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/rpc",
+		bytes.NewBuffer(reqBody),
+	)
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
@@ -779,12 +804,17 @@ func TestStandardRPCServer_middleware(t *testing.T) {
 	})
 
 	// Test single request
-	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBufferString(`{
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/rpc",
+		bytes.NewBufferString(`{
 		"jsonrpc": "2.0",
 		"method": "test",
 		"params": [],
 		"id": 1
-	}`))
+	}`),
+	)
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
@@ -813,12 +843,17 @@ func TestStandardRPCServer_middlewareBlocksRequest(t *testing.T) {
 		return testShouldNotReachMessage, nil
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBufferString(`{
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/rpc",
+		bytes.NewBufferString(`{
 		"jsonrpc": "2.0",
 		"method": "test",
 		"params": [],
 		"id": 1
-	}`))
+	}`),
+	)
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
@@ -862,7 +897,12 @@ func TestStandardRPCServer_middlewareBatch(t *testing.T) {
 	reqBody, err := json.Marshal(batchReq)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/rpc",
+		bytes.NewBuffer(reqBody),
+	)
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
@@ -906,7 +946,12 @@ func TestStandardRPCServer_middlewareBatchPartialFailure(t *testing.T) {
 	reqBody, err := json.Marshal(batchReq)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/rpc",
+		bytes.NewBuffer(reqBody),
+	)
 	req.Header.Set("Content-Type", "application/json")
 
 	w := httptest.NewRecorder()
@@ -958,7 +1003,12 @@ func TestStandardRPCServer_middlewareRequestBlocksBatch(t *testing.T) {
 	reqBody, err := json.Marshal(batchReq)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/rpc",
+		bytes.NewBuffer(reqBody),
+	)
 	req.Header.Set("Content-Type", "application/json")
 
 	w := httptest.NewRecorder()
@@ -1003,7 +1053,12 @@ func TestStandardRPCServer_middlewareMultipleResponseFailures(t *testing.T) {
 	reqBody, err := json.Marshal(batchReq)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/rpc",
+		bytes.NewBuffer(reqBody),
+	)
 	req.Header.Set("Content-Type", "application/json")
 
 	w := httptest.NewRecorder()
@@ -1112,7 +1167,7 @@ func TestStandardRPCServer_corsHeaders(t *testing.T) {
 			server := NewStandardRPCServer(tt.corsConfig)
 
 			// Test RPC endpoint
-			req := httptest.NewRequest(
+			req := httptest.NewRequestWithContext(context.Background(),
 				http.MethodPost,
 				"/rpc",
 				bytes.NewReader(
@@ -1140,7 +1195,7 @@ func TestStandardRPCServer_corsOptionsPreflight(t *testing.T) {
 		AllowHeaders: "Content-Type, Authorization",
 	})
 
-	req := httptest.NewRequest(http.MethodOptions, "/rpc", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodOptions, "/rpc", nil)
 	req.Header.Set("Origin", "https://example.com")
 	req.Header.Set("Access-Control-Request-Method", "POST")
 	req.Header.Set("Access-Control-Request-Headers", "Content-Type")
@@ -1164,7 +1219,7 @@ func TestStandardRPCServer_corsHealthEndpoint(t *testing.T) {
 		AllowHeaders: "Accept",
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
 
 	server.healthcheck(w, req)

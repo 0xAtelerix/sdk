@@ -14,7 +14,12 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-const cexOrderBookMissPrecisionThresholdNs = int64(time.Millisecond)
+const (
+	cexOrderBookMissPrecisionThresholdNs = int64(time.Millisecond)
+	cexOrderBookDecodeError              = "decode_error"
+)
+
+var errEmptyCEXOrderBookReadResult = errors.New("empty cex order book read result")
 
 // CEXOrderBookReadDiagnostic captures one exact-order-book read attempt.
 type CEXOrderBookReadDiagnostic struct {
@@ -112,10 +117,11 @@ func (c *CEXDataAccessSQL) ReadCEXOrderBook(
 	}})
 	if len(errs) == 0 {
 		return nil, fmt.Errorf(
-			"read order book %s/%s@%d: empty read result",
+			"read order book %s/%s@%d: %w",
 			exchange,
 			symbol,
 			fetchedAt,
+			errEmptyCEXOrderBookReadResult,
 		)
 	}
 
@@ -156,13 +162,13 @@ func (c *CEXDataAccessSQL) ReadCEXOrderBooks(
 		}
 	}()
 
-	rowsByRef, queryDuration, queryErr := c.readCEXOrderBookRowsTx(ctx, tx, refs)
+	rowsByRef, queryDuration, queryErr := readCEXOrderBookRowsTx(ctx, tx, refs)
 	for i, ref := range refs {
 		diag := newCEXOrderBookReadDiagnostic(ref, queryDuration)
 		if queryErr != nil {
 			diag.Result = "query_error"
 			diag.TotalDuration = queryDuration
-			errs[i] = c.wrapCEXOrderBookReadError(ctx, diag, queryErr)
+			errs[i] = wrapCEXOrderBookReadError(ctx, diag, queryErr)
 
 			continue
 		}
@@ -173,18 +179,27 @@ func (c *CEXDataAccessSQL) ReadCEXOrderBooks(
 			fetchedAt: ref.FetchedAt,
 		}]
 		if !ok {
-			snapshots[i], errs[i] = c.readCEXOrderBookMissTx(ctx, tx, diag, ref)
+			errs[i] = readCEXOrderBookMissTx(ctx, tx, diag, ref)
 
 			continue
 		}
 
-		snapshots[i], errs[i] = c.decodeCEXOrderBookRow(ctx, diag, row)
+		snapshots[i], errs[i] = decodeCEXOrderBookRow(ctx, diag, row)
 	}
 
 	return snapshots, errs
 }
 
-func (c *CEXDataAccessSQL) decodeCEXOrderBookRow(
+// Close closes the underlying SQLite database.
+func (c *CEXDataAccessSQL) Close() {
+	if c.db != nil {
+		if err := c.db.Close(); err != nil {
+			log.Warn().Err(err).Msg("close cex sqlite db")
+		}
+	}
+}
+
+func decodeCEXOrderBookRow(
 	ctx context.Context,
 	diag CEXOrderBookReadDiagnostic,
 	row cexOrderBookRow,
@@ -200,7 +215,7 @@ func (c *CEXDataAccessSQL) decodeCEXOrderBookRow(
 	bidsStart := time.Now()
 
 	if err := json.Unmarshal(row.bidsRaw, &snapshot.Bids); err != nil {
-		diag.Result = "decode_error"
+		diag.Result = cexOrderBookDecodeError
 		diag.BidsUnmarshalDuration = time.Since(bidsStart)
 		diag.TotalDuration = diag.QueryDuration + time.Since(start)
 		logCEXOrderBookRead(ctx, diag, err)
@@ -221,7 +236,7 @@ func (c *CEXDataAccessSQL) decodeCEXOrderBookRow(
 	asksStart := time.Now()
 
 	if err := json.Unmarshal(row.asksRaw, &snapshot.Asks); err != nil {
-		diag.Result = "decode_error"
+		diag.Result = cexOrderBookDecodeError
 		diag.AsksUnmarshalDuration = time.Since(asksStart)
 		diag.TotalDuration = diag.QueryDuration + time.Since(start)
 		logCEXOrderBookRead(ctx, diag, err)
@@ -246,7 +261,7 @@ func (c *CEXDataAccessSQL) decodeCEXOrderBookRow(
 	return snapshot, nil
 }
 
-func (c *CEXDataAccessSQL) readCEXOrderBookRowsTx(
+func readCEXOrderBookRowsTx(
 	ctx context.Context,
 	tx *sql.Tx,
 	refs []apptypes.CEXOrderBookRef,
@@ -328,15 +343,15 @@ func (c *CEXDataAccessSQL) readCEXOrderBookRowsTx(
 	return rowsByRef, time.Since(queryStart), nil
 }
 
-func (c *CEXDataAccessSQL) readCEXOrderBookMissTx(
+func readCEXOrderBookMissTx(
 	ctx context.Context,
 	tx *sql.Tx,
 	diag CEXOrderBookReadDiagnostic,
 	ref apptypes.CEXOrderBookRef,
-) (*apptypes.CEXOrderBookSnapshot, error) {
+) error {
 	diag.Result = "no_row"
 	probeStart := time.Now()
-	older, newer, probeErr := c.probeNearestOrderBookRowsTx(
+	older, newer, probeErr := probeNearestOrderBookRowsTx(
 		ctx,
 		tx,
 		ref.Exchange,
@@ -364,7 +379,7 @@ func (c *CEXDataAccessSQL) readCEXOrderBookMissTx(
 
 	diag.TotalDuration = diag.QueryDuration + diag.NearestProbeDuration
 
-	return nil, c.wrapCEXOrderBookReadError(ctx, diag, sql.ErrNoRows)
+	return wrapCEXOrderBookReadError(ctx, diag, sql.ErrNoRows)
 }
 
 func newCEXOrderBookReadDiagnostic(
@@ -380,7 +395,7 @@ func newCEXOrderBookReadDiagnostic(
 	}
 }
 
-func (c *CEXDataAccessSQL) wrapCEXOrderBookReadError(
+func wrapCEXOrderBookReadError(
 	ctx context.Context,
 	diag CEXOrderBookReadDiagnostic,
 	err error,
@@ -399,7 +414,7 @@ func (c *CEXDataAccessSQL) wrapCEXOrderBookReadError(
 	}
 }
 
-func (c *CEXDataAccessSQL) probeNearestOrderBookRowsTx(
+func probeNearestOrderBookRowsTx(
 	ctx context.Context,
 	tx *sql.Tx,
 	exchange string,
@@ -430,7 +445,7 @@ func (c *CEXDataAccessSQL) probeNearestOrderBookRowsTx(
 }
 
 func classifyCEXOrderBookMiss(diag CEXOrderBookReadDiagnostic) string {
-	nearestDelta := int64(0)
+	var nearestDelta int64
 
 	switch {
 	case diag.NearestOlderDeltaNs > 0 && diag.NearestNewerDeltaNs > 0:
@@ -439,6 +454,8 @@ func classifyCEXOrderBookMiss(diag CEXOrderBookReadDiagnostic) string {
 		nearestDelta = diag.NearestOlderDeltaNs
 	case diag.NearestNewerDeltaNs > 0:
 		nearestDelta = diag.NearestNewerDeltaNs
+	default:
+		nearestDelta = 0
 	}
 
 	switch {
@@ -452,7 +469,7 @@ func classifyCEXOrderBookMiss(diag CEXOrderBookReadDiagnostic) string {
 }
 
 func logCEXOrderBookRead(ctx context.Context, diag CEXOrderBookReadDiagnostic, err error) {
-	event := log.Ctx(ctx).Info()
+	event := log.Ctx(ctx).Debug()
 	if err != nil || diag.TotalDuration > 50*time.Millisecond {
 		event = log.Ctx(ctx).Warn()
 	}
@@ -476,11 +493,4 @@ func logCEXOrderBookRead(ctx context.Context, diag CEXOrderBookReadDiagnostic, e
 		Int64("total_duration_ms", diag.TotalDuration.Milliseconds()).
 		Err(err).
 		Msg("cex_snapshot_read")
-}
-
-// Close closes the underlying SQLite database.
-func (c *CEXDataAccessSQL) Close() {
-	if c.db != nil {
-		c.db.Close()
-	}
 }

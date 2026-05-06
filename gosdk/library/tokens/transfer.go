@@ -41,7 +41,7 @@ type SolanaBalances struct {
 
 type EvmTransfer Transfer[EthereumBalances]
 
-// Ensure EvmTransfer satisfies AppEvent.
+// Name implements AppEvent for EvmTransfer.
 func (e EvmTransfer) Name() string {
 	// You can choose any convention you like for the kind string.
 	// This includes the ERC standard for convenience.
@@ -50,7 +50,7 @@ func (e EvmTransfer) Name() string {
 
 type SolTransfer Transfer[SolanaBalances]
 
-// Ensure SolTransfer satisfies AppEvent.
+// Name implements AppEvent for SolTransfer.
 func (s SolTransfer) Name() string {
 	return "svm.transfer." + s.Mint
 }

@@ -91,7 +91,7 @@ func (p *TxPool[T, R]) RemoveTransaction(ctx context.Context, hash []byte) error
 	})
 }
 
-// GetAllTransactions получает все транзакции
+// GetPendingTransactions returns all pending transactions from the pool.
 func (p *TxPool[T, R]) GetPendingTransactions(ctx context.Context) ([]T, error) {
 	var transactions []T
 
@@ -122,7 +122,7 @@ func (p *TxPool[T, R]) GetPendingTransactions(ctx context.Context) ([]T, error) 
 	return transactions, nil
 }
 
-// GetAllTransactions получает все транзакции (generic)
+// CreateTransactionBatch returns all transactions as a generic transaction batch.
 func (p *TxPool[T, R]) CreateTransactionBatch(ctx context.Context) ([]byte, [][]byte, error) {
 	log.Debug().Msg("creating transaction batch")
 
@@ -191,7 +191,7 @@ func (p *TxPool[T, R]) CreateTransactionBatch(ctx context.Context) ([]byte, [][]
 	return batchHash, transactions, nil
 }
 
-// GetTransaction возвращает транзакцию по хэшу
+// GetTransactionStatus returns a transaction status by transaction hash.
 func (p *TxPool[T, R]) GetTransactionStatus(
 	ctx context.Context,
 	hash []byte,

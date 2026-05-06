@@ -67,12 +67,9 @@ func DecodeEventInto[T any](
 		case abi.BoolTy:
 			idxVals[i] = new(big.Int).SetBytes(topic.Bytes()).Cmp(big.NewInt(0)) != 0
 
-		case abi.HashTy, abi.FixedBytesTy:
-			// 32-byte fixed types can be returned as the hash itself
-			idxVals[i] = topic
-
 		default:
-			// dynamic indexed types (string/bytes/arrays) are hashed in topics;
+			// 32-byte fixed types can be returned as the hash itself
+			// Dynamic indexed types (string/bytes/arrays) are hashed in topics;
 			// you cannot recover the original value. Return the hash.
 			idxVals[i] = topic
 		}

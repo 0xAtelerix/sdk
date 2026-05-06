@@ -4,7 +4,7 @@ import "github.com/prometheus/client_golang/prometheus"
 
 //nolint:gochecknoglobals // metrics - it's easier to use global vars then put everything into context as a container
 var (
-	// bacis
+	// ProcessedBlocks counts committed appchain blocks.
 	ProcessedBlocks = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "appchain",
@@ -94,7 +94,7 @@ var (
 		[]string{"validator_id", "chain_id"},
 	)
 
-	// latency and progress
+	// HeadBlockNumber tracks the latest committed block number.
 	HeadBlockNumber = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "appchain",
@@ -114,7 +114,7 @@ var (
 		[]string{"validator_id", "chain_id", "epoch"},
 	)
 
-	// size and structure of batches and blocks
+	// EventBatchEvents records the number of events in a stream batch.
 	EventBatchEvents = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "appchain",
@@ -156,7 +156,7 @@ var (
 		[]string{"validator_id", "chain_id"},
 	)
 
-	// FSNotify/IO
+	// StreamReadDuration records event stream read duration.
 	StreamReadDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "appchain",
@@ -168,7 +168,7 @@ var (
 		[]string{"validator_id", "chain_id"},
 	)
 
-	// MDBX wrapper
+	// MdbxWaitCyclesTotal counts MDBX wrapper wait cycles.
 	MdbxWaitCyclesTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "appchain",
