@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/goccy/go-json"
+	"github.com/fxamacker/cbor/v2"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"
 
@@ -23,29 +23,18 @@ func TestCEXDataAccessSQL_ReadCEXOrderBook_ClassifiesPrecisionMiss(t *testing.T)
 
 	defer db.Close()
 
-	_, err = db.ExecContext(ctx, `
-CREATE TABLE cex_orderbooks_v3 (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	exchange TEXT NOT NULL,
-	symbol TEXT NOT NULL,
-	last_update_id INTEGER NOT NULL,
-	bids BLOB NOT NULL,
-	asks BLOB NOT NULL,
-	fetched_at INTEGER NOT NULL,
-	consumed INTEGER NOT NULL DEFAULT 0
-);
-`)
+	_, err = db.ExecContext(ctx, createCEXOrderBooksV4SQL)
 	require.NoError(t, err)
 
-	bids, err := json.Marshal([]apptypes.CEXPriceLevel{{Price: "1", Quantity: "2"}})
+	bids, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "1", Quantity: "2"}})
 	require.NoError(t, err)
-	asks, err := json.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
+	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
 	require.NoError(t, err)
 
 	requestedFetchedAt := int64(1_777_000_000_000_000_000)
 	_, err = db.ExecContext(
 		ctx,
-		`INSERT INTO cex_orderbooks_v3(exchange, symbol, last_update_id, bids, asks, fetched_at) VALUES(?, ?, ?, ?, ?, ?)`,
+		insertCEXOrderBooksV4SQL,
 		"mexc",
 		"SPXUSDT",
 		11,
@@ -77,18 +66,7 @@ func TestCEXDataAccessSQL_ReadCEXOrderBook_ClassifiesTrueAbsence(t *testing.T) {
 
 	defer db.Close()
 
-	_, err = db.ExecContext(ctx, `
-CREATE TABLE cex_orderbooks_v3 (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	exchange TEXT NOT NULL,
-	symbol TEXT NOT NULL,
-	last_update_id INTEGER NOT NULL,
-	bids BLOB NOT NULL,
-	asks BLOB NOT NULL,
-	fetched_at INTEGER NOT NULL,
-	consumed INTEGER NOT NULL DEFAULT 0
-);
-`)
+	_, err = db.ExecContext(ctx, createCEXOrderBooksV4SQL)
 	require.NoError(t, err)
 
 	accessor := &CEXDataAccessSQL{db: db}
@@ -112,28 +90,17 @@ func TestCEXDataAccessSQL_ReadCEXOrderBooks_BatchesInOneTx(t *testing.T) {
 
 	defer db.Close()
 
-	_, err = db.ExecContext(ctx, `
-CREATE TABLE cex_orderbooks_v3 (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	exchange TEXT NOT NULL,
-	symbol TEXT NOT NULL,
-	last_update_id INTEGER NOT NULL,
-	bids BLOB NOT NULL,
-	asks BLOB NOT NULL,
-	fetched_at INTEGER NOT NULL,
-	consumed INTEGER NOT NULL DEFAULT 0
-);
-`)
+	_, err = db.ExecContext(ctx, createCEXOrderBooksV4SQL)
 	require.NoError(t, err)
 
-	bids, err := json.Marshal([]apptypes.CEXPriceLevel{{Price: "1", Quantity: "2"}})
+	bids, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "1", Quantity: "2"}})
 	require.NoError(t, err)
-	asks, err := json.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
+	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
 	require.NoError(t, err)
 
 	_, err = db.ExecContext(
 		ctx,
-		`INSERT INTO cex_orderbooks_v3(exchange, symbol, last_update_id, bids, asks, fetched_at) VALUES(?, ?, ?, ?, ?, ?)`,
+		insertCEXOrderBooksV4SQL,
 		"mexc",
 		"SPXUSDT",
 		11,
@@ -156,3 +123,21 @@ CREATE TABLE cex_orderbooks_v3 (
 	require.Error(t, errs[1])
 	require.Nil(t, snapshots[1])
 }
+
+const createCEXOrderBooksV4SQL = `
+CREATE TABLE cex_orderbooks_v4 (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	exchange TEXT NOT NULL,
+	symbol TEXT NOT NULL,
+	last_update_id INTEGER NOT NULL,
+	bids BLOB NOT NULL,
+	asks BLOB NOT NULL,
+	fetched_at INTEGER NOT NULL,
+	consumed INTEGER NOT NULL DEFAULT 0
+);
+`
+
+const insertCEXOrderBooksV4SQL = `
+INSERT INTO cex_orderbooks_v4(exchange, symbol, last_update_id, bids, asks, fetched_at)
+VALUES(?, ?, ?, ?, ?, ?)
+`
