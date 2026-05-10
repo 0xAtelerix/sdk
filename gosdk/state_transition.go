@@ -179,6 +179,16 @@ func (b *DefaultBatchProcessor[appTx, R]) ProcessBatch(
 				extTxs = append(extTxs, ext...)
 			}
 
+		case library.IsMidnightChain(chainID):
+			// No receipt/log model — pass every block through; the app filters
+			// via MultichainStateAccessor.MidnightContractActions.
+			ext, err := b.extBlockProc.ProcessBlock(*blk, dbtx)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			extTxs = append(extTxs, ext...)
+
 		default:
 			logger.Error().Uint64("chainID", blk.ChainID).Msg("Unknown chain type")
 		}
