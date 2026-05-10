@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
-	sq "github.com/Masterminds/squirrel"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/rs/zerolog/log"
 
@@ -17,7 +17,6 @@ import (
 const (
 	cexOrderBookMissPrecisionThresholdNs = int64(time.Millisecond)
 	cexOrderBookDecodeError              = "decode_error"
-	cexOrderBooksTable                   = "cex_orderbooks_v4"
 )
 
 var errEmptyCEXOrderBookReadResult = errors.New("empty cex order book read result")
@@ -272,9 +271,10 @@ func readCEXOrderBookRowsTx(
 		return rowsByRef, 0, nil
 	}
 
-	conditions := make(sq.Or, 0, len(refs))
-
 	seen := make(map[cexOrderBookRefKey]struct{}, len(refs))
+	values := make([]string, 0, len(refs))
+	args := make([]any, 0, len(refs)*3)
+
 	for _, ref := range refs {
 		key := cexOrderBookRefKey{
 			exchange:  cexOrderBookExchange(ref.Exchange),
@@ -286,21 +286,12 @@ func readCEXOrderBookRowsTx(
 		}
 
 		seen[key] = struct{}{}
-		conditions = append(conditions, sq.And{
-			sq.Eq{"exchange": key.exchange.String()},
-			sq.Eq{"symbol": key.symbol.String()},
-			sq.Eq{"fetched_at": ref.FetchedAt},
-		})
+
+		values = append(values, "(?, ?, ?)")
+		args = append(args, key.exchange.String(), key.symbol.String(), key.fetchedAt)
 	}
 
-	query, args, err := sq.
-		Select("exchange", "symbol", "fetched_at", "last_update_id", "bids", "asks").
-		From(cexOrderBooksTable).
-		Where(conditions).
-		ToSql()
-	if err != nil {
-		return rowsByRef, 0, fmt.Errorf("build cex orderbook batch read query: %w", err)
-	}
+	query := buildCEXOrderBookBatchReadQuery(values)
 
 	queryStart := time.Now()
 
@@ -342,6 +333,20 @@ func readCEXOrderBookRowsTx(
 	}
 
 	return rowsByRef, time.Since(queryStart), nil
+}
+
+func buildCEXOrderBookBatchReadQuery(values []string) string {
+	return strings.Join([]string{
+		`WITH refs(exchange, symbol, fetched_at) AS (VALUES `,
+		strings.Join(values, ","),
+		`)
+SELECT ob.exchange, ob.symbol, ob.fetched_at, ob.last_update_id, ob.bids, ob.asks
+FROM refs
+JOIN cex_orderbooks_v4 ob
+  ON ob.exchange = refs.exchange
+ AND ob.symbol = refs.symbol
+ AND ob.fetched_at = refs.fetched_at`,
+	}, "")
 }
 
 func readCEXOrderBookMissTx(
