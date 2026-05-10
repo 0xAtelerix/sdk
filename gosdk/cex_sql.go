@@ -8,7 +8,7 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/goccy/go-json"
+	"github.com/fxamacker/cbor/v2"
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
@@ -17,6 +17,7 @@ import (
 const (
 	cexOrderBookMissPrecisionThresholdNs = int64(time.Millisecond)
 	cexOrderBookDecodeError              = "decode_error"
+	cexOrderBooksTable                   = "cex_orderbooks_v4"
 )
 
 var errEmptyCEXOrderBookReadResult = errors.New("empty cex order book read result")
@@ -214,7 +215,7 @@ func decodeCEXOrderBookRow(
 
 	bidsStart := time.Now()
 
-	if err := json.Unmarshal(row.bidsRaw, &snapshot.Bids); err != nil {
+	if err := cbor.Unmarshal(row.bidsRaw, &snapshot.Bids); err != nil {
 		diag.Result = cexOrderBookDecodeError
 		diag.BidsUnmarshalDuration = time.Since(bidsStart)
 		diag.TotalDuration = diag.QueryDuration + time.Since(start)
@@ -235,7 +236,7 @@ func decodeCEXOrderBookRow(
 
 	asksStart := time.Now()
 
-	if err := json.Unmarshal(row.asksRaw, &snapshot.Asks); err != nil {
+	if err := cbor.Unmarshal(row.asksRaw, &snapshot.Asks); err != nil {
 		diag.Result = cexOrderBookDecodeError
 		diag.AsksUnmarshalDuration = time.Since(asksStart)
 		diag.TotalDuration = diag.QueryDuration + time.Since(start)
@@ -294,7 +295,7 @@ func readCEXOrderBookRowsTx(
 
 	query, args, err := sq.
 		Select("exchange", "symbol", "fetched_at", "last_update_id", "bids", "asks").
-		From("cex_orderbooks_v3").
+		From(cexOrderBooksTable).
 		Where(conditions).
 		ToSql()
 	if err != nil {
@@ -423,7 +424,7 @@ func probeNearestOrderBookRowsTx(
 ) (older int64, newer int64, err error) {
 	if err = tx.QueryRowContext(ctx, `
 		SELECT fetched_at
-		FROM cex_orderbooks_v3
+		FROM cex_orderbooks_v4
 		WHERE exchange = ? AND symbol = ? AND fetched_at < ?
 		ORDER BY fetched_at DESC
 		LIMIT 1
@@ -433,7 +434,7 @@ func probeNearestOrderBookRowsTx(
 
 	if err = tx.QueryRowContext(ctx, `
 		SELECT fetched_at
-		FROM cex_orderbooks_v3
+		FROM cex_orderbooks_v4
 		WHERE exchange = ? AND symbol = ? AND fetched_at > ?
 		ORDER BY fetched_at ASC
 		LIMIT 1
