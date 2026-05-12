@@ -46,6 +46,7 @@ func TestCEXDataAccessSQL_ReadCEXOrderBook_ClassifiesPrecisionMiss(t *testing.T)
 
 	accessor, err := NewCEXDataAccessSQL(ctx, dbPath)
 	require.NoError(t, err)
+
 	defer accessor.Close()
 
 	_, err = accessor.ReadCEXOrderBook(ctx, "mexc", "SPXUSDT", requestedFetchedAt)
@@ -70,6 +71,7 @@ func TestCEXDataAccessSQL_ReadCEXOrderBook_ClassifiesTrueAbsence(t *testing.T) {
 
 	accessor, err := NewCEXDataAccessSQL(ctx, dbPath)
 	require.NoError(t, err)
+
 	defer accessor.Close()
 
 	_, err = accessor.ReadCEXOrderBook(ctx, "mexc", "SPXUSDT", time.Now().UnixNano())
@@ -110,6 +112,7 @@ func TestCEXDataAccessSQL_ReadCEXOrderBooks_ReadsPreparedPoints(t *testing.T) {
 
 	accessor, err := NewCEXDataAccessSQL(ctx, dbPath)
 	require.NoError(t, err)
+
 	defer accessor.Close()
 
 	snapshots, errs := accessor.ReadCEXOrderBooks(ctx, []apptypes.CEXOrderBookRef{
@@ -144,7 +147,7 @@ func BenchmarkCEXDataAccessSQL_ReadCEXOrderBooks_PreparedPoints(b *testing.B) {
 	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
 	require.NoError(b, err)
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		err = insertCEXOrderBookV5(
 			ctx,
 			db,
@@ -157,10 +160,12 @@ func BenchmarkCEXDataAccessSQL_ReadCEXOrderBooks_PreparedPoints(b *testing.B) {
 		)
 		require.NoError(b, err)
 	}
+
 	require.NoError(b, db.Close())
 
 	accessor, err := NewCEXDataAccessSQL(ctx, dbPath)
 	require.NoError(b, err)
+
 	defer accessor.Close()
 
 	for _, refCount := range []int{1, 10, 100} {
@@ -177,6 +182,7 @@ func BenchmarkCEXDataAccessSQL_ReadCEXOrderBooks_PreparedPoints(b *testing.B) {
 			for range b.N {
 				snapshots, errs := accessor.ReadCEXOrderBooks(ctx, refs)
 				require.Len(b, snapshots, len(refs))
+
 				for _, err := range errs {
 					require.NoError(b, err)
 				}
@@ -241,6 +247,7 @@ func insertCEXOrderBookV5(
 
 func openSQLite(ctx context.Context, dbPath, mode string) (*sql.DB, error) {
 	dsn := fmt.Sprintf("file:%s?mode=%s&cache=shared&uri=true", dbPath, mode)
+
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, err

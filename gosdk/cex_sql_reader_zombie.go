@@ -6,9 +6,10 @@ import (
 	"sync"
 	"time"
 
+	zsqlite "zombiezen.com/go/sqlite"
+
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/internal/sqlitez"
-	zsqlite "zombiezen.com/go/sqlite"
 )
 
 const (
@@ -49,7 +50,10 @@ type cexOrderBookFastReader struct {
 	asksBuf []byte
 }
 
-func openCEXOrderBookFastReader(ctx context.Context, dbPath string) (*cexOrderBookFastReader, error) {
+func openCEXOrderBookFastReader(
+	ctx context.Context,
+	dbPath string,
+) (*cexOrderBookFastReader, error) {
 	conn, err := sqlitez.OpenConn(ctx, dbPath, "ro", sqlitez.OpenOptions{
 		QueryOnly:                true,
 		DisableWALAutoCheckpoint: true,
@@ -80,6 +84,7 @@ func (r *cexOrderBookFastReader) readCEXOrderBooks(
 	refs []apptypes.CEXOrderBookRef,
 ) ([]*apptypes.CEXOrderBookSnapshot, []error) {
 	snapshots := make([]*apptypes.CEXOrderBookSnapshot, len(refs))
+
 	errs := make([]error, len(refs))
 	if len(refs) == 0 {
 		return snapshots, errs
@@ -94,6 +99,7 @@ func (r *cexOrderBookFastReader) readCEXOrderBooks(
 	for i, ref := range refs {
 		diag := newCEXOrderBookReadDiagnostic(ref, 0)
 		row, queryDuration, queryErr := r.readCEXOrderBookRow(ref)
+
 		diag.QueryDuration = queryDuration
 		if queryErr != nil {
 			diag.Result = "query_error"
@@ -119,6 +125,7 @@ func (r *cexOrderBookFastReader) readCEXOrderBookRow(
 	ref apptypes.CEXOrderBookRef,
 ) (*cexOrderBookRow, time.Duration, error) {
 	queryStart := time.Now()
+
 	pairID, ok, err := readCEXOrderBookPairID(r.pair, ref.Exchange, ref.Symbol)
 	if err != nil {
 		return nil, time.Since(queryStart), err
@@ -134,6 +141,7 @@ func (r *cexOrderBookFastReader) readCEXOrderBookRow(
 
 	hasRow, err := stmt.Step()
 	queryDuration := time.Since(queryStart)
+
 	if err != nil {
 		_ = resetCEXOrderBookStmt(stmt)
 
@@ -177,9 +185,11 @@ func (r *cexOrderBookFastReader) readCEXOrderBookMiss(
 	diag.Result = "no_row"
 	probeStart := time.Now()
 	older, newer, probeErr := r.probeNearestOrderBookRows(ref.Exchange, ref.Symbol, ref.FetchedAt)
+
 	diag.NearestProbeDuration = time.Since(probeStart)
 	if probeErr == nil {
 		diag.NearestOlderFetchedAt = older
+
 		diag.NearestNewerFetchedAt = newer
 		if older > 0 && ref.FetchedAt >= older {
 			diag.NearestOlderDeltaNs = ref.FetchedAt - older
@@ -226,7 +236,11 @@ func (r *cexOrderBookFastReader) probeNearestOrderBookRows(
 	return older, newer, nil
 }
 
-func readCEXOrderBookPairID(stmt *zsqlite.Stmt, exchange string, symbol string) (int64, bool, error) {
+func readCEXOrderBookPairID(
+	stmt *zsqlite.Stmt,
+	exchange string,
+	symbol string,
+) (int64, bool, error) {
 	stmt.BindText(1, exchange)
 	stmt.BindText(2, symbol)
 

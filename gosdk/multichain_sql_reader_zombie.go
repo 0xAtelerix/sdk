@@ -9,11 +9,11 @@ import (
 
 	"github.com/goccy/go-json"
 	"github.com/rs/zerolog/log"
+	zsqlite "zombiezen.com/go/sqlite"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/evmtypes"
 	"github.com/0xAtelerix/sdk/gosdk/internal/sqlitez"
-	zsqlite "zombiezen.com/go/sqlite"
 )
 
 const (
@@ -47,7 +47,10 @@ type multichainSQLiteReader struct {
 	midnightActions *zsqlite.Stmt
 }
 
-func openMultichainSQLiteReader(ctx context.Context, dbPath string) (*multichainSQLiteReader, error) {
+func openMultichainSQLiteReader(
+	ctx context.Context,
+	dbPath string,
+) (*multichainSQLiteReader, error) {
 	conn, err := sqlitez.OpenConn(ctx, dbPath, "ro", sqlitez.OpenOptions{
 		QueryOnly:                true,
 		DisableWALAutoCheckpoint: true,
@@ -163,6 +166,7 @@ func (r *multichainSQLiteReader) readEVMBlockRow(
 	}
 
 	rawBlock := sqliteColumnBytesCopy(stmt, 0)
+
 	num := stmt.ColumnInt64(1)
 	if resetErr := resetSQLiteStmt(stmt); resetErr != nil {
 		return nil, 0, false, resetErr
@@ -188,6 +192,7 @@ func (r *multichainSQLiteReader) readEVMReceipts(
 
 	stmt.BindBytes(1, block.BlockHash[:])
 	stmt.BindInt64(2, int64(block.BlockNumber))
+
 	defer func() {
 		if err := resetSQLiteStmt(stmt); err != nil {
 			log.Ctx(ctx).Warn().Err(err).Msg("reset evm receipts statement")
@@ -195,6 +200,7 @@ func (r *multichainSQLiteReader) readEVMReceipts(
 	}()
 
 	var receipts []evmtypes.Receipt
+
 	for {
 		hasRow, err := stmt.Step()
 		if err != nil {
@@ -222,6 +228,7 @@ func (r *multichainSQLiteReader) readEVMReceipts(
 		}
 
 		raw := sqliteColumnBytesCopy(stmt, 0)
+
 		var receipt evmtypes.Receipt
 		if err := json.Unmarshal(raw, &receipt); err != nil {
 			return nil, fmt.Errorf("decode receipt: %w", err)
@@ -296,6 +303,7 @@ func (r *multichainSQLiteReader) readMidnightActions(
 
 	stmt.BindBytes(1, block.BlockHash[:])
 	stmt.BindInt64(2, int64(block.BlockNumber))
+
 	defer func() {
 		if err := resetSQLiteStmt(stmt); err != nil {
 			log.Ctx(ctx).Warn().Err(err).Msg("reset midnight actions statement")
@@ -303,6 +311,7 @@ func (r *multichainSQLiteReader) readMidnightActions(
 	}()
 
 	var actions []MidnightContractAction
+
 	for {
 		hasRow, err := stmt.Step()
 		if err != nil {

@@ -15,10 +15,12 @@ import (
 const (
 	cexOrderBookMissPrecisionThresholdNs = int64(time.Millisecond)
 	cexOrderBookDecodeError              = "decode_error"
+	cexOrderBookReadResultQueryError     = "query_error"
 )
 
 var (
 	errEmptyCEXOrderBookReadResult = errors.New("empty cex order book read result")
+	errCEXSQLiteReaderNotInit      = errors.New("cex sqlite reader is not initialized")
 
 	// ErrCEXOrderBookNotFound is returned through CEXOrderBookReadError when an
 	// exact CEX order-book snapshot ref has no matching SQLite row.
@@ -140,14 +142,15 @@ func (c *CEXDataAccessSQL) ReadCEXOrderBooks(
 ) ([]*apptypes.CEXOrderBookSnapshot, []error) {
 	if c == nil || c.reader == nil {
 		snapshots := make([]*apptypes.CEXOrderBookSnapshot, len(refs))
+
 		errs := make([]error, len(refs))
 		for i, ref := range refs {
 			diag := newCEXOrderBookReadDiagnostic(ref, 0)
-			diag.Result = "query_error"
+			diag.Result = cexOrderBookReadResultQueryError
 			errs[i] = wrapCEXOrderBookReadError(
 				ctx,
 				diag,
-				errors.New("cex sqlite reader is not initialized"),
+				errCEXSQLiteReaderNotInit,
 			)
 		}
 

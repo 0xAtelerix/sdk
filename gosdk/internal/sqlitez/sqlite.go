@@ -2,6 +2,7 @@ package sqlitez
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,6 +11,8 @@ import (
 	"zombiezen.com/go/sqlite/sqlitex"
 )
 
+var errUnsupportedSQLiteOpenMode = errors.New("unsupported sqlite open mode")
+
 // OpenOptions captures SDK SQLite connection PRAGMAs owned by runtime readers.
 type OpenOptions struct {
 	QueryOnly                bool
@@ -17,7 +20,12 @@ type OpenOptions struct {
 }
 
 // OpenConn opens a SQLite connection with the SDK retry policy.
-func OpenConn(ctx context.Context, dbPath string, mode string, opts OpenOptions) (*zsqlite.Conn, error) {
+func OpenConn(
+	ctx context.Context,
+	dbPath string,
+	mode string,
+	opts OpenOptions,
+) (*zsqlite.Conn, error) {
 	dsn := fmt.Sprintf("file:%s?mode=%s&cache=shared&uri=true", dbPath, mode)
 	log.Info().Str("path", dsn).Msg("connecting to sqlite")
 
@@ -27,10 +35,12 @@ func OpenConn(ctx context.Context, dbPath string, mode string, opts OpenOptions)
 	}
 
 	maxTries := 50
+
 	for {
 		conn, err := zsqlite.OpenConn(dsn, flags)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to open sqlite db")
+
 			if retryErr := waitSQLiteRetry(ctx, &maxTries, err); retryErr != nil {
 				return nil, retryErr
 			}
@@ -63,7 +73,7 @@ func openFlags(mode string) (zsqlite.OpenFlags, error) {
 	case "rwc":
 		return zsqlite.OpenReadWrite | zsqlite.OpenCreate | zsqlite.OpenURI, nil
 	default:
-		return 0, fmt.Errorf("unsupported sqlite open mode %q", mode)
+		return 0, fmt.Errorf("%w: %q", errUnsupportedSQLiteOpenMode, mode)
 	}
 }
 

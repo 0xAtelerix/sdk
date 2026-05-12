@@ -117,13 +117,14 @@ func TestMultichainStateAccessSQL_MidnightBlockAndActions(t *testing.T) {
 	ctx := t.Context()
 	chainDir := filepath.Join(t.TempDir(), "midnight")
 	require.NoError(t, os.MkdirAll(chainDir, 0o755))
-	extBlock := seedMidnightSQLFixture(t, ctx, chainDir)
+	extBlock := seedMidnightSQLFixture(ctx, t, chainDir)
 
 	msa, err := NewMultichainStateAccessSQL(
 		ctx,
 		MultichainConfig{library.MidnightPreviewChainID: chainDir},
 	)
 	require.NoError(t, err)
+
 	defer msa.Close()
 
 	gotBlock, err := msa.MidnightBlockByHash(ctx, extBlock)
@@ -143,10 +144,11 @@ func BenchmarkMultichainStateAccessSQL_EVMReads(b *testing.B) {
 	ctx := b.Context()
 	chainDir := filepath.Join(b.TempDir(), "evm1")
 	require.NoError(b, os.MkdirAll(chainDir, 0o755))
-	extBlock := seedEVMSQLFixture(b, ctx, chainDir)
+	extBlock := seedEVMSQLFixture(ctx, b, chainDir)
 
 	db, err := openSQLite(ctx, filepath.Join(chainDir, "sqlite"), "ro")
 	require.NoError(b, err)
+
 	defer db.Close()
 
 	msa, err := NewMultichainStateAccessSQL(
@@ -154,6 +156,7 @@ func BenchmarkMultichainStateAccessSQL_EVMReads(b *testing.B) {
 		MultichainConfig{library.EthereumChainID: chainDir},
 	)
 	require.NoError(b, err)
+
 	defer msa.Close()
 
 	b.Run("legacy_database_sql_block", func(b *testing.B) {
@@ -189,10 +192,11 @@ func BenchmarkMultichainStateAccessSQL_MidnightReads(b *testing.B) {
 	ctx := b.Context()
 	chainDir := filepath.Join(b.TempDir(), "midnight")
 	require.NoError(b, os.MkdirAll(chainDir, 0o755))
-	extBlock := seedMidnightSQLFixture(b, ctx, chainDir)
+	extBlock := seedMidnightSQLFixture(ctx, b, chainDir)
 
 	db, err := openSQLite(ctx, filepath.Join(chainDir, "sqlite"), "ro")
 	require.NoError(b, err)
+
 	defer db.Close()
 
 	msa, err := NewMultichainStateAccessSQL(
@@ -200,6 +204,7 @@ func BenchmarkMultichainStateAccessSQL_MidnightReads(b *testing.B) {
 		MultichainConfig{library.MidnightPreviewChainID: chainDir},
 	)
 	require.NoError(b, err)
+
 	defer msa.Close()
 
 	b.Run("legacy_database_sql_block", func(b *testing.B) {
@@ -231,12 +236,13 @@ func BenchmarkMultichainStateAccessSQL_MidnightReads(b *testing.B) {
 	})
 }
 
-func seedEVMSQLFixture(tb testing.TB, ctx context.Context, chainDir string) apptypes.ExternalBlock {
+func seedEVMSQLFixture(ctx context.Context, tb testing.TB, chainDir string) apptypes.ExternalBlock {
 	tb.Helper()
 
 	dbPath := filepath.Join(chainDir, "sqlite")
 	db, err := openSQLite(ctx, dbPath, "rwc")
 	require.NoError(tb, err)
+
 	defer db.Close()
 
 	_, err = db.ExecContext(ctx, `
@@ -293,12 +299,17 @@ CREATE TABLE receipts (
 	}
 }
 
-func seedMidnightSQLFixture(tb testing.TB, ctx context.Context, chainDir string) apptypes.ExternalBlock {
+func seedMidnightSQLFixture(
+	ctx context.Context,
+	tb testing.TB,
+	chainDir string,
+) apptypes.ExternalBlock {
 	tb.Helper()
 
 	dbPath := filepath.Join(chainDir, "sqlite")
 	db, err := openSQLite(ctx, dbPath, "rwc")
 	require.NoError(tb, err)
+
 	defer db.Close()
 
 	_, err = db.ExecContext(ctx, `
@@ -331,10 +342,17 @@ CREATE TABLE contract_actions (
 	)
 	require.NoError(tb, err)
 
-	_, err = db.ExecContext(ctx,
+	_, err = db.ExecContext(
+		ctx,
 		`INSERT INTO contract_actions(block_hash, block_number, contract_addr, action_type, entry_point, state, raw_action)
 VALUES(?, ?, ?, ?, ?, ?, ?)`,
-		blockHash[:], uint64(44), []byte("contract"), "call", "entry", []byte("state"), []byte("raw"),
+		blockHash[:],
+		uint64(44),
+		[]byte("contract"),
+		"call",
+		"entry",
+		[]byte("state"),
+		[]byte("raw"),
 	)
 	require.NoError(tb, err)
 
@@ -350,8 +368,11 @@ func legacyEVMBlockSQL(
 	db *sql.DB,
 	block apptypes.ExternalBlock,
 ) (*evmtypes.Block, error) {
-	var rawBlock []byte
-	var num int64
+	var (
+		rawBlock []byte
+		num      int64
+	)
+
 	if err := db.QueryRowContext(ctx, `
 SELECT raw_block, number
 FROM blocks
@@ -398,6 +419,7 @@ ORDER BY tx_index`,
 	defer rows.Close()
 
 	var receipts []evmtypes.Receipt
+
 	for rows.Next() {
 		var raw []byte
 		if err := rows.Scan(&raw); err != nil {
@@ -452,9 +474,13 @@ ORDER BY id`,
 	defer rows.Close()
 
 	var actions []MidnightContractAction
+
 	for rows.Next() {
-		var action MidnightContractAction
-		var entryPoint sql.NullString
+		var (
+			action     MidnightContractAction
+			entryPoint sql.NullString
+		)
+
 		if err := rows.Scan(
 			&action.ContractAddr,
 			&action.ActionType,
