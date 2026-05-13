@@ -2,7 +2,9 @@ package gosdk
 
 import (
 	"context"
+	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/blocto/solana-go-sdk/client"
 	"github.com/goccy/go-json"
+	_ "github.com/mattn/go-sqlite3" // SQLite driver for multichain state access
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
@@ -18,11 +21,17 @@ import (
 	sdkerrors "github.com/0xAtelerix/sdk/gosdk/library/errors"
 )
 
-const errSQLiteRowNotFound sdkerrors.SDKError = "sqlite row not found"
+const (
+	errSQLiteRowNotFound          sdkerrors.SDKError = "sqlite row not found"
+	errUnsupportedSQLiteOpenMode  sdkerrors.SDKError = "unsupported sqlite open mode"
+	multichainSQLiteRetryInterval                    = time.Second
+	sqliteOpenModeReadOnly                           = "ro"
+	sqliteOpenModeReadWriteCreate                    = "rwc"
+)
 
 type MultichainStateAccessSQL struct {
 	mu            sync.RWMutex
-	stateAccessDB map[apptypes.ChainType]*multichainSQLiteReader
+	stateAccessDB map[apptypes.ChainType]*sql.DB
 }
 
 // NewMultichainStateAccessSQL opens read-only SQLite databases for each chain
@@ -31,19 +40,17 @@ func NewMultichainStateAccessSQL(
 	ctx context.Context,
 	cfg MultichainConfig,
 ) (*MultichainStateAccessSQL, error) {
-	stateAccessDBs := make(map[apptypes.ChainType]*multichainSQLiteReader)
+	stateAccessDBs := make(map[apptypes.ChainType]*sql.DB)
 
 	for chainID, path := range cfg {
 		dbPath := filepath.Join(filepath.Clean(path), "sqlite")
 
-		db, err := openMultichainSQLiteReader(ctx, dbPath)
+		db, err := openMultichainSQLite(ctx, dbPath, sqliteOpenModeReadOnly)
 		if err != nil {
 			// Close any already-opened DBs on failure.
 			for _, opened := range stateAccessDBs {
 				if closeErr := opened.Close(); closeErr != nil {
-					log.Ctx(ctx).Warn().
-						Err(closeErr).
-						Msg("close multichain sqlite db after open failure")
+					log.Error().Err(closeErr).Msg("failed to close db")
 				}
 			}
 
@@ -70,20 +77,47 @@ func (sa *MultichainStateAccessSQL) EVMBlock(
 		return nil, fmt.Errorf("%w, no DB for chainID %d", library.ErrUnknownChain, block.ChainID)
 	}
 
+	var (
+		rawBlock []byte
+		num      int64
+	)
+
+	const query = `
+		SELECT raw_block, number
+		FROM blocks
+		WHERE hash   = ?
+		  AND number = ?
+	`
+
 	i := 0
 	for {
 		if i > 0 {
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
-			case <-time.After(time.Millisecond * 100):
+			case <-time.After(100 * time.Millisecond):
 			}
 		}
 
 		i++
 
-		rawBlock, num, found, err := db.readEVMBlockRow(ctx, block)
+		err := db.QueryRowContext(
+			ctx,
+			query,
+			block.BlockHash[:],
+			block.BlockNumber,
+		).Scan(&rawBlock, &num)
 		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				log.Error().
+					Err(errSQLiteRowNotFound).
+					Uint64("block", block.BlockNumber).
+					Uint64("chain", block.ChainID).
+					Msg("block not found")
+
+				continue
+			}
+
 			log.Error().
 				Err(err).
 				Uint64("block", block.BlockNumber).
@@ -97,16 +131,6 @@ func (sa *MultichainStateAccessSQL) EVMBlock(
 				block.BlockNumber,
 				hex.EncodeToString(block.BlockHash[:]),
 			)
-		}
-
-		if !found {
-			log.Error().
-				Err(errSQLiteRowNotFound).
-				Uint64("block", block.BlockNumber).
-				Uint64("chain", block.ChainID).
-				Msg("block not found")
-
-			continue
 		}
 
 		if num != int64(block.BlockNumber) {
@@ -161,9 +185,71 @@ func (sa *MultichainStateAccessSQL) EVMReceipts(
 		return nil, fmt.Errorf("%w, no DB for chainID %d", library.ErrUnknownChain, block.ChainID)
 	}
 
-	receipts, err := db.readEVMReceipts(ctx, block)
+	const q = `
+		SELECT raw_receipt
+		FROM receipts
+		WHERE block_hash  = ?
+		  AND block_number = ?
+		ORDER BY tx_index
+	`
+
+	rows, err := db.QueryContext(ctx, q, block.BlockHash[:], block.BlockNumber)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("sql query receipts: %w", err)
+	}
+	defer rows.Close()
+
+	var receipts []evmtypes.Receipt
+
+	for rows.Next() {
+		var raw []byte
+
+		scanErr := rows.Scan(&raw)
+		if scanErr != nil {
+			if errors.Is(scanErr, sql.ErrNoRows) {
+				log.Error().
+					Err(scanErr).
+					Uint64("block", block.BlockNumber).
+					Uint64("chain", block.ChainID).
+					Msg("receipt not found")
+				time.Sleep(100 * time.Millisecond)
+
+				continue
+			}
+
+			return nil, fmt.Errorf(
+				"failed to read eth block: %w, chainID %d, block number %d, block hash %s",
+				scanErr,
+				block.ChainID,
+				block.BlockNumber,
+				hex.EncodeToString(block.BlockHash[:]),
+			)
+		}
+
+		if raw == nil {
+			log.Error().
+				Uint64("block", block.BlockNumber).
+				Uint64("chain", block.ChainID).
+				Msg("receipt not found")
+			time.Sleep(100 * time.Millisecond)
+
+			continue
+		}
+
+		r := evmtypes.Receipt{}
+
+		err = json.Unmarshal(raw, &r)
+		if err != nil {
+			return nil, fmt.Errorf("decode receipt: %w", err)
+		}
+
+		r.Raw = raw
+
+		receipts = append(receipts, r)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows err: %w", err)
 	}
 
 	return receipts, nil
@@ -193,7 +279,18 @@ func (sa *MultichainStateAccessSQL) MidnightBlockByHash(
 		)
 	}
 
-	mb, err := db.readMidnightBlock(ctx, block)
+	const query = `
+		SELECT hash, number, parent_hash, timestamp, raw_block
+		FROM blocks
+		WHERE hash   = ?
+		  AND number = ?
+	`
+
+	var mb MidnightBlock
+
+	err := db.QueryRowContext(
+		ctx, query, block.BlockHash[:], block.BlockNumber,
+	).Scan(&mb.Hash, &mb.Number, &mb.ParentHash, &mb.Timestamp, &mb.RawBlock)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"read midnight block: %w, chainID %d, block %d, hash %s",
@@ -202,7 +299,7 @@ func (sa *MultichainStateAccessSQL) MidnightBlockByHash(
 		)
 	}
 
-	return mb, nil
+	return &mb, nil
 }
 
 // MidnightContractActions reads contract actions for a Midnight block.
@@ -221,9 +318,44 @@ func (sa *MultichainStateAccessSQL) MidnightContractActions(
 		)
 	}
 
-	actions, err := db.readMidnightActions(ctx, block)
+	const query = `
+		SELECT contract_addr, action_type, entry_point, state, raw_action
+		FROM contract_actions
+		WHERE block_hash = ?
+		  AND block_number = ?
+		ORDER BY id
+	`
+
+	rows, err := db.QueryContext(
+		ctx, query, block.BlockHash[:], block.BlockNumber,
+	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query midnight contract actions: %w", err)
+	}
+	defer rows.Close()
+
+	var actions []MidnightContractAction
+
+	for rows.Next() {
+		var a MidnightContractAction
+
+		var entryPoint sql.NullString
+
+		if err := rows.Scan(
+			&a.ContractAddr, &a.ActionType, &entryPoint, &a.State, &a.RawAction,
+		); err != nil {
+			return nil, fmt.Errorf("scan contract action: %w", err)
+		}
+
+		if entryPoint.Valid {
+			a.EntryPoint = entryPoint.String
+		}
+
+		actions = append(actions, a)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows err: %w", err)
 	}
 
 	return actions, nil
@@ -239,4 +371,85 @@ func (*MultichainStateAccessSQL) SolanaBlock(
 		library.ErrUnknownChain,
 		block.ChainID,
 	)
+}
+
+// openMultichainSQLite opens a SQLite database with the given mode ("ro" for read-only, "rwc" for read/write).
+// It mirrors the retry logic used by the MDBX opener so tests and production paths behave similarly.
+func openMultichainSQLite(ctx context.Context, dbPath, mode string) (*sql.DB, error) {
+	if mode != sqliteOpenModeReadOnly && mode != sqliteOpenModeReadWriteCreate {
+		return nil, fmt.Errorf("%w: %s", errUnsupportedSQLiteOpenMode, mode)
+	}
+
+	dsn := fmt.Sprintf("file:%s?mode=%s&cache=shared&uri=true", dbPath, mode)
+	log.Info().Str("path", dsn).Msg("connecting to sqlite")
+
+	var (
+		db  *sql.DB
+		err error
+	)
+
+	maxTries := 50
+
+	for {
+		db, err = sql.Open("sqlite3", dsn)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to open SQLite DB")
+
+			if retryErr := waitSQLiteOpenRetry(ctx, &maxTries, err); retryErr != nil {
+				return nil, retryErr
+			}
+
+			continue
+		}
+
+		if pingErr := db.PingContext(ctx); pingErr != nil {
+			log.Error().Err(pingErr).Str("dsn", dsn).Str("path", dbPath).Msg("SQLite ping failed")
+
+			if closeErr := db.Close(); closeErr != nil {
+				log.Error().Err(closeErr).Msg("Failed to close DB")
+			}
+
+			if retryErr := waitSQLiteOpenRetry(ctx, &maxTries, pingErr); retryErr != nil {
+				return nil, retryErr
+			}
+
+			continue
+		}
+
+		log.Info().Str("path", dbPath).Msg("SQLite DB opened")
+
+		if mode == "ro" {
+			if _, err := db.ExecContext(ctx, "PRAGMA query_only = ON;"); err != nil {
+				log.Warn().Err(err).Msg("Unable to enforce query_only; continue anyway")
+			}
+
+			// Disable auto-checkpoint on read-only connections.
+			// Without this the reader may trigger a FULL checkpoint that
+			// blocks on the writer, causing 80%+ CPU in cgocall wait.
+			// The writer (pelacli/multichain oracle) handles checkpointing.
+			if _, err := db.ExecContext(ctx, "PRAGMA wal_autocheckpoint = 0;"); err != nil {
+				log.Warn().Err(err).Msg("Unable to disable wal_autocheckpoint; continue anyway")
+			}
+		}
+
+		return db, nil
+	}
+}
+
+func waitSQLiteOpenRetry(ctx context.Context, maxTries *int, err error) error {
+	if *maxTries == 0 {
+		return err
+	}
+
+	*maxTries--
+
+	timer := time.NewTimer(multichainSQLiteRetryInterval)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }

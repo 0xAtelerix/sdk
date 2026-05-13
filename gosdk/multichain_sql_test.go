@@ -15,11 +15,9 @@ import (
 	"github.com/goccy/go-json"
 	_ "github.com/mattn/go-sqlite3" // sqlite driver
 	"github.com/stretchr/testify/require"
-	zsqlite "zombiezen.com/go/sqlite"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/evmtypes"
-	"github.com/0xAtelerix/sdk/gosdk/internal/sqlitez"
 	"github.com/0xAtelerix/sdk/gosdk/library"
 )
 
@@ -142,100 +140,6 @@ func TestMultichainStateAccessSQL_MidnightBlockAndActions(t *testing.T) {
 	require.Equal(t, "entry", actions[0].EntryPoint)
 }
 
-func TestZombiezenMultichainReaderSeesWALBlockInsertedAfterMiss(t *testing.T) {
-	t.Parallel()
-
-	ctx := t.Context()
-	chainDir := filepath.Join(t.TempDir(), "evm1")
-	require.NoError(t, os.MkdirAll(chainDir, 0o755))
-	dbPath := filepath.Join(chainDir, "sqlite")
-
-	db, err := openSQLite(ctx, dbPath, "rwc")
-	require.NoError(t, err)
-
-	defer db.Close()
-
-	_, err = db.ExecContext(ctx, `PRAGMA journal_mode=WAL;`)
-	require.NoError(t, err)
-
-	_, err = db.ExecContext(ctx, `
-CREATE TABLE blocks (
-	hash BLOB PRIMARY KEY,
-	number INTEGER,
-	raw_block BLOB
-);
-`)
-	require.NoError(t, err)
-
-	reader, err := openZombiezenEVMBlockReaderForTest(ctx, dbPath)
-	require.NoError(t, err)
-
-	defer reader.close()
-
-	extBlock, rawBlock := makeEVMBlockFixture(t, 10)
-
-	found, err := reader.read(ctx, extBlock)
-	require.NoError(t, err)
-	require.False(t, found)
-
-	_, err = db.ExecContext(ctx,
-		"INSERT INTO blocks(hash, number, raw_block) VALUES(?, ?, ?)",
-		extBlock.BlockHash[:], extBlock.BlockNumber, rawBlock,
-	)
-	require.NoError(t, err)
-
-	found, err = reader.read(ctx, extBlock)
-	require.NoError(t, err)
-	require.True(t, found)
-}
-
-func TestZombiezenMultichainReaderSeesBlockAfterWriterEnablesWAL(t *testing.T) {
-	t.Parallel()
-
-	ctx := t.Context()
-	chainDir := filepath.Join(t.TempDir(), "evm1")
-	require.NoError(t, os.MkdirAll(chainDir, 0o755))
-	dbPath := filepath.Join(chainDir, "sqlite")
-
-	db, err := openSQLite(ctx, dbPath, "rwc")
-	require.NoError(t, err)
-
-	defer db.Close()
-
-	_, err = db.ExecContext(ctx, `
-CREATE TABLE blocks (
-	hash BLOB PRIMARY KEY,
-	number INTEGER,
-	raw_block BLOB
-);
-`)
-	require.NoError(t, err)
-
-	reader, err := openZombiezenEVMBlockReaderForTest(ctx, dbPath)
-	require.NoError(t, err)
-
-	defer reader.close()
-
-	extBlock, rawBlock := makeEVMBlockFixture(t, 10)
-
-	found, err := reader.read(ctx, extBlock)
-	require.NoError(t, err)
-	require.False(t, found)
-
-	_, err = db.ExecContext(ctx, `PRAGMA journal_mode=WAL;`)
-	require.NoError(t, err)
-
-	_, err = db.ExecContext(ctx,
-		"INSERT INTO blocks(hash, number, raw_block) VALUES(?, ?, ?)",
-		extBlock.BlockHash[:], extBlock.BlockNumber, rawBlock,
-	)
-	require.NoError(t, err)
-
-	found, err = reader.read(ctx, extBlock)
-	require.NoError(t, err)
-	require.True(t, found)
-}
-
 func TestMultichainStateAccessSQL_EVMBlockReturnsWhenContextExpires(t *testing.T) {
 	t.Parallel()
 
@@ -292,6 +196,67 @@ CREATE TABLE receipts (
 	}
 }
 
+func TestMultichainStateAccessSQL_EVMBlockSeesBlockInsertedAfterMissLoop(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	chainDir := filepath.Join(t.TempDir(), "evm1")
+	require.NoError(t, os.MkdirAll(chainDir, 0o755))
+	dbPath := filepath.Join(chainDir, "sqlite")
+
+	db, err := openSQLite(ctx, dbPath, "rwc")
+	require.NoError(t, err)
+
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, `PRAGMA journal_mode=WAL;`)
+	require.NoError(t, err)
+
+	_, err = db.ExecContext(ctx, `
+CREATE TABLE blocks (
+	hash BLOB PRIMARY KEY,
+	number INTEGER,
+	raw_block BLOB
+);
+`)
+	require.NoError(t, err)
+
+	msa, err := NewMultichainStateAccessSQL(
+		ctx,
+		MultichainConfig{library.EthereumChainID: chainDir},
+	)
+	require.NoError(t, err)
+
+	defer msa.Close()
+
+	extBlock, rawBlock := makeEVMBlockFixture(t, 10)
+
+	readCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	errCh := make(chan error, 1)
+
+	go func() {
+		_, readErr := msa.EVMBlock(readCtx, extBlock)
+		errCh <- readErr
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+
+	_, err = db.ExecContext(ctx,
+		"INSERT INTO blocks(hash, number, raw_block) VALUES(?, ?, ?)",
+		extBlock.BlockHash[:], extBlock.BlockNumber, rawBlock,
+	)
+	require.NoError(t, err)
+
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("EVMBlock did not see block inserted after miss loop")
+	}
+}
+
 func BenchmarkMultichainStateAccessSQL_EVMReads(b *testing.B) {
 	ctx := b.Context()
 	chainDir := filepath.Join(b.TempDir(), "evm1")
@@ -311,28 +276,28 @@ func BenchmarkMultichainStateAccessSQL_EVMReads(b *testing.B) {
 
 	defer msa.Close()
 
-	b.Run("legacy_database_sql_block", func(b *testing.B) {
+	b.Run("direct_database_sql_block", func(b *testing.B) {
 		for range b.N {
 			_, err := legacyEVMBlockSQL(ctx, db, extBlock)
 			require.NoError(b, err)
 		}
 	})
 
-	b.Run("zombiezen_block", func(b *testing.B) {
+	b.Run("accessor_block", func(b *testing.B) {
 		for range b.N {
 			_, err := msa.EVMBlock(ctx, extBlock)
 			require.NoError(b, err)
 		}
 	})
 
-	b.Run("legacy_database_sql_receipts", func(b *testing.B) {
+	b.Run("direct_database_sql_receipts", func(b *testing.B) {
 		for range b.N {
 			_, err := legacyEVMReceiptsSQL(ctx, db, extBlock)
 			require.NoError(b, err)
 		}
 	})
 
-	b.Run("zombiezen_receipts", func(b *testing.B) {
+	b.Run("accessor_receipts", func(b *testing.B) {
 		for range b.N {
 			_, err := msa.EVMReceipts(ctx, extBlock)
 			require.NoError(b, err)
@@ -359,101 +324,33 @@ func BenchmarkMultichainStateAccessSQL_MidnightReads(b *testing.B) {
 
 	defer msa.Close()
 
-	b.Run("legacy_database_sql_block", func(b *testing.B) {
+	b.Run("direct_database_sql_block", func(b *testing.B) {
 		for range b.N {
 			_, err := legacyMidnightBlockSQL(ctx, db, extBlock)
 			require.NoError(b, err)
 		}
 	})
 
-	b.Run("zombiezen_block", func(b *testing.B) {
+	b.Run("accessor_block", func(b *testing.B) {
 		for range b.N {
 			_, err := msa.MidnightBlockByHash(ctx, extBlock)
 			require.NoError(b, err)
 		}
 	})
 
-	b.Run("legacy_database_sql_actions", func(b *testing.B) {
+	b.Run("direct_database_sql_actions", func(b *testing.B) {
 		for range b.N {
 			_, err := legacyMidnightActionsSQL(ctx, db, extBlock)
 			require.NoError(b, err)
 		}
 	})
 
-	b.Run("zombiezen_actions", func(b *testing.B) {
+	b.Run("accessor_actions", func(b *testing.B) {
 		for range b.N {
 			_, err := msa.MidnightContractActions(ctx, extBlock)
 			require.NoError(b, err)
 		}
 	})
-}
-
-type zombiezenEVMBlockReaderForTest struct {
-	conn *zsqlite.Conn
-	stmt *zsqlite.Stmt
-}
-
-func openZombiezenEVMBlockReaderForTest(
-	ctx context.Context,
-	dbPath string,
-) (*zombiezenEVMBlockReaderForTest, error) {
-	conn, err := sqlitez.OpenConn(ctx, dbPath, sqlitez.OpenOptions{
-		QueryOnly:                true,
-		DisableWALAutoCheckpoint: true,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	stmt, err := conn.Prepare(multichainEVMBlockQuery)
-	if err != nil {
-		_ = conn.Close()
-
-		return nil, err
-	}
-
-	return &zombiezenEVMBlockReaderForTest{
-		conn: conn,
-		stmt: stmt,
-	}, nil
-}
-
-func (r *zombiezenEVMBlockReaderForTest) close() {
-	if r.stmt != nil {
-		_ = r.stmt.Finalize()
-	}
-
-	if r.conn != nil {
-		_ = r.conn.Close()
-	}
-}
-
-func (r *zombiezenEVMBlockReaderForTest) read(
-	ctx context.Context,
-	block apptypes.ExternalBlock,
-) (bool, error) {
-	oldDone := r.conn.SetInterrupt(ctx.Done())
-	defer r.conn.SetInterrupt(oldDone)
-
-	r.stmt.BindBytes(1, block.BlockHash[:])
-	r.stmt.BindInt64(2, int64(block.BlockNumber))
-
-	found, err := r.stmt.Step()
-	if resetErr := resetZombiezenStmtForTest(r.stmt); resetErr != nil && err == nil {
-		err = resetErr
-	}
-
-	return found, err
-}
-
-func resetZombiezenStmtForTest(stmt *zsqlite.Stmt) error {
-	if resetErr := stmt.Reset(); resetErr != nil {
-		_ = stmt.ClearBindings()
-
-		return resetErr
-	}
-
-	return stmt.ClearBindings()
 }
 
 func makeEVMBlockFixture(
