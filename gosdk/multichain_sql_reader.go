@@ -2,19 +2,18 @@ package gosdk
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/goccy/go-json"
-	_ "github.com/mattn/go-sqlite3" // SQLite driver for multichain state access.
 	"github.com/rs/zerolog/log"
+	zsqlite "zombiezen.com/go/sqlite"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/evmtypes"
+	"github.com/0xAtelerix/sdk/gosdk/internal/sqlitez"
 )
 
 const (
@@ -40,27 +39,97 @@ ORDER BY id`
 
 type multichainSQLiteReader struct {
 	mu sync.Mutex
-	db *sql.DB
+
+	conn            *zsqlite.Conn
+	evmBlock        *zsqlite.Stmt
+	evmReceipts     *zsqlite.Stmt
+	midnightBlock   *zsqlite.Stmt
+	midnightActions *zsqlite.Stmt
 }
 
 func openMultichainSQLiteReader(
 	ctx context.Context,
 	dbPath string,
 ) (*multichainSQLiteReader, error) {
-	db, err := openMultichainSQLiteDB(ctx, dbPath, "ro")
+	conn, err := sqlitez.OpenConn(ctx, dbPath, "ro", sqlitez.OpenOptions{
+		QueryOnly:                true,
+		DisableWALAutoCheckpoint: true,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	return &multichainSQLiteReader{db: db}, nil
+	return &multichainSQLiteReader{
+		conn: conn,
+	}, nil
 }
 
 func (r *multichainSQLiteReader) Close() error {
-	if r == nil || r.db == nil {
+	if r == nil || r.conn == nil {
 		return nil
 	}
 
-	return r.db.Close()
+	return r.conn.Close()
+}
+
+func (r *multichainSQLiteReader) preparedEVMBlock() (*zsqlite.Stmt, error) {
+	if r.evmBlock != nil {
+		return r.evmBlock, nil
+	}
+
+	stmt, err := r.conn.Prepare(multichainEVMBlockQuery)
+	if err != nil {
+		return nil, err
+	}
+
+	r.evmBlock = stmt
+
+	return stmt, nil
+}
+
+func (r *multichainSQLiteReader) preparedEVMReceipts() (*zsqlite.Stmt, error) {
+	if r.evmReceipts != nil {
+		return r.evmReceipts, nil
+	}
+
+	stmt, err := r.conn.Prepare(multichainEVMReceiptsQuery)
+	if err != nil {
+		return nil, err
+	}
+
+	r.evmReceipts = stmt
+
+	return stmt, nil
+}
+
+func (r *multichainSQLiteReader) preparedMidnightBlock() (*zsqlite.Stmt, error) {
+	if r.midnightBlock != nil {
+		return r.midnightBlock, nil
+	}
+
+	stmt, err := r.conn.Prepare(multichainMidnightBlockQuery)
+	if err != nil {
+		return nil, err
+	}
+
+	r.midnightBlock = stmt
+
+	return stmt, nil
+}
+
+func (r *multichainSQLiteReader) preparedMidnightActions() (*zsqlite.Stmt, error) {
+	if r.midnightActions != nil {
+		return r.midnightActions, nil
+	}
+
+	stmt, err := r.conn.Prepare(multichainMidnightActionsQuery)
+	if err != nil {
+		return nil, err
+	}
+
+	r.midnightActions = stmt
+
+	return stmt, nil
 }
 
 func (r *multichainSQLiteReader) readEVMBlockRow(
@@ -70,23 +139,37 @@ func (r *multichainSQLiteReader) readEVMBlockRow(
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	var (
-		rawBlock []byte
-		num      int64
-	)
+	oldDone := r.conn.SetInterrupt(ctx.Done())
+	defer r.conn.SetInterrupt(oldDone)
 
-	err := r.db.QueryRowContext(
-		ctx,
-		multichainEVMBlockQuery,
-		block.BlockHash[:],
-		block.BlockNumber,
-	).Scan(&rawBlock, &num)
+	stmt, err := r.preparedEVMBlock()
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, 0, false, nil
-		}
+		return nil, 0, false, err
+	}
+
+	stmt.BindBytes(1, block.BlockHash[:])
+	stmt.BindInt64(2, int64(block.BlockNumber))
+
+	hasRow, err := stmt.Step()
+	if err != nil {
+		_ = resetMultichainSQLiteStmt(stmt)
 
 		return nil, 0, false, err
+	}
+
+	if !hasRow {
+		if resetErr := resetMultichainSQLiteStmt(stmt); resetErr != nil {
+			return nil, 0, false, resetErr
+		}
+
+		return nil, 0, false, nil
+	}
+
+	rawBlock := sqliteColumnBytesCopy(stmt, 0)
+
+	num := stmt.ColumnInt64(1)
+	if resetErr := resetMultichainSQLiteStmt(stmt); resetErr != nil {
+		return nil, 0, false, resetErr
 	}
 
 	return rawBlock, num, true, nil
@@ -99,23 +182,28 @@ func (r *multichainSQLiteReader) readEVMReceipts(
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	rows, err := r.db.QueryContext(
-		ctx,
-		multichainEVMReceiptsQuery,
-		block.BlockHash[:],
-		block.BlockNumber,
-	)
+	oldDone := r.conn.SetInterrupt(ctx.Done())
+	defer r.conn.SetInterrupt(oldDone)
+
+	stmt, err := r.preparedEVMReceipts()
 	if err != nil {
-		return nil, fmt.Errorf("sql query receipts: %w", err)
+		return nil, err
 	}
-	defer rows.Close()
+
+	stmt.BindBytes(1, block.BlockHash[:])
+	stmt.BindInt64(2, int64(block.BlockNumber))
+
+	defer func() {
+		if err := resetMultichainSQLiteStmt(stmt); err != nil {
+			log.Ctx(ctx).Warn().Err(err).Msg("reset evm receipts statement")
+		}
+	}()
 
 	var receipts []evmtypes.Receipt
 
-	for rows.Next() {
-		var raw []byte
-
-		if err := rows.Scan(&raw); err != nil {
+	for {
+		hasRow, err := stmt.Step()
+		if err != nil {
 			return nil, fmt.Errorf(
 				"failed to read eth receipts: %w, chainID %d, block number %d, block hash %s",
 				err,
@@ -125,7 +213,11 @@ func (r *multichainSQLiteReader) readEVMReceipts(
 			)
 		}
 
-		if raw == nil {
+		if !hasRow {
+			return receipts, nil
+		}
+
+		if stmt.ColumnIsNull(0) {
 			log.Error().
 				Uint64("block", block.BlockNumber).
 				Uint64("chain", block.ChainID).
@@ -135,6 +227,8 @@ func (r *multichainSQLiteReader) readEVMReceipts(
 			continue
 		}
 
+		raw := sqliteColumnBytesCopy(stmt, 0)
+
 		var receipt evmtypes.Receipt
 		if err := json.Unmarshal(raw, &receipt); err != nil {
 			return nil, fmt.Errorf("decode receipt: %w", err)
@@ -143,12 +237,6 @@ func (r *multichainSQLiteReader) readEVMReceipts(
 		receipt.Raw = raw
 		receipts = append(receipts, receipt)
 	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows err: %w", err)
-	}
-
-	return receipts, nil
 }
 
 func (r *multichainSQLiteReader) readMidnightBlock(
@@ -158,19 +246,44 @@ func (r *multichainSQLiteReader) readMidnightBlock(
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	var mb MidnightBlock
+	oldDone := r.conn.SetInterrupt(ctx.Done())
+	defer r.conn.SetInterrupt(oldDone)
 
-	err := r.db.QueryRowContext(
-		ctx,
-		multichainMidnightBlockQuery,
-		block.BlockHash[:],
-		block.BlockNumber,
-	).Scan(&mb.Hash, &mb.Number, &mb.ParentHash, &mb.Timestamp, &mb.RawBlock)
+	stmt, err := r.preparedMidnightBlock()
 	if err != nil {
 		return nil, err
 	}
 
-	return &mb, nil
+	stmt.BindBytes(1, block.BlockHash[:])
+	stmt.BindInt64(2, int64(block.BlockNumber))
+
+	hasRow, err := stmt.Step()
+	if err != nil {
+		_ = resetMultichainSQLiteStmt(stmt)
+
+		return nil, err
+	}
+
+	if !hasRow {
+		if resetErr := resetMultichainSQLiteStmt(stmt); resetErr != nil {
+			return nil, resetErr
+		}
+
+		return nil, errSQLiteRowNotFound
+	}
+
+	blockOut := &MidnightBlock{
+		Hash:       sqliteColumnBytesCopy(stmt, 0),
+		Number:     uint64(stmt.ColumnInt64(1)),
+		ParentHash: sqliteColumnBytesCopy(stmt, 2),
+		Timestamp:  stmt.ColumnInt64(3),
+		RawBlock:   sqliteColumnBytesCopy(stmt, 4),
+	}
+	if resetErr := resetMultichainSQLiteStmt(stmt); resetErr != nil {
+		return nil, resetErr
+	}
+
+	return blockOut, nil
 }
 
 func (r *multichainSQLiteReader) readMidnightActions(
@@ -180,120 +293,62 @@ func (r *multichainSQLiteReader) readMidnightActions(
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	rows, err := r.db.QueryContext(
-		ctx,
-		multichainMidnightActionsQuery,
-		block.BlockHash[:],
-		block.BlockNumber,
-	)
+	oldDone := r.conn.SetInterrupt(ctx.Done())
+	defer r.conn.SetInterrupt(oldDone)
+
+	stmt, err := r.preparedMidnightActions()
 	if err != nil {
-		return nil, fmt.Errorf("query midnight contract actions: %w", err)
+		return nil, err
 	}
-	defer rows.Close()
+
+	stmt.BindBytes(1, block.BlockHash[:])
+	stmt.BindInt64(2, int64(block.BlockNumber))
+
+	defer func() {
+		if err := resetMultichainSQLiteStmt(stmt); err != nil {
+			log.Ctx(ctx).Warn().Err(err).Msg("reset midnight actions statement")
+		}
+	}()
 
 	var actions []MidnightContractAction
 
-	for rows.Next() {
-		var (
-			action     MidnightContractAction
-			entryPoint sql.NullString
-		)
-
-		if err := rows.Scan(
-			&action.ContractAddr,
-			&action.ActionType,
-			&entryPoint,
-			&action.State,
-			&action.RawAction,
-		); err != nil {
-			return nil, fmt.Errorf("scan contract action: %w", err)
+	for {
+		hasRow, err := stmt.Step()
+		if err != nil {
+			return nil, fmt.Errorf("query midnight contract actions: %w", err)
 		}
 
-		if entryPoint.Valid {
-			action.EntryPoint = entryPoint.String
+		if !hasRow {
+			return actions, nil
+		}
+
+		action := MidnightContractAction{
+			ContractAddr: sqliteColumnBytesCopy(stmt, 0),
+			ActionType:   stmt.ColumnText(1),
+			State:        sqliteColumnBytesCopy(stmt, 3),
+			RawAction:    sqliteColumnBytesCopy(stmt, 4),
+		}
+		if !stmt.ColumnIsNull(2) {
+			action.EntryPoint = stmt.ColumnText(2)
 		}
 
 		actions = append(actions, action)
 	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows err: %w", err)
-	}
-
-	return actions, nil
 }
 
-// openMultichainSQLiteDB opens a live multichain SQLite reader.
-// CEX hot-path readers use zombiezen; multichain appchain readers keep
-// database/sql because they observe WAL-backed oracle writes while appchain
-// execution is waiting on freshly voted blocks.
-func openMultichainSQLiteDB(ctx context.Context, dbPath string, mode string) (*sql.DB, error) {
-	dsn := fmt.Sprintf("file:%s?mode=%s&cache=shared&uri=true", dbPath, mode)
-	log.Info().Str("path", dsn).Msg("connecting to sqlite")
+func sqliteColumnBytesCopy(stmt *zsqlite.Stmt, col int) []byte {
+	buf := make([]byte, stmt.ColumnLen(col))
+	stmt.ColumnBytes(col, buf)
 
-	var (
-		db  *sql.DB
-		err error
-	)
-
-	maxTries := 50
-
-	for {
-		db, err = sql.Open("sqlite3", dsn)
-		if err != nil {
-			log.Error().Err(err).Msg("failed to open sqlite db")
-
-			if retryErr := waitMultichainSQLiteRetry(ctx, &maxTries, err); retryErr != nil {
-				return nil, retryErr
-			}
-
-			continue
-		}
-
-		if pingErr := db.PingContext(ctx); pingErr != nil {
-			log.Error().Err(pingErr).Str("dsn", dsn).Str("path", dbPath).Msg("sqlite ping failed")
-
-			if closeErr := db.Close(); closeErr != nil {
-				log.Error().Err(closeErr).Msg("failed to close sqlite db")
-			}
-
-			if retryErr := waitMultichainSQLiteRetry(ctx, &maxTries, pingErr); retryErr != nil {
-				return nil, retryErr
-			}
-
-			continue
-		}
-
-		log.Info().Str("path", dbPath).Msg("sqlite db opened")
-
-		if mode == "ro" {
-			if _, err := db.ExecContext(ctx, "PRAGMA query_only = ON;"); err != nil {
-				log.Warn().Err(err).Msg("unable to enforce query_only; continue anyway")
-			}
-
-			if _, err := db.ExecContext(ctx, "PRAGMA wal_autocheckpoint = 0;"); err != nil {
-				log.Warn().Err(err).Msg("unable to disable wal_autocheckpoint; continue anyway")
-			}
-		}
-
-		return db, nil
-	}
+	return buf
 }
 
-func waitMultichainSQLiteRetry(ctx context.Context, maxTries *int, err error) error {
-	if *maxTries == 0 {
-		return err
+func resetMultichainSQLiteStmt(stmt *zsqlite.Stmt) error {
+	if resetErr := stmt.Reset(); resetErr != nil {
+		_ = stmt.ClearBindings()
+
+		return resetErr
 	}
 
-	*maxTries--
-
-	timer := time.NewTimer(time.Second)
-	defer timer.Stop()
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
+	return stmt.ClearBindings()
 }

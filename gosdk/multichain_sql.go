@@ -73,35 +73,40 @@ func (sa *MultichainStateAccessSQL) EVMBlock(
 	i := 0
 	for {
 		if i > 0 {
-			time.Sleep(time.Millisecond * 100)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Millisecond * 100):
+			}
 		}
 
 		i++
 
 		rawBlock, num, found, err := db.readEVMBlockRow(ctx, block)
-		if err != nil || !found {
-			readErr := err
-			if readErr == nil {
-				readErr = errSQLiteRowNotFound
-			}
-
+		if err != nil {
 			log.Error().
-				Err(readErr).
+				Err(err).
 				Uint64("block", block.BlockNumber).
 				Uint64("chain", block.ChainID).
 				Msg("block not found")
 
-			if !found {
-				continue
-			}
-
 			return nil, fmt.Errorf(
 				"failed to read eth block: %w, chainID %d, block number %d, block hash %s",
-				readErr,
+				err,
 				block.ChainID,
 				block.BlockNumber,
 				hex.EncodeToString(block.BlockHash[:]),
 			)
+		}
+
+		if !found {
+			log.Error().
+				Err(errSQLiteRowNotFound).
+				Uint64("block", block.BlockNumber).
+				Uint64("chain", block.ChainID).
+				Msg("block not found")
+
+			continue
 		}
 
 		if num != int64(block.BlockNumber) {
