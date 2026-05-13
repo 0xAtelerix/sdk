@@ -3,7 +3,6 @@ package gosdk
 import (
 	"context"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -16,9 +15,10 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/evmtypes"
 	"github.com/0xAtelerix/sdk/gosdk/library"
+	sdkerrors "github.com/0xAtelerix/sdk/gosdk/library/errors"
 )
 
-var errSQLiteRowNotFound = errors.New("sqlite row not found")
+const errSQLiteRowNotFound sdkerrors.SDKError = "sqlite row not found"
 
 type MultichainStateAccessSQL struct {
 	mu            sync.RWMutex

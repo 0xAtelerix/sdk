@@ -2,16 +2,16 @@ package sqlitez
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
+	sdkerrors "github.com/0xAtelerix/sdk/gosdk/library/errors"
 	"github.com/rs/zerolog/log"
 	zsqlite "zombiezen.com/go/sqlite"
 	"zombiezen.com/go/sqlite/sqlitex"
 )
 
-var errUnsupportedSQLiteOpenMode = errors.New("unsupported sqlite open mode")
+const errUnsupportedSQLiteOpenMode sdkerrors.SDKError = "unsupported sqlite open mode"
 
 // OpenOptions captures SDK SQLite connection PRAGMAs owned by runtime readers.
 type OpenOptions struct {

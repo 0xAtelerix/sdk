@@ -2,7 +2,6 @@ package gosdk
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -10,21 +9,18 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
+	sdkerrors "github.com/0xAtelerix/sdk/gosdk/library/errors"
 )
 
 const (
-	cexOrderBookMissPrecisionThresholdNs = int64(time.Millisecond)
-	cexOrderBookDecodeError              = "decode_error"
-	cexOrderBookReadResultQueryError     = "query_error"
-)
-
-var (
-	errEmptyCEXOrderBookReadResult = errors.New("empty cex order book read result")
-	errCEXSQLiteReaderNotInit      = errors.New("cex sqlite reader is not initialized")
-
+	cexOrderBookMissPrecisionThresholdNs                    = int64(time.Millisecond)
+	cexOrderBookDecodeError                                 = "decode_error"
+	cexOrderBookReadResultQueryError                        = "query_error"
+	errEmptyCEXOrderBookReadResult       sdkerrors.SDKError = "empty cex order book read result"
+	errCEXSQLiteReaderNotInit            sdkerrors.SDKError = "cex sqlite reader is not initialized"
 	// ErrCEXOrderBookNotFound is returned through CEXOrderBookReadError when an
 	// exact CEX order-book snapshot ref has no matching SQLite row.
-	ErrCEXOrderBookNotFound = errors.New("cex order book not found")
+	ErrCEXOrderBookNotFound sdkerrors.SDKError = "cex order book not found"
 )
 
 // CEXOrderBookReadDiagnostic captures one exact-order-book read attempt.
