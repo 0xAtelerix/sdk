@@ -5,13 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	sdkerrors "github.com/0xAtelerix/sdk/gosdk/library/errors"
 	"github.com/rs/zerolog/log"
 	zsqlite "zombiezen.com/go/sqlite"
 	"zombiezen.com/go/sqlite/sqlitex"
 )
-
-const errUnsupportedSQLiteOpenMode sdkerrors.SDKError = "unsupported sqlite open mode"
 
 // OpenOptions captures SDK SQLite connection PRAGMAs owned by runtime readers.
 type OpenOptions struct {
@@ -19,25 +16,19 @@ type OpenOptions struct {
 	DisableWALAutoCheckpoint bool
 }
 
-// OpenConn opens a SQLite connection with the SDK retry policy.
+// OpenConn opens a read-only SQLite connection with the SDK retry policy.
 func OpenConn(
 	ctx context.Context,
 	dbPath string,
-	mode string,
 	opts OpenOptions,
 ) (*zsqlite.Conn, error) {
-	dsn := fmt.Sprintf("file:%s?mode=%s&cache=shared&uri=true", dbPath, mode)
+	dsn := fmt.Sprintf("file:%s?mode=ro&cache=shared&uri=true", dbPath)
 	log.Info().Str("path", dsn).Msg("connecting to sqlite")
-
-	flags, err := openFlags(mode)
-	if err != nil {
-		return nil, err
-	}
 
 	maxTries := 50
 
 	for {
-		conn, err := zsqlite.OpenConn(dsn, flags)
+		conn, err := zsqlite.OpenConn(dsn, zsqlite.OpenReadOnly|zsqlite.OpenURI)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to open sqlite db")
 
@@ -63,17 +54,6 @@ func OpenConn(
 		log.Info().Str("path", dbPath).Msg("sqlite db opened")
 
 		return conn, nil
-	}
-}
-
-func openFlags(mode string) (zsqlite.OpenFlags, error) {
-	switch mode {
-	case "ro":
-		return zsqlite.OpenReadOnly | zsqlite.OpenURI, nil
-	case "rwc":
-		return zsqlite.OpenReadWrite | zsqlite.OpenCreate | zsqlite.OpenURI, nil
-	default:
-		return 0, fmt.Errorf("%w: %q", errUnsupportedSQLiteOpenMode, mode)
 	}
 }
 

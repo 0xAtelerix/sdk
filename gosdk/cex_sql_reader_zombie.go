@@ -54,7 +54,7 @@ func openCEXOrderBookFastReader(
 	ctx context.Context,
 	dbPath string,
 ) (*cexOrderBookFastReader, error) {
-	conn, err := sqlitez.OpenConn(ctx, dbPath, "ro", sqlitez.OpenOptions{
+	conn, err := sqlitez.OpenConn(ctx, dbPath, sqlitez.OpenOptions{
 		QueryOnly:                true,
 		DisableWALAutoCheckpoint: true,
 	})

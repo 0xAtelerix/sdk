@@ -152,6 +152,7 @@ func TestZombiezenMultichainReaderSeesWALBlockInsertedAfterMiss(t *testing.T) {
 
 	db, err := openSQLite(ctx, dbPath, "rwc")
 	require.NoError(t, err)
+
 	defer db.Close()
 
 	_, err = db.ExecContext(ctx, `PRAGMA journal_mode=WAL;`)
@@ -168,6 +169,7 @@ CREATE TABLE blocks (
 
 	reader, err := openZombiezenEVMBlockReaderForTest(ctx, dbPath)
 	require.NoError(t, err)
+
 	defer reader.close()
 
 	extBlock, rawBlock := makeEVMBlockFixture(t, 10)
@@ -197,6 +199,7 @@ func TestZombiezenMultichainReaderSeesBlockAfterWriterEnablesWAL(t *testing.T) {
 
 	db, err := openSQLite(ctx, dbPath, "rwc")
 	require.NoError(t, err)
+
 	defer db.Close()
 
 	_, err = db.ExecContext(ctx, `
@@ -210,6 +213,7 @@ CREATE TABLE blocks (
 
 	reader, err := openZombiezenEVMBlockReaderForTest(ctx, dbPath)
 	require.NoError(t, err)
+
 	defer reader.close()
 
 	extBlock, rawBlock := makeEVMBlockFixture(t, 10)
@@ -242,6 +246,7 @@ func TestMultichainStateAccessSQL_EVMBlockReturnsWhenContextExpires(t *testing.T
 
 	db, err := openSQLite(ctx, dbPath, "rwc")
 	require.NoError(t, err)
+
 	defer db.Close()
 
 	_, err = db.ExecContext(ctx, `
@@ -264,13 +269,16 @@ CREATE TABLE receipts (
 		MultichainConfig{library.EthereumChainID: chainDir},
 	)
 	require.NoError(t, err)
+
 	defer msa.Close()
 
 	extBlock, _ := makeEVMBlockFixture(t, 10)
+
 	readCtx, cancel := context.WithTimeout(ctx, 25*time.Millisecond)
 	defer cancel()
 
 	errCh := make(chan error, 1)
+
 	go func() {
 		_, readErr := msa.EVMBlock(readCtx, extBlock)
 		errCh <- readErr
@@ -389,7 +397,7 @@ func openZombiezenEVMBlockReaderForTest(
 	ctx context.Context,
 	dbPath string,
 ) (*zombiezenEVMBlockReaderForTest, error) {
-	conn, err := sqlitez.OpenConn(ctx, dbPath, "ro", sqlitez.OpenOptions{
+	conn, err := sqlitez.OpenConn(ctx, dbPath, sqlitez.OpenOptions{
 		QueryOnly:                true,
 		DisableWALAutoCheckpoint: true,
 	})
@@ -412,7 +420,7 @@ func openZombiezenEVMBlockReaderForTest(
 
 func (r *zombiezenEVMBlockReaderForTest) close() {
 	if r.stmt != nil {
-		r.stmt.Finalize()
+		_ = r.stmt.Finalize()
 	}
 
 	if r.conn != nil {

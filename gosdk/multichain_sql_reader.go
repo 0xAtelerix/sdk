@@ -51,7 +51,7 @@ func openMultichainSQLiteReader(
 	ctx context.Context,
 	dbPath string,
 ) (*multichainSQLiteReader, error) {
-	conn, err := sqlitez.OpenConn(ctx, dbPath, "ro", sqlitez.OpenOptions{
+	conn, err := sqlitez.OpenConn(ctx, dbPath, sqlitez.OpenOptions{
 		QueryOnly:                true,
 		DisableWALAutoCheckpoint: true,
 	})
