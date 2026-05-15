@@ -509,6 +509,7 @@ func logCEXEventAdmitted(
 		Observe(float64(stats.newestAgeMs) / float64(time.Second/time.Millisecond))
 	MdbxCEXEventHandoffOldestAge.WithLabelValues(vid, cid).
 		Observe(float64(stats.oldestAgeMs) / float64(time.Second/time.Millisecond))
+	observeCEXEventRefAges(evt.CEXOrderBookRefs, vid, cid, eventDecodeDone)
 }
 
 type cexRefStats struct {
@@ -537,6 +538,27 @@ func collectCEXRefStats(refs []apptypes.CEXOrderBookRef, at time.Time) cexRefSta
 	return cexRefStats{
 		oldestAgeMs: atMs - minFetchedAtMs,
 		newestAgeMs: atMs - maxFetchedAtMs,
+	}
+}
+
+func observeCEXEventRefAges(refs []apptypes.CEXOrderBookRef, vid string, cid string, at time.Time) {
+	if at.IsZero() {
+		return
+	}
+
+	atMs := at.UnixMilli()
+
+	for _, ref := range refs {
+		refMs := ref.FetchedAt / int64(time.Millisecond)
+
+		ageMs := atMs - refMs
+		if ageMs < 0 {
+			continue
+		}
+
+		MdbxCEXEventHandoffRefAge.
+			WithLabelValues(vid, cid, ref.Exchange, ref.Symbol).
+			Observe(float64(ageMs) / float64(time.Second/time.Millisecond))
 	}
 }
 
