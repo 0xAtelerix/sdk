@@ -265,6 +265,16 @@ var (
 		},
 		[]string{"validator_id", "chain_id"},
 	)
+	MdbxCEXEventHandoffRefAge = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "appchain",
+			Subsystem: "mdbx",
+			Name:      "cex_event_handoff_ref_age_seconds",
+			Help:      "Age of each CEX ref in an admitted CEX event split by exchange and symbol",
+			Buckets:   prometheus.ExponentialBuckets(0.0005, 2, 18),
+		},
+		[]string{"validator_id", "chain_id", "exchange", "symbol"},
+	)
 )
 
 func init() {
@@ -289,5 +299,6 @@ func init() {
 		MdbxCEXEventHandoffDecodeDuration,
 		MdbxCEXEventHandoffNewestAge,
 		MdbxCEXEventHandoffOldestAge,
+		MdbxCEXEventHandoffRefAge,
 	)
 }
