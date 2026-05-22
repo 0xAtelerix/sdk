@@ -288,6 +288,13 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 ) error {
 	logger := log.Ctx(ctx)
 
+	batchProcessor, prepareErr := a.prepareBatchProcessor(ctx, batch)
+	if prepareErr != nil {
+		logger.Error().Err(prepareErr).Msg("Failed to prepare batch processor")
+
+		return fmt.Errorf("failed to prepare batch processor: %w", prepareErr)
+	}
+
 	rwtx, err := a.storage.appchainDB.BeginRw(ctx)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to begin write transaction")
@@ -299,7 +306,7 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 	// Process Batch
 	logger.Debug().Int("tx", len(batch.Transactions)).Msg("Process batch")
 
-	processedReceipts, extTxs, err := a.batchProcessor.ProcessBatch(ctx, batch, rwtx)
+	processedReceipts, extTxs, err := batchProcessor.ProcessBatch(ctx, batch, rwtx)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to process batch")
 
@@ -438,6 +445,24 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 	*previousBlockHash = blockHash
 
 	return nil
+}
+
+func (a *Appchain[AppTx, BP, AppBlock, R]) prepareBatchProcessor(
+	ctx context.Context,
+	batch apptypes.Batch[AppTx, R],
+) (BatchProcessor[AppTx, R], error) {
+	processor := BatchProcessor[AppTx, R](a.batchProcessor)
+
+	if preparer, ok := processor.(BatchProcessorPreparer[AppTx, R]); ok {
+		prepared, err := preparer.PrepareBatchProcessor(ctx, batch)
+		if err != nil {
+			return nil, err
+		}
+
+		processor = prepared
+	}
+
+	return processor, nil
 }
 
 func (a *Appchain[AppTx, BP, AppBlock, R]) runEmitterAPI(ctx context.Context, errCh chan error) {

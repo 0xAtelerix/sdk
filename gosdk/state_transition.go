@@ -19,6 +19,13 @@ type BatchProcessor[appTx apptypes.AppTransaction[R], R apptypes.Receipt] interf
 	) ([]R, []apptypes.ExternalTransaction, error)
 }
 
+type BatchProcessorPreparer[appTx apptypes.AppTransaction[R], R apptypes.Receipt] interface {
+	PrepareBatchProcessor(
+		ctx context.Context,
+		batch apptypes.Batch[appTx, R],
+	) (BatchProcessor[appTx, R], error)
+}
+
 type DefaultBatchProcessor[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	extBlockProc ExternalBlockProcessor
 	cexProc      CEXStreamProcessor
