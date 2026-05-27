@@ -228,8 +228,10 @@ type AppchainAddresses struct {
 }
 
 type CEXPriceLevel struct {
-	Price    string `cbor:"1,keyasint"`
-	Quantity string `cbor:"2,keyasint"`
+	//nolint:revive // fxamacker/cbor requires this marker to encode the public struct as a compact array.
+	_        struct{} `cbor:",toarray"`
+	Price    string
+	Quantity string
 }
 
 type CEXOrderBookSnapshot struct {

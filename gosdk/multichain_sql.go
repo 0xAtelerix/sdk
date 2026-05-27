@@ -18,6 +18,15 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 	"github.com/0xAtelerix/sdk/gosdk/evmtypes"
 	"github.com/0xAtelerix/sdk/gosdk/library"
+	sdkerrors "github.com/0xAtelerix/sdk/gosdk/library/errors"
+)
+
+const (
+	errSQLiteRowNotFound          sdkerrors.SDKError = "sqlite row not found"
+	errUnsupportedSQLiteOpenMode  sdkerrors.SDKError = "unsupported sqlite open mode"
+	multichainSQLiteRetryInterval                    = time.Second
+	sqliteOpenModeReadOnly                           = "ro"
+	sqliteOpenModeReadWriteCreate                    = "rwc"
 )
 
 type MultichainStateAccessSQL struct {
@@ -36,14 +45,12 @@ func NewMultichainStateAccessSQL(
 	for chainID, path := range cfg {
 		dbPath := filepath.Join(filepath.Clean(path), "sqlite")
 
-		db, err := openSQLite(ctx, dbPath, "ro")
+		db, err := openMultichainSQLite(ctx, dbPath, sqliteOpenModeReadOnly)
 		if err != nil {
 			// Close any already-opened DBs on failure.
 			for _, opened := range stateAccessDBs {
 				if closeErr := opened.Close(); closeErr != nil {
-					log.Ctx(ctx).Warn().
-						Err(closeErr).
-						Msg("close multichain sqlite db after open failure")
+					log.Error().Err(closeErr).Msg("failed to close db")
 				}
 			}
 
@@ -85,22 +92,37 @@ func (sa *MultichainStateAccessSQL) EVMBlock(
 	i := 0
 	for {
 		if i > 0 {
-			time.Sleep(time.Millisecond * 100)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(100 * time.Millisecond):
+			}
 		}
 
 		i++
 
-		if err := db.QueryRowContext(ctx, query, block.BlockHash[:], block.BlockNumber).
-			Scan(&rawBlock, &num); err != nil {
+		err := db.QueryRowContext(
+			ctx,
+			query,
+			block.BlockHash[:],
+			block.BlockNumber,
+		).Scan(&rawBlock, &num)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				log.Error().
+					Err(errSQLiteRowNotFound).
+					Uint64("block", block.BlockNumber).
+					Uint64("chain", block.ChainID).
+					Msg("block not found")
+
+				continue
+			}
+
 			log.Error().
 				Err(err).
 				Uint64("block", block.BlockNumber).
 				Uint64("chain", block.ChainID).
 				Msg("block not found")
-
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
 
 			return nil, fmt.Errorf(
 				"failed to read eth block: %w, chainID %d, block number %d, block hash %s",
@@ -351,9 +373,13 @@ func (*MultichainStateAccessSQL) SolanaBlock(
 	)
 }
 
-// openSQLite opens a SQLite database with the given mode ("ro" for read-only, "rwc" for read/write).
+// openMultichainSQLite opens a SQLite database with the given mode ("ro" for read-only, "rwc" for read/write).
 // It mirrors the retry logic used by the MDBX opener so tests and production paths behave similarly.
-func openSQLite(ctx context.Context, dbPath, mode string) (*sql.DB, error) {
+func openMultichainSQLite(ctx context.Context, dbPath, mode string) (*sql.DB, error) {
+	if mode != sqliteOpenModeReadOnly && mode != sqliteOpenModeReadWriteCreate {
+		return nil, fmt.Errorf("%w: %s", errUnsupportedSQLiteOpenMode, mode)
+	}
+
 	dsn := fmt.Sprintf("file:%s?mode=%s&cache=shared&uri=true", dbPath, mode)
 	log.Info().Str("path", dsn).Msg("connecting to sqlite")
 
@@ -368,13 +394,10 @@ func openSQLite(ctx context.Context, dbPath, mode string) (*sql.DB, error) {
 		db, err = sql.Open("sqlite3", dsn)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to open SQLite DB")
-			time.Sleep(time.Second)
 
-			if maxTries == 0 {
-				return nil, err
+			if retryErr := waitSQLiteOpenRetry(ctx, &maxTries, err); retryErr != nil {
+				return nil, retryErr
 			}
-
-			maxTries--
 
 			continue
 		}
@@ -386,13 +409,9 @@ func openSQLite(ctx context.Context, dbPath, mode string) (*sql.DB, error) {
 				log.Error().Err(closeErr).Msg("Failed to close DB")
 			}
 
-			time.Sleep(time.Second)
-
-			if maxTries == 0 {
-				return nil, pingErr
+			if retryErr := waitSQLiteOpenRetry(ctx, &maxTries, pingErr); retryErr != nil {
+				return nil, retryErr
 			}
-
-			maxTries--
 
 			continue
 		}
@@ -414,5 +433,23 @@ func openSQLite(ctx context.Context, dbPath, mode string) (*sql.DB, error) {
 		}
 
 		return db, nil
+	}
+}
+
+func waitSQLiteOpenRetry(ctx context.Context, maxTries *int, err error) error {
+	if *maxTries == 0 {
+		return err
+	}
+
+	*maxTries--
+
+	timer := time.NewTimer(multichainSQLiteRetryInterval)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }
