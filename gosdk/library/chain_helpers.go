@@ -21,17 +21,8 @@ var midnightChains = map[apptypes.ChainType]struct{}{
 	MidnightPreProdChainID: {},
 }
 
-func cloneChainSet(source map[apptypes.ChainType]struct{}) map[apptypes.ChainType]struct{} {
-	out := make(map[apptypes.ChainType]struct{}, len(source))
-	for chainID := range source {
-		out[chainID] = struct{}{}
-	}
-
-	return out
-}
-
 func SolanaChains() map[apptypes.ChainType]struct{} {
-	return cloneChainSet(solanaChains)
+	return solanaChains
 }
 
 func IsEvmChain(chainID apptypes.ChainType) bool {
@@ -47,7 +38,7 @@ func IsSolanaChain(chainID apptypes.ChainType) bool {
 }
 
 func MidnightChains() map[apptypes.ChainType]struct{} {
-	return cloneChainSet(midnightChains)
+	return midnightChains
 }
 
 func IsMidnightChain(chainID apptypes.ChainType) bool {

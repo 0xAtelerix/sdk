@@ -89,5 +89,5 @@ var evmChains = map[apptypes.ChainType]struct{}{
 }
 
 func EVMChains() map[apptypes.ChainType]struct{} {
-	return cloneChainSet(evmChains)
+	return evmChains
 }

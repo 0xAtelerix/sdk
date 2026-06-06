@@ -6,7 +6,7 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-func TestChainSetAccessorsReturnCopies(t *testing.T) {
+func TestChainSetAccessors(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -48,14 +48,8 @@ func TestChainSetAccessorsReturnCopies(t *testing.T) {
 				t.Fatalf("expected %s predicate to accept %d", tt.name, tt.chainID)
 			}
 
-			delete(chains, tt.chainID)
-
-			if !tt.contains(tt.chainID) {
-				t.Fatalf("%s predicate should not observe mutations to returned set", tt.name)
-			}
-
 			if _, ok := tt.set()[tt.chainID]; !ok {
-				t.Fatalf("%s accessor should return a fresh copy", tt.name)
+				t.Fatalf("%s accessor should contain %d", tt.name, tt.chainID)
 			}
 		})
 	}
