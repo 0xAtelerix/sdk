@@ -8,35 +8,50 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
 
-func SolanaChains() map[apptypes.ChainType]struct{} {
-	return map[apptypes.ChainType]struct{}{
-		SolanaTestnetChainID: {},
-		SolanaDevnetChainID:  {},
-		SolanaChainID:        {},
+//nolint:gochecknoglobals // immutable chain ID lookup table avoids per-call map allocation in IsSolanaChain.
+var solanaChains = map[apptypes.ChainType]struct{}{
+	SolanaTestnetChainID: {},
+	SolanaDevnetChainID:  {},
+	SolanaChainID:        {},
+}
+
+//nolint:gochecknoglobals // immutable chain ID lookup table avoids per-call map allocation in IsMidnightChain.
+var midnightChains = map[apptypes.ChainType]struct{}{
+	MidnightPreviewChainID: {},
+	MidnightPreProdChainID: {},
+}
+
+func cloneChainSet(source map[apptypes.ChainType]struct{}) map[apptypes.ChainType]struct{} {
+	out := make(map[apptypes.ChainType]struct{}, len(source))
+	for chainID := range source {
+		out[chainID] = struct{}{}
 	}
+
+	return out
+}
+
+func SolanaChains() map[apptypes.ChainType]struct{} {
+	return cloneChainSet(solanaChains)
 }
 
 func IsEvmChain(chainID apptypes.ChainType) bool {
-	_, ok := EVMChains()[chainID]
+	_, ok := evmChains[chainID]
 
 	return ok
 }
 
 func IsSolanaChain(chainID apptypes.ChainType) bool {
-	_, ok := SolanaChains()[chainID]
+	_, ok := solanaChains[chainID]
 
 	return ok
 }
 
 func MidnightChains() map[apptypes.ChainType]struct{} {
-	return map[apptypes.ChainType]struct{}{
-		MidnightPreviewChainID: {},
-		MidnightPreProdChainID: {},
-	}
+	return cloneChainSet(midnightChains)
 }
 
 func IsMidnightChain(chainID apptypes.ChainType) bool {
-	_, ok := MidnightChains()[chainID]
+	_, ok := midnightChains[chainID]
 
 	return ok
 }
