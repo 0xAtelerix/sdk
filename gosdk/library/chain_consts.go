@@ -67,24 +67,27 @@ const (
 	MidnightPreProdChainID = apptypes.ChainType(800)
 )
 
+//nolint:gochecknoglobals // immutable chain ID lookup table avoids per-call map allocation in IsEvmChain.
+var evmChains = map[apptypes.ChainType]struct{}{
+	EthereumChainID:         {},
+	PolygonChainID:          {},
+	BNBChainID:              {},
+	AvalancheChainID:        {},
+	GnosisChainID:           {},
+	FantomChainID:           {},
+	BaseChainID:             {},
+	AnvilChainID:            {},
+	AnvilBaseChainID:        {},
+	EthereumSepoliaChainID:  {},
+	PolygonMumbaiChainID:    {},
+	PolygonAmoyChainID:      {},
+	BNBTestnetChainID:       {},
+	AvalancheFujiChainID:    {},
+	GnosisChiadoChainID:     {},
+	FantomTestnetChainID:    {},
+	StavangerTestnetChainID: {},
+}
+
 func EVMChains() map[apptypes.ChainType]struct{} {
-	return map[apptypes.ChainType]struct{}{
-		EthereumChainID:         {},
-		PolygonChainID:          {},
-		BNBChainID:              {},
-		AvalancheChainID:        {},
-		GnosisChainID:           {},
-		FantomChainID:           {},
-		BaseChainID:             {},
-		AnvilChainID:            {},
-		AnvilBaseChainID:        {},
-		EthereumSepoliaChainID:  {},
-		PolygonMumbaiChainID:    {},
-		PolygonAmoyChainID:      {},
-		BNBTestnetChainID:       {},
-		AvalancheFujiChainID:    {},
-		GnosisChiadoChainID:     {},
-		FantomTestnetChainID:    {},
-		StavangerTestnetChainID: {},
-	}
+	return evmChains
 }
