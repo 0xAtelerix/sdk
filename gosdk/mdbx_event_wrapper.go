@@ -150,8 +150,10 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 	var newValset []byte
 
-	var cexOrderBookRefs []apptypes.CEXOrderBookRef
-	var hyperliquidAllMidsRefs []apptypes.HyperliquidAllMidsRef
+	var (
+		cexOrderBookRefs       []apptypes.CEXOrderBookRef
+		hyperliquidAllMidsRefs []apptypes.HyperliquidAllMidsRef
+	)
 
 	for _, eventBatch := range eventBatches {
 		ews.logger.Debug().
