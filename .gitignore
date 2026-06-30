@@ -19,3 +19,5 @@ contracts/foundry.lock
 # Environment files
 contracts/config/config.json
 contracts/config/config-*.json
+
+/.codex_cache/
