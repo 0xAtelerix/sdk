@@ -45,10 +45,13 @@ const (
 	GnosisChainID    = apptypes.ChainType(100)   // Gnosis Chain (xDai)
 	FantomChainID    = apptypes.ChainType(250)   // Fantom Opera
 	BaseChainID      = apptypes.ChainType(8453)  // Base Mainnet
+	ArbitrumChainID  = apptypes.ChainType(42161) // Arbitrum One
 
 	// AnvilChainID and the following constants identify test and local chains.
 	AnvilChainID           = apptypes.ChainType(31337)    // Anvil Local
 	AnvilBaseChainID       = apptypes.ChainType(31338)    // Anvil Local (Base fork)
+	AnvilArbitrumChainID   = apptypes.ChainType(31339)    // Anvil Local (Arbitrum fork)
+	AnvilBNBChainID        = apptypes.ChainType(31340)    // Anvil Local (BNB Smart Chain fork)
 	EthereumSepoliaChainID = apptypes.ChainType(11155111) // Ethereum Sepolia Testnet
 	PolygonMumbaiChainID   = apptypes.ChainType(80001)    // Polygon Mumbai Testnet
 	PolygonAmoyChainID     = apptypes.ChainType(80002)    // Polygon Amoy Testnet
@@ -76,8 +79,11 @@ var evmChains = map[apptypes.ChainType]struct{}{
 	GnosisChainID:           {},
 	FantomChainID:           {},
 	BaseChainID:             {},
+	ArbitrumChainID:         {},
 	AnvilChainID:            {},
 	AnvilBaseChainID:        {},
+	AnvilArbitrumChainID:    {},
+	AnvilBNBChainID:         {},
 	EthereumSepoliaChainID:  {},
 	PolygonMumbaiChainID:    {},
 	PolygonAmoyChainID:      {},
