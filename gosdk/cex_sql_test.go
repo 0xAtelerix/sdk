@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,10 +33,14 @@ func TestCEXDataAccessSQL_ReadCEXOrderBook_ClassifiesPrecisionMiss(t *testing.T)
 	require.NoError(t, err)
 
 	requestedFetchedAt := int64(1_777_000_000_000_000_000)
-	err = insertCEXOrderBookV5(
+	err = insertCEXOrderBookV6(
 		ctx,
 		db,
+		1,
+		1,
+		1,
 		"mexc",
+		"spot",
 		"SPXUSDT",
 		11,
 		bids,
@@ -49,12 +55,19 @@ func TestCEXDataAccessSQL_ReadCEXOrderBook_ClassifiesPrecisionMiss(t *testing.T)
 
 	defer accessor.Close()
 
-	_, err = accessor.ReadCEXOrderBook(ctx, "mexc", "SPXUSDT", requestedFetchedAt)
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrCEXOrderBookNotFound)
+	snapshots, errs := accessor.ReadCEXOrderBooks(ctx, []apptypes.CEXOrderBookRef{{
+		ExchangeID:   1,
+		MarketTypeID: 1,
+		SymbolID:     1,
+		FetchedAt:    requestedFetchedAt,
+	}})
+	require.Len(t, snapshots, 1)
+	require.Len(t, errs, 1)
+	require.Error(t, errs[0])
+	require.ErrorIs(t, errs[0], ErrCEXOrderBookNotFound)
 
 	var readErr *CEXOrderBookReadError
-	require.ErrorAs(t, err, &readErr)
+	require.ErrorAs(t, errs[0], &readErr)
 	require.Equal(t, "no_row", readErr.Diagnostic.Result)
 	require.Equal(t, "precision_mismatch", readErr.Diagnostic.MissHint)
 	require.Equal(t, requestedFetchedAt+1, readErr.Diagnostic.NearestNewerFetchedAt)
@@ -74,12 +87,19 @@ func TestCEXDataAccessSQL_ReadCEXOrderBook_ClassifiesTrueAbsence(t *testing.T) {
 
 	defer accessor.Close()
 
-	_, err = accessor.ReadCEXOrderBook(ctx, "mexc", "SPXUSDT", time.Now().UnixNano())
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrCEXOrderBookNotFound)
+	snapshots, errs := accessor.ReadCEXOrderBooks(ctx, []apptypes.CEXOrderBookRef{{
+		ExchangeID:   1,
+		MarketTypeID: 1,
+		SymbolID:     1,
+		FetchedAt:    time.Now().UnixNano(),
+	}})
+	require.Len(t, snapshots, 1)
+	require.Len(t, errs, 1)
+	require.Error(t, errs[0])
+	require.ErrorIs(t, errs[0], ErrCEXOrderBookNotFound)
 
 	var readErr *CEXOrderBookReadError
-	require.ErrorAs(t, err, &readErr)
+	require.ErrorAs(t, errs[0], &readErr)
 	require.Equal(t, "no_row", readErr.Diagnostic.Result)
 	require.Equal(t, "true_absence", readErr.Diagnostic.MissHint)
 }
@@ -97,10 +117,14 @@ func TestCEXDataAccessSQL_ReadCEXOrderBooks_ReadsPreparedPoints(t *testing.T) {
 	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
 	require.NoError(t, err)
 
-	err = insertCEXOrderBookV5(
+	err = insertCEXOrderBookV6(
 		ctx,
 		db,
+		1,
+		1,
+		1,
 		"mexc",
+		"spot",
 		"SPXUSDT",
 		11,
 		bids,
@@ -116,8 +140,8 @@ func TestCEXDataAccessSQL_ReadCEXOrderBooks_ReadsPreparedPoints(t *testing.T) {
 	defer accessor.Close()
 
 	snapshots, errs := accessor.ReadCEXOrderBooks(ctx, []apptypes.CEXOrderBookRef{
-		{Exchange: "mexc", Symbol: "SPXUSDT", FetchedAt: 100},
-		{Exchange: "mexc", Symbol: "ETHUSDT", FetchedAt: 200},
+		{ExchangeID: 1, MarketTypeID: 1, SymbolID: 1, FetchedAt: 100},
+		{ExchangeID: 1, MarketTypeID: 1, SymbolID: 2, FetchedAt: 200},
 	})
 	require.Len(t, snapshots, 2)
 	require.Len(t, errs, 2)
@@ -136,6 +160,188 @@ func TestCEXDataAccessSQL_ReadCEXOrderBooks_ReadsPreparedPoints(t *testing.T) {
 	require.Equal(t, "true_absence", readErr.Diagnostic.MissHint)
 }
 
+func TestStep159JReadCEXOrderBooksUsesNumericIdentityAndRejectsLegacyRefs(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	dbPath := filepath.Join(t.TempDir(), "cex.sqlite")
+	db, err := openCEXTestDB(ctx, dbPath)
+	require.NoError(t, err)
+
+	bids, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "1", Quantity: "2"}})
+	require.NoError(t, err)
+	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
+	require.NoError(t, err)
+
+	err = insertCEXOrderBookV6(
+		ctx,
+		db,
+		1,
+		1,
+		7,
+		"mexc",
+		"spot",
+		"SPXUSDT",
+		11,
+		bids,
+		asks,
+		100,
+	)
+	require.NoError(t, err)
+	err = insertCEXOrderBookV6(
+		ctx,
+		db,
+		1,
+		2,
+		7,
+		"mexc",
+		"perps",
+		"SPXUSDT",
+		22,
+		bids,
+		asks,
+		100,
+	)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	accessor, err := NewCEXDataAccessSQL(ctx, dbPath)
+	require.NoError(t, err)
+	defer accessor.Close()
+
+	snapshots, errs := accessor.ReadCEXOrderBooks(ctx, []apptypes.CEXOrderBookRef{
+		{ExchangeID: 1, MarketTypeID: 1, SymbolID: 7, FetchedAt: 100},
+		{ExchangeID: 1, MarketTypeID: 2, SymbolID: 7, FetchedAt: 100},
+		{Exchange: "mexc", Symbol: "SPXUSDT", FetchedAt: 100},
+	})
+	require.Len(t, snapshots, 3)
+	require.Len(t, errs, 3)
+	require.NoError(t, errs[0])
+	require.NoError(t, errs[1])
+	require.Equal(t, int64(11), snapshots[0].LastUpdateID)
+	require.Equal(t, int64(22), snapshots[1].LastUpdateID)
+	require.Error(t, errs[2])
+	require.ErrorIs(t, errs[2], ErrCEXLegacyOrderBookRef)
+	require.Nil(t, snapshots[2])
+}
+
+func TestStep159JDeprecatedReadCEXOrderBookResolvesUnambiguousLabels(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	dbPath := filepath.Join(t.TempDir(), "cex.sqlite")
+	db, err := openCEXTestDB(ctx, dbPath)
+	require.NoError(t, err)
+
+	bids, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "1", Quantity: "2"}})
+	require.NoError(t, err)
+	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
+	require.NoError(t, err)
+
+	err = insertCEXOrderBookV6(ctx, db, 1, 1, 7, "mexc", "spot", "SPXUSDT", 33, bids, asks, 100)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	accessor, err := NewCEXDataAccessSQL(ctx, dbPath)
+	require.NoError(t, err)
+	defer accessor.Close()
+
+	snapshot, err := accessor.ReadCEXOrderBook(ctx, "mexc", "SPXUSDT", 100)
+	require.NoError(t, err)
+	require.NotNil(t, snapshot)
+	require.Equal(t, int64(33), snapshot.LastUpdateID)
+}
+
+func TestStep159JDeprecatedReadCEXOrderBookRejectsAmbiguousMarketLabels(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	dbPath := filepath.Join(t.TempDir(), "cex.sqlite")
+	db, err := openCEXTestDB(ctx, dbPath)
+	require.NoError(t, err)
+
+	bids, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "1", Quantity: "2"}})
+	require.NoError(t, err)
+	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
+	require.NoError(t, err)
+
+	err = insertCEXOrderBookV6(ctx, db, 1, 1, 7, "mexc", "spot", "SPXUSDT", 33, bids, asks, 100)
+	require.NoError(t, err)
+	err = insertCEXOrderBookV6(ctx, db, 1, 2, 7, "mexc", "perps", "SPXUSDT", 44, bids, asks, 100)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	accessor, err := NewCEXDataAccessSQL(ctx, dbPath)
+	require.NoError(t, err)
+	defer accessor.Close()
+
+	snapshot, err := accessor.ReadCEXOrderBook(ctx, "mexc", "SPXUSDT", 100)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrCEXOrderBookAmbiguousMarket)
+	require.Nil(t, snapshot)
+}
+
+func TestStep159JReadCEXOrderBookForMarketReadsRequestedMarket(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	dbPath := filepath.Join(t.TempDir(), "cex.sqlite")
+	db, err := openCEXTestDB(ctx, dbPath)
+	require.NoError(t, err)
+
+	bids, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "1", Quantity: "2"}})
+	require.NoError(t, err)
+	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
+	require.NoError(t, err)
+
+	err = insertCEXOrderBookV6(ctx, db, 1, 1, 7, "mexc", "spot", "SPXUSDT", 33, bids, asks, 100)
+	require.NoError(t, err)
+	err = insertCEXOrderBookV6(ctx, db, 1, 2, 7, "mexc", "perps", "SPXUSDT", 44, bids, asks, 100)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	accessor, err := NewCEXDataAccessSQL(ctx, dbPath)
+	require.NoError(t, err)
+	defer accessor.Close()
+
+	spotSnapshot, err := accessor.ReadCEXOrderBookForMarket(ctx, "mexc", "spot", "SPXUSDT", 100)
+	require.NoError(t, err)
+	require.NotNil(t, spotSnapshot)
+	require.Equal(t, int64(33), spotSnapshot.LastUpdateID)
+
+	perpsSnapshot, err := accessor.ReadCEXOrderBookForMarket(ctx, "mexc", "perps", "SPXUSDT", 100)
+	require.NoError(t, err)
+	require.NotNil(t, perpsSnapshot)
+	require.Equal(t, int64(44), perpsSnapshot.LastUpdateID)
+}
+
+func TestStep159JDeprecatedCEXOrderBookWrapperStaysBoundaryOnly(t *testing.T) {
+	t.Parallel()
+
+	readerSource, err := os.ReadFile("cex_sql_reader_zombie.go")
+	require.NoError(t, err)
+	readerText := string(readerSource)
+	require.NotContains(t, readerText, "cex_orderbooks_v5")
+	require.NotContains(t, readerText, "cex_orderbook_dirty_pair_refs_v1")
+	require.NotContains(t, readerText, "cex_pairs_v2")
+
+	apiSource, err := os.ReadFile("cex_sql.go")
+	require.NoError(t, err)
+	apiText := string(apiSource)
+	wrapperBody := extractFunctionBodyForTest(
+		t,
+		apiText,
+		"func (c *CEXDataAccessSQL) ReadCEXOrderBook(",
+	)
+	require.NotContains(t, wrapperBody, "CEXOrderBookRef{")
+	require.NotContains(t, wrapperBody, "ReadCEXOrderBooks(")
+	require.Contains(t, wrapperBody, "readCEXOrderBookByLabels")
+
+	eventSource, err := os.ReadFile("state_transition.go")
+	require.NoError(t, err)
+	require.NotContains(t, string(eventSource), ".ReadCEXOrderBook(")
+}
+
 func BenchmarkCEXDataAccessSQL_ReadCEXOrderBooks_PreparedPoints(b *testing.B) {
 	ctx := b.Context()
 	dbPath := filepath.Join(b.TempDir(), "cex.sqlite")
@@ -148,10 +354,14 @@ func BenchmarkCEXDataAccessSQL_ReadCEXOrderBooks_PreparedPoints(b *testing.B) {
 	require.NoError(b, err)
 
 	for i := range 100 {
-		err = insertCEXOrderBookV5(
+		err = insertCEXOrderBookV6(
 			ctx,
 			db,
+			1,
+			1,
+			1,
 			"mexc",
+			"spot",
 			"SPXUSDT",
 			int64(i),
 			bids,
@@ -172,9 +382,10 @@ func BenchmarkCEXDataAccessSQL_ReadCEXOrderBooks_PreparedPoints(b *testing.B) {
 		refs := make([]apptypes.CEXOrderBookRef, refCount)
 		for i := range refs {
 			refs[i] = apptypes.CEXOrderBookRef{
-				Exchange:  "mexc",
-				Symbol:    "SPXUSDT",
-				FetchedAt: int64(1_000 + i),
+				ExchangeID:   1,
+				MarketTypeID: 1,
+				SymbolID:     1,
+				FetchedAt:    int64(1_000 + i),
 			}
 		}
 
@@ -197,7 +408,7 @@ func openCEXTestDB(ctx context.Context, dbPath string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	if _, err = db.ExecContext(ctx, createCEXOrderBooksV5SQL); err != nil {
+	if _, err = db.ExecContext(ctx, createCEXOrderBooksV6SQL); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
 			return nil, errors.Join(err, closeErr)
 		}
@@ -208,10 +419,14 @@ func openCEXTestDB(ctx context.Context, dbPath string) (*sql.DB, error) {
 	return db, nil
 }
 
-func insertCEXOrderBookV5(
+func insertCEXOrderBookV6(
 	ctx context.Context,
 	db *sql.DB,
+	exchangeID uint16,
+	marketTypeID uint8,
+	symbolID uint32,
 	exchange string,
+	marketType string,
 	symbol string,
 	lastUpdateID int64,
 	bids []byte,
@@ -219,26 +434,40 @@ func insertCEXOrderBookV5(
 	fetchedAt int64,
 ) error {
 	if _, err := db.ExecContext(ctx, `
-		INSERT INTO cex_pairs_v2(exchange, symbol)
-		VALUES(?, ?)
-		ON CONFLICT(exchange, symbol) DO NOTHING
-	`, exchange, symbol); err != nil {
-		return fmt.Errorf("insert pair: %w", err)
-	}
-
-	var pairID int64
-	if err := db.QueryRowContext(ctx, `
-		SELECT id
-		FROM cex_pairs_v2
-		WHERE exchange = ? AND symbol = ?
-	`, exchange, symbol).Scan(&pairID); err != nil {
-		return fmt.Errorf("select pair: %w", err)
+		INSERT INTO cex_exchange_dim(id, name) VALUES(?, ?)
+		ON CONFLICT(id) DO UPDATE SET name = excluded.name
+	`, exchangeID, exchange); err != nil {
+		return fmt.Errorf("insert exchange dim: %w", err)
 	}
 
 	if _, err := db.ExecContext(ctx, `
-		INSERT INTO cex_orderbooks_v5(pair_id, last_update_id, bids, asks, fetched_at)
-		VALUES(?, ?, ?, ?, ?)
-	`, pairID, lastUpdateID, bids, asks, fetchedAt); err != nil {
+		INSERT INTO cex_market_type_dim(id, name) VALUES(?, ?)
+		ON CONFLICT(id) DO UPDATE SET name = excluded.name
+	`, marketTypeID, marketType); err != nil {
+		return fmt.Errorf("insert market type dim: %w", err)
+	}
+
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO cex_symbol_dim(id, symbol) VALUES(?, ?)
+		ON CONFLICT(id) DO UPDATE SET symbol = excluded.symbol
+	`, symbolID, symbol); err != nil {
+		return fmt.Errorf("insert symbol dim: %w", err)
+	}
+
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO cex_orderbook_pairs_v3(exchange_id, market_type_id, symbol_id)
+		VALUES(?, ?, ?)
+		ON CONFLICT(exchange_id, market_type_id, symbol_id) DO NOTHING
+	`, exchangeID, marketTypeID, symbolID); err != nil {
+		return fmt.Errorf("insert pair: %w", err)
+	}
+
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO cex_orderbooks_v6(pair_id, last_update_id, bids, asks, fetched_at)
+		SELECT id, ?, ?, ?, ?
+		FROM cex_orderbook_pairs_v3
+		WHERE exchange_id = ? AND market_type_id = ? AND symbol_id = ?
+	`, lastUpdateID, bids, asks, fetchedAt, exchangeID, marketTypeID, symbolID); err != nil {
 		return fmt.Errorf("insert orderbook: %w", err)
 	}
 
@@ -264,24 +493,71 @@ func openSQLite(ctx context.Context, dbPath, mode string) (*sql.DB, error) {
 	return db, nil
 }
 
-const createCEXOrderBooksV5SQL = `
-CREATE TABLE cex_pairs_v2 (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	exchange TEXT NOT NULL,
-	symbol TEXT NOT NULL,
-	UNIQUE(exchange, symbol)
+const createCEXOrderBooksV6SQL = `
+CREATE TABLE cex_exchange_dim (
+	id INTEGER PRIMARY KEY CHECK(id > 0 AND id <= 65535),
+	name TEXT NOT NULL UNIQUE
 );
 
-CREATE TABLE cex_orderbooks_v5 (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE cex_market_type_dim (
+	id INTEGER PRIMARY KEY CHECK(id > 0 AND id <= 255),
+	name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE cex_symbol_dim (
+	id INTEGER PRIMARY KEY CHECK(id > 0 AND id <= 4294967295),
+	symbol TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE cex_orderbook_pairs_v3 (
+	id INTEGER PRIMARY KEY,
+	exchange_id INTEGER NOT NULL,
+	market_type_id INTEGER NOT NULL,
+	symbol_id INTEGER NOT NULL,
+	UNIQUE(exchange_id, market_type_id, symbol_id),
+	FOREIGN KEY(exchange_id) REFERENCES cex_exchange_dim(id),
+	FOREIGN KEY(market_type_id) REFERENCES cex_market_type_dim(id),
+	FOREIGN KEY(symbol_id) REFERENCES cex_symbol_dim(id)
+);
+
+CREATE TABLE cex_orderbooks_v6 (
+	id INTEGER PRIMARY KEY,
 	pair_id INTEGER NOT NULL,
 	last_update_id INTEGER NOT NULL,
 	bids BLOB NOT NULL,
 	asks BLOB NOT NULL,
 	fetched_at INTEGER NOT NULL,
 	consumed INTEGER NOT NULL DEFAULT 0,
-	FOREIGN KEY(pair_id) REFERENCES cex_pairs_v2(id)
+	FOREIGN KEY(pair_id) REFERENCES cex_orderbook_pairs_v3(id)
 );
 
-CREATE INDEX idx_cex_ob_v5_pair_fetched ON cex_orderbooks_v5(pair_id, fetched_at);
+CREATE INDEX idx_cex_ob_v6_pair_fetched_id ON cex_orderbooks_v6(pair_id, fetched_at, id);
 `
+
+func extractFunctionBodyForTest(t *testing.T, source string, signature string) string {
+	t.Helper()
+
+	start := strings.Index(source, signature)
+	require.NotEqual(t, -1, start)
+
+	open := strings.Index(source[start:], "{")
+	require.NotEqual(t, -1, open)
+	bodyStart := start + open
+	depth := 0
+
+	for i := bodyStart; i < len(source); i++ {
+		switch source[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return source[bodyStart : i+1]
+			}
+		}
+	}
+
+	t.Fatalf("function body not closed for %s", signature)
+
+	return ""
+}
