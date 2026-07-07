@@ -238,7 +238,8 @@ func TestStep159JDeprecatedReadCEXOrderBookResolvesUnambiguousLabels(t *testing.
 	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
 	require.NoError(t, err)
 
-	err = insertCEXOrderBookV6(ctx, db, 1, 1, 7, "mexc", "spot", "SPXUSDT", 33, bids, asks, 100)
+	spxSymbolID := cexSymbolIDForTest(t, "SPXUSDT")
+	err = insertCEXOrderBookV6(ctx, db, 1, 1, spxSymbolID, "mexc", "spot", "SPXUSDT", 33, bids, asks, 100)
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
@@ -265,9 +266,10 @@ func TestStep159JDeprecatedReadCEXOrderBookRejectsAmbiguousMarketLabels(t *testi
 	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
 	require.NoError(t, err)
 
-	err = insertCEXOrderBookV6(ctx, db, 1, 1, 7, "mexc", "spot", "SPXUSDT", 33, bids, asks, 100)
+	spxSymbolID := cexSymbolIDForTest(t, "SPXUSDT")
+	err = insertCEXOrderBookV6(ctx, db, 1, 1, spxSymbolID, "mexc", "spot", "SPXUSDT", 33, bids, asks, 100)
 	require.NoError(t, err)
-	err = insertCEXOrderBookV6(ctx, db, 1, 2, 7, "mexc", "perps", "SPXUSDT", 44, bids, asks, 100)
+	err = insertCEXOrderBookV6(ctx, db, 1, 2, spxSymbolID, "mexc", "perps", "SPXUSDT", 44, bids, asks, 100)
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
@@ -294,9 +296,10 @@ func TestStep159JReadCEXOrderBookForMarketReadsRequestedMarket(t *testing.T) {
 	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
 	require.NoError(t, err)
 
-	err = insertCEXOrderBookV6(ctx, db, 1, 1, 7, "mexc", "spot", "SPXUSDT", 33, bids, asks, 100)
+	spxSymbolID := cexSymbolIDForTest(t, "SPXUSDT")
+	err = insertCEXOrderBookV6(ctx, db, 1, 1, spxSymbolID, "mexc", "spot", "SPXUSDT", 33, bids, asks, 100)
 	require.NoError(t, err)
-	err = insertCEXOrderBookV6(ctx, db, 1, 2, 7, "mexc", "perps", "SPXUSDT", 44, bids, asks, 100)
+	err = insertCEXOrderBookV6(ctx, db, 1, 2, spxSymbolID, "mexc", "perps", "SPXUSDT", 44, bids, asks, 100)
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
@@ -324,6 +327,9 @@ func TestStep159JDeprecatedCEXOrderBookWrapperStaysBoundaryOnly(t *testing.T) {
 	require.NotContains(t, readerText, "cex_orderbooks_v5")
 	require.NotContains(t, readerText, "cex_orderbook_dirty_pair_refs_v1")
 	require.NotContains(t, readerText, "cex_pairs_v2")
+	require.NotContains(t, readerText, "cex_exchange_dim")
+	require.NotContains(t, readerText, "cex_market_type_dim")
+	require.NotContains(t, readerText, "cex_symbol_dim")
 
 	apiSource, err := os.ReadFile("cex_sql.go")
 	require.NoError(t, err)
@@ -433,26 +439,9 @@ func insertCEXOrderBookV6(
 	asks []byte,
 	fetchedAt int64,
 ) error {
-	if _, err := db.ExecContext(ctx, `
-		INSERT INTO cex_exchange_dim(id, name) VALUES(?, ?)
-		ON CONFLICT(id) DO UPDATE SET name = excluded.name
-	`, exchangeID, exchange); err != nil {
-		return fmt.Errorf("insert exchange dim: %w", err)
-	}
-
-	if _, err := db.ExecContext(ctx, `
-		INSERT INTO cex_market_type_dim(id, name) VALUES(?, ?)
-		ON CONFLICT(id) DO UPDATE SET name = excluded.name
-	`, marketTypeID, marketType); err != nil {
-		return fmt.Errorf("insert market type dim: %w", err)
-	}
-
-	if _, err := db.ExecContext(ctx, `
-		INSERT INTO cex_symbol_dim(id, symbol) VALUES(?, ?)
-		ON CONFLICT(id) DO UPDATE SET symbol = excluded.symbol
-	`, symbolID, symbol); err != nil {
-		return fmt.Errorf("insert symbol dim: %w", err)
-	}
+	_ = exchange
+	_ = marketType
+	_ = symbol
 
 	if _, err := db.ExecContext(ctx, `
 		INSERT INTO cex_orderbook_pairs_v3(exchange_id, market_type_id, symbol_id)
@@ -472,6 +461,15 @@ func insertCEXOrderBookV6(
 	}
 
 	return nil
+}
+
+func cexSymbolIDForTest(tb testing.TB, symbol string) uint32 {
+	tb.Helper()
+
+	symbolID, err := apptypes.DefaultOrderBookIDRegistry.ResolveSymbolID(symbol)
+	require.NoError(tb, err)
+
+	return uint32(symbolID)
 }
 
 func openSQLite(ctx context.Context, dbPath, mode string) (*sql.DB, error) {
@@ -494,30 +492,12 @@ func openSQLite(ctx context.Context, dbPath, mode string) (*sql.DB, error) {
 }
 
 const createCEXOrderBooksV6SQL = `
-CREATE TABLE cex_exchange_dim (
-	id INTEGER PRIMARY KEY CHECK(id > 0 AND id <= 65535),
-	name TEXT NOT NULL UNIQUE
-);
-
-CREATE TABLE cex_market_type_dim (
-	id INTEGER PRIMARY KEY CHECK(id > 0 AND id <= 255),
-	name TEXT NOT NULL UNIQUE
-);
-
-CREATE TABLE cex_symbol_dim (
-	id INTEGER PRIMARY KEY CHECK(id > 0 AND id <= 4294967295),
-	symbol TEXT NOT NULL UNIQUE
-);
-
 CREATE TABLE cex_orderbook_pairs_v3 (
 	id INTEGER PRIMARY KEY,
 	exchange_id INTEGER NOT NULL,
 	market_type_id INTEGER NOT NULL,
 	symbol_id INTEGER NOT NULL,
-	UNIQUE(exchange_id, market_type_id, symbol_id),
-	FOREIGN KEY(exchange_id) REFERENCES cex_exchange_dim(id),
-	FOREIGN KEY(market_type_id) REFERENCES cex_market_type_dim(id),
-	FOREIGN KEY(symbol_id) REFERENCES cex_symbol_dim(id)
+	UNIQUE(exchange_id, market_type_id, symbol_id)
 );
 
 CREATE TABLE cex_orderbooks_v6 (
@@ -532,6 +512,7 @@ CREATE TABLE cex_orderbooks_v6 (
 );
 
 CREATE INDEX idx_cex_ob_v6_pair_fetched_id ON cex_orderbooks_v6(pair_id, fetched_at, id);
+CREATE INDEX idx_cex_pairs_v3_exchange_symbol_market ON cex_orderbook_pairs_v3(exchange_id, symbol_id, market_type_id);
 `
 
 func extractFunctionBodyForTest(t *testing.T, source string, signature string) string {

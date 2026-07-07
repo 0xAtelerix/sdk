@@ -19,11 +19,8 @@ FROM cex_orderbook_pairs_v3
 WHERE exchange_id = ? AND market_type_id = ? AND symbol_id = ?
 LIMIT 1`
 	cexOrderBookExactReadQuery = `
-SELECT ob.last_update_id, ob.bids, ob.asks, ex.name, sym.symbol
+SELECT ob.last_update_id, ob.bids, ob.asks
 FROM cex_orderbooks_v6 AS ob
-JOIN cex_orderbook_pairs_v3 AS pair ON pair.id = ob.pair_id
-JOIN cex_exchange_dim AS ex ON ex.id = pair.exchange_id
-JOIN cex_symbol_dim AS sym ON sym.id = pair.symbol_id
 WHERE ob.pair_id = ? AND ob.fetched_at = ?
 LIMIT 1`
 	cexOrderBookNearestOlderQuery = `
@@ -39,34 +36,23 @@ WHERE pair_id = ? AND fetched_at > ?
 ORDER BY fetched_at ASC
 LIMIT 1`
 	cexOrderBookResolveUniqueMarketQuery = `
-SELECT pair.exchange_id, pair.market_type_id, pair.symbol_id, ex.name, mt.name, sym.symbol
-FROM cex_orderbook_pairs_v3 AS pair
-JOIN cex_exchange_dim AS ex ON ex.id = pair.exchange_id
-JOIN cex_market_type_dim AS mt ON mt.id = pair.market_type_id
-JOIN cex_symbol_dim AS sym ON sym.id = pair.symbol_id
-WHERE ex.name = ? AND sym.symbol = ?
-ORDER BY pair.market_type_id
+SELECT market_type_id
+FROM cex_orderbook_pairs_v3
+WHERE exchange_id = ? AND symbol_id = ?
+ORDER BY market_type_id
 LIMIT 2`
-	cexOrderBookResolveExplicitMarketQuery = `
-SELECT pair.exchange_id, pair.market_type_id, pair.symbol_id, ex.name, mt.name, sym.symbol
-FROM cex_orderbook_pairs_v3 AS pair
-JOIN cex_exchange_dim AS ex ON ex.id = pair.exchange_id
-JOIN cex_market_type_dim AS mt ON mt.id = pair.market_type_id
-JOIN cex_symbol_dim AS sym ON sym.id = pair.symbol_id
-WHERE ex.name = ? AND mt.name = ? AND sym.symbol = ?
-LIMIT 1`
 )
 
 type cexOrderBookFastReader struct {
 	mu sync.Mutex
 
-	conn           *zsqlite.Conn
-	pair           *zsqlite.Stmt
-	exact          *zsqlite.Stmt
-	older          *zsqlite.Stmt
-	newer          *zsqlite.Stmt
-	uniqueMarket   *zsqlite.Stmt
-	explicitMarket *zsqlite.Stmt
+	conn         *zsqlite.Conn
+	pair         *zsqlite.Stmt
+	exact        *zsqlite.Stmt
+	older        *zsqlite.Stmt
+	newer        *zsqlite.Stmt
+	uniqueMarket *zsqlite.Stmt
+	idRegistry   *apptypes.OrderBookIDRegistry
 
 	bidsBuf []byte
 	asksBuf []byte
@@ -85,13 +71,13 @@ func openCEXOrderBookFastReader(
 	}
 
 	return &cexOrderBookFastReader{
-		conn:           conn,
-		pair:           conn.Prep(cexOrderBookPairIDQuery),
-		exact:          conn.Prep(cexOrderBookExactReadQuery),
-		older:          conn.Prep(cexOrderBookNearestOlderQuery),
-		newer:          conn.Prep(cexOrderBookNearestNewerQuery),
-		uniqueMarket:   conn.Prep(cexOrderBookResolveUniqueMarketQuery),
-		explicitMarket: conn.Prep(cexOrderBookResolveExplicitMarketQuery),
+		conn:         conn,
+		pair:         conn.Prep(cexOrderBookPairIDQuery),
+		exact:        conn.Prep(cexOrderBookExactReadQuery),
+		older:        conn.Prep(cexOrderBookNearestOlderQuery),
+		newer:        conn.Prep(cexOrderBookNearestNewerQuery),
+		uniqueMarket: conn.Prep(cexOrderBookResolveUniqueMarketQuery),
+		idRegistry:   apptypes.DefaultOrderBookIDRegistry,
 	}, nil
 }
 
@@ -195,29 +181,34 @@ func (r *cexOrderBookFastReader) resolveCEXOrderBookRefByLabels(
 	symbol string,
 	fetchedAt int64,
 ) (apptypes.CEXOrderBookRef, error) {
+	exchangeID, err := r.idRegistry.ResolveExchangeID(exchange)
+	if err != nil {
+		return apptypes.CEXOrderBookRef{}, err
+	}
+
+	symbolID, err := r.idRegistry.ResolveSymbolID(symbol)
+	if err != nil {
+		return apptypes.CEXOrderBookRef{}, err
+	}
+
 	if marketType != "" {
-		ref, ok, err := resolveExplicitCEXOrderBookMarket(
-			r.explicitMarket,
-			exchange,
-			marketType,
-			symbol,
-			fetchedAt,
-		)
+		marketTypeID, err := r.idRegistry.ResolveMarketTypeID(marketType)
 		if err != nil {
 			return apptypes.CEXOrderBookRef{}, err
 		}
 
-		if !ok {
-			return apptypes.CEXOrderBookRef{}, ErrCEXOrderBookNotFound
-		}
-
-		return ref, nil
+		return apptypes.CEXOrderBookRef{
+			FetchedAt:    fetchedAt,
+			ExchangeID:   exchangeID,
+			MarketTypeID: marketTypeID,
+			SymbolID:     symbolID,
+		}, nil
 	}
 
 	ref, ok, err := resolveUniqueCEXOrderBookMarket(
 		r.uniqueMarket,
-		exchange,
-		symbol,
+		exchangeID,
+		symbolID,
 		fetchedAt,
 	)
 	if err != nil {
@@ -277,8 +268,19 @@ func (r *cexOrderBookFastReader) readCEXOrderBookRow(
 
 	bidsRaw := readSQLiteColumnBytes(stmt, 1, &r.bidsBuf)
 	asksRaw := readSQLiteColumnBytes(stmt, 2, &r.asksBuf)
-	exchange := stmt.ColumnText(3)
-	symbol := stmt.ColumnText(4)
+	exchange := ref.Exchange
+	if exchange == "" {
+		if label, ok := r.idRegistry.ExchangeLabel(ref.ExchangeID); ok {
+			exchange = label
+		}
+	}
+
+	symbol := ref.Symbol
+	if symbol == "" {
+		if label, ok := r.idRegistry.SymbolLabel(ref.SymbolID); ok {
+			symbol = label
+		}
+	}
 
 	row := &cexOrderBookRow{
 		key: cexOrderBookRefKey{
@@ -419,48 +421,14 @@ func readCEXOrderBookPairID(
 	return value, true, nil
 }
 
-func resolveExplicitCEXOrderBookMarket(
-	stmt *zsqlite.Stmt,
-	exchange string,
-	marketType string,
-	symbol string,
-	fetchedAt int64,
-) (apptypes.CEXOrderBookRef, bool, error) {
-	stmt.BindText(1, exchange)
-	stmt.BindText(2, marketType)
-	stmt.BindText(3, symbol)
-
-	hasRow, err := stmt.Step()
-	if err != nil {
-		_ = resetCEXOrderBookStmt(stmt)
-
-		return apptypes.CEXOrderBookRef{}, false, err
-	}
-
-	if !hasRow {
-		if resetErr := resetCEXOrderBookStmt(stmt); resetErr != nil {
-			return apptypes.CEXOrderBookRef{}, false, resetErr
-		}
-
-		return apptypes.CEXOrderBookRef{}, false, nil
-	}
-
-	ref := readCEXOrderBookResolvedRef(stmt, fetchedAt)
-	if resetErr := resetCEXOrderBookStmt(stmt); resetErr != nil {
-		return apptypes.CEXOrderBookRef{}, false, resetErr
-	}
-
-	return ref, true, nil
-}
-
 func resolveUniqueCEXOrderBookMarket(
 	stmt *zsqlite.Stmt,
-	exchange string,
-	symbol string,
+	exchangeID apptypes.CEXExchangeID,
+	symbolID apptypes.CEXSymbolID,
 	fetchedAt int64,
 ) (apptypes.CEXOrderBookRef, bool, error) {
-	stmt.BindText(1, exchange)
-	stmt.BindText(2, symbol)
+	stmt.BindInt64(1, int64(exchangeID))
+	stmt.BindInt64(2, int64(symbolID))
 
 	hasRow, err := stmt.Step()
 	if err != nil {
@@ -477,7 +445,7 @@ func resolveUniqueCEXOrderBookMarket(
 		return apptypes.CEXOrderBookRef{}, false, nil
 	}
 
-	ref := readCEXOrderBookResolvedRef(stmt, fetchedAt)
+	marketTypeID := apptypes.CEXMarketTypeID(stmt.ColumnInt64(0))
 	hasSecondRow, err := stmt.Step()
 	if err != nil {
 		_ = resetCEXOrderBookStmt(stmt)
@@ -497,18 +465,12 @@ func resolveUniqueCEXOrderBookMarket(
 		return apptypes.CEXOrderBookRef{}, false, resetErr
 	}
 
-	return ref, true, nil
-}
-
-func readCEXOrderBookResolvedRef(stmt *zsqlite.Stmt, fetchedAt int64) apptypes.CEXOrderBookRef {
 	return apptypes.CEXOrderBookRef{
-		Exchange:     stmt.ColumnText(3),
-		Symbol:       stmt.ColumnText(5),
 		FetchedAt:    fetchedAt,
-		ExchangeID:   apptypes.CEXExchangeID(stmt.ColumnInt64(0)),
-		MarketTypeID: apptypes.CEXMarketTypeID(stmt.ColumnInt64(1)),
-		SymbolID:     apptypes.CEXSymbolID(stmt.ColumnInt64(2)),
-	}
+		ExchangeID:   exchangeID,
+		MarketTypeID: marketTypeID,
+		SymbolID:     symbolID,
+	}, true, nil
 }
 
 func probeCEXOrderBookTimestamp(
