@@ -13,6 +13,8 @@ import (
 )
 
 const (
+	cexOrderBookSchemaRetryInterval = 250 * time.Millisecond
+
 	cexOrderBookPairIDQuery = `
 SELECT id
 FROM cex_orderbook_pairs_v3
@@ -62,23 +64,75 @@ func openCEXOrderBookFastReader(
 	ctx context.Context,
 	dbPath string,
 ) (*cexOrderBookFastReader, error) {
-	conn, err := sqlitez.OpenConn(ctx, dbPath, sqlitez.OpenOptions{
-		QueryOnly:                true,
-		DisableWALAutoCheckpoint: true,
-	})
-	if err != nil {
-		return nil, err
+	var lastErr error
+
+	for {
+		conn, err := sqlitez.OpenConn(ctx, dbPath, sqlitez.OpenOptions{
+			QueryOnly:                true,
+			DisableWALAutoCheckpoint: true,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		reader, err := prepareCEXOrderBookFastReader(conn)
+		if err == nil {
+			return reader, nil
+		}
+
+		lastErr = err
+
+		if closeErr := conn.Close(); closeErr != nil {
+			lastErr = fmt.Errorf("%w; close sqlite after prepare failure: %v", lastErr, closeErr)
+		}
+
+		timer := time.NewTimer(cexOrderBookSchemaRetryInterval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+
+			return nil, fmt.Errorf("wait for cex order-book v6 schema: %w: %w", ctx.Err(), lastErr)
+		case <-timer.C:
+		}
+	}
+}
+
+func prepareCEXOrderBookFastReader(conn *zsqlite.Conn) (*cexOrderBookFastReader, error) {
+	reader := &cexOrderBookFastReader{
+		conn:       conn,
+		idRegistry: apptypes.DefaultOrderBookIDRegistry,
 	}
 
-	return &cexOrderBookFastReader{
-		conn:         conn,
-		pair:         conn.Prep(cexOrderBookPairIDQuery),
-		exact:        conn.Prep(cexOrderBookExactReadQuery),
-		older:        conn.Prep(cexOrderBookNearestOlderQuery),
-		newer:        conn.Prep(cexOrderBookNearestNewerQuery),
-		uniqueMarket: conn.Prep(cexOrderBookResolveUniqueMarketQuery),
-		idRegistry:   apptypes.DefaultOrderBookIDRegistry,
-	}, nil
+	var err error
+	if reader.pair, err = conn.Prepare(cexOrderBookPairIDQuery); err != nil {
+		return nil, fmt.Errorf("prepare cex order-book pair lookup: %w", err)
+	}
+
+	if reader.exact, err = conn.Prepare(cexOrderBookExactReadQuery); err != nil {
+		reader.finalizePrepared()
+
+		return nil, fmt.Errorf("prepare cex order-book exact read: %w", err)
+	}
+
+	if reader.older, err = conn.Prepare(cexOrderBookNearestOlderQuery); err != nil {
+		reader.finalizePrepared()
+
+		return nil, fmt.Errorf("prepare cex order-book older probe: %w", err)
+	}
+
+	if reader.newer, err = conn.Prepare(cexOrderBookNearestNewerQuery); err != nil {
+		reader.finalizePrepared()
+
+		return nil, fmt.Errorf("prepare cex order-book newer probe: %w", err)
+	}
+
+	if reader.uniqueMarket, err = conn.Prepare(cexOrderBookResolveUniqueMarketQuery); err != nil {
+		reader.finalizePrepared()
+
+		return nil, fmt.Errorf("prepare cex order-book market resolver: %w", err)
+	}
+
+	return reader, nil
 }
 
 func (r *cexOrderBookFastReader) Close() error {
@@ -86,7 +140,27 @@ func (r *cexOrderBookFastReader) Close() error {
 		return nil
 	}
 
+	r.finalizePrepared()
+
 	return r.conn.Close()
+}
+
+func (r *cexOrderBookFastReader) finalizePrepared() {
+	if r == nil {
+		return
+	}
+
+	for _, stmt := range []*zsqlite.Stmt{
+		r.pair,
+		r.exact,
+		r.older,
+		r.newer,
+		r.uniqueMarket,
+	} {
+		if stmt != nil {
+			_ = stmt.Finalize()
+		}
+	}
 }
 
 func (r *cexOrderBookFastReader) readCEXOrderBooks(
