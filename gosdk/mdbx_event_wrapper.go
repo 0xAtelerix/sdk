@@ -152,6 +152,8 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 	var cexOrderBookRefs []apptypes.CEXOrderBookRef
 
+	var hyperliquidAllMidsRefs []apptypes.HyperliquidAllMidsRef
+
 	for _, eventBatch := range eventBatches {
 		ews.logger.Debug().
 			Str("atropos", hex.EncodeToString(eventBatch.Atropos[4:])).
@@ -297,8 +299,12 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 				)
 			}
 
-			// Accumulate CEX order book refs (no voting, direct passthrough)
+			// Accumulate CEX/public-data refs (no voting, direct passthrough).
 			cexOrderBookRefs = append(cexOrderBookRefs, evt.CEXOrderBookRefs...)
+			hyperliquidAllMidsRefs = append(
+				hyperliquidAllMidsRefs,
+				evt.HyperliquidAllMidsRefs...,
+			)
 		}
 
 		MdbxEventParseDuration.WithLabelValues(vid, cid).Observe(time.Since(tParseEvt).Seconds())
@@ -452,16 +458,18 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 		}
 
 		result = append(result, apptypes.Batch[appTx, R]{
-			Atropos:          eventBatch.Atropos,
-			Transactions:     allParsedTxs,
-			ExternalBlocks:   ews.votingBlocks.PopFinalized(),      // return only finalized
-			Checkpoints:      ews.votingCheckpoints.PopFinalized(), // return only finalized
-			EndOffset:        eventBatch.EndOffset,
-			CEXOrderBookRefs: cexOrderBookRefs,
+			Atropos:                eventBatch.Atropos,
+			Transactions:           allParsedTxs,
+			ExternalBlocks:         ews.votingBlocks.PopFinalized(),      // return only finalized
+			Checkpoints:            ews.votingCheckpoints.PopFinalized(), // return only finalized
+			EndOffset:              eventBatch.EndOffset,
+			CEXOrderBookRefs:       cexOrderBookRefs,
+			HyperliquidAllMidsRefs: hyperliquidAllMidsRefs,
 		})
 
 		// Reset for next batch
 		cexOrderBookRefs = cexOrderBookRefs[:0]
+		hyperliquidAllMidsRefs = hyperliquidAllMidsRefs[:0]
 	}
 
 	if newEpoch > 0 {
