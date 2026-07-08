@@ -13,6 +13,8 @@ import (
 )
 
 const (
+	cexOrderBookSchemaRetryInterval = 250 * time.Millisecond
+
 	cexOrderBookPairIDQuery = `
 SELECT id
 FROM cex_orderbook_pairs_v3
@@ -62,61 +64,77 @@ func openCEXOrderBookFastReader(
 	ctx context.Context,
 	dbPath string,
 ) (*cexOrderBookFastReader, error) {
-	conn, err := sqlitez.OpenConn(ctx, dbPath, sqlitez.OpenOptions{
-		QueryOnly:                true,
-		DisableWALAutoCheckpoint: true,
-	})
-	if err != nil {
-		return nil, err
-	}
+	var lastErr error
 
-	return &cexOrderBookFastReader{
-		conn:       conn,
-		idRegistry: apptypes.DefaultOrderBookIDRegistry,
-	}, nil
+	for {
+		conn, err := sqlitez.OpenConn(ctx, dbPath, sqlitez.OpenOptions{
+			QueryOnly:                true,
+			DisableWALAutoCheckpoint: true,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		reader, err := prepareCEXOrderBookFastReader(conn)
+		if err == nil {
+			return reader, nil
+		}
+
+		lastErr = err
+
+		if closeErr := conn.Close(); closeErr != nil {
+			lastErr = fmt.Errorf("%w; close sqlite after prepare failure: %v", lastErr, closeErr)
+		}
+
+		timer := time.NewTimer(cexOrderBookSchemaRetryInterval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+
+			return nil, fmt.Errorf("wait for cex order-book v6 schema: %w: %w", ctx.Err(), lastErr)
+		case <-timer.C:
+		}
+	}
 }
 
-func (r *cexOrderBookFastReader) ensurePrepared() error {
-	if r.pair != nil &&
-		r.exact != nil &&
-		r.older != nil &&
-		r.newer != nil &&
-		r.uniqueMarket != nil {
-		return nil
+func prepareCEXOrderBookFastReader(conn *zsqlite.Conn) (*cexOrderBookFastReader, error) {
+	reader := &cexOrderBookFastReader{
+		conn:       conn,
+		idRegistry: apptypes.DefaultOrderBookIDRegistry,
 	}
 
 	var err error
-	if r.pair, err = r.conn.Prepare(cexOrderBookPairIDQuery); err != nil {
-		r.finalizePrepared()
+	if reader.pair, err = conn.Prepare(cexOrderBookPairIDQuery); err != nil {
+		reader.finalizePrepared()
 
-		return fmt.Errorf("prepare cex order-book pair lookup: %w", err)
+		return nil, fmt.Errorf("prepare cex order-book pair lookup: %w", err)
 	}
 
-	if r.exact, err = r.conn.Prepare(cexOrderBookExactReadQuery); err != nil {
-		r.finalizePrepared()
+	if reader.exact, err = conn.Prepare(cexOrderBookExactReadQuery); err != nil {
+		reader.finalizePrepared()
 
-		return fmt.Errorf("prepare cex order-book exact read: %w", err)
+		return nil, fmt.Errorf("prepare cex order-book exact read: %w", err)
 	}
 
-	if r.older, err = r.conn.Prepare(cexOrderBookNearestOlderQuery); err != nil {
-		r.finalizePrepared()
+	if reader.older, err = conn.Prepare(cexOrderBookNearestOlderQuery); err != nil {
+		reader.finalizePrepared()
 
-		return fmt.Errorf("prepare cex order-book older probe: %w", err)
+		return nil, fmt.Errorf("prepare cex order-book older probe: %w", err)
 	}
 
-	if r.newer, err = r.conn.Prepare(cexOrderBookNearestNewerQuery); err != nil {
-		r.finalizePrepared()
+	if reader.newer, err = conn.Prepare(cexOrderBookNearestNewerQuery); err != nil {
+		reader.finalizePrepared()
 
-		return fmt.Errorf("prepare cex order-book newer probe: %w", err)
+		return nil, fmt.Errorf("prepare cex order-book newer probe: %w", err)
 	}
 
-	if r.uniqueMarket, err = r.conn.Prepare(cexOrderBookResolveUniqueMarketQuery); err != nil {
-		r.finalizePrepared()
+	if reader.uniqueMarket, err = conn.Prepare(cexOrderBookResolveUniqueMarketQuery); err != nil {
+		reader.finalizePrepared()
 
-		return fmt.Errorf("prepare cex order-book market resolver: %w", err)
+		return nil, fmt.Errorf("prepare cex order-book market resolver: %w", err)
 	}
 
-	return nil
+	return reader, nil
 }
 
 func (r *cexOrderBookFastReader) Close() error {
@@ -167,16 +185,6 @@ func (r *cexOrderBookFastReader) readCEXOrderBooks(
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if err := r.ensurePrepared(); err != nil {
-		for i, ref := range refs {
-			diag := newCEXOrderBookReadDiagnostic(ref, 0)
-			diag.Result = cexOrderBookReadResultQueryError
-			errs[i] = wrapCEXOrderBookReadError(ctx, diag, err)
-		}
-
-		return snapshots, errs
-	}
-
 	oldDone := r.conn.SetInterrupt(ctx.Done())
 	defer r.conn.SetInterrupt(oldDone)
 
@@ -214,18 +222,6 @@ func (r *cexOrderBookFastReader) readCEXOrderBookByLabels(
 ) (*apptypes.CEXOrderBookSnapshot, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
-	if err := r.ensurePrepared(); err != nil {
-		diag := CEXOrderBookReadDiagnostic{
-			Exchange:             exchange,
-			Symbol:               symbol,
-			RequestedFetchedAtNs: fetchedAt,
-			RequestedFetchedAtMs: fetchedAt / int64(time.Millisecond),
-			Result:               cexOrderBookReadResultQueryError,
-		}
-
-		return nil, wrapCEXOrderBookReadError(ctx, diag, err)
-	}
 
 	oldDone := r.conn.SetInterrupt(ctx.Done())
 	defer r.conn.SetInterrupt(oldDone)
