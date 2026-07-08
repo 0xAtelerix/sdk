@@ -380,7 +380,7 @@ func openMultichainSQLite(ctx context.Context, dbPath, mode string) (*sql.DB, er
 		return nil, fmt.Errorf("%w: %s", errUnsupportedSQLiteOpenMode, mode)
 	}
 
-	dsn := fmt.Sprintf("file:%s?mode=%s&uri=true", dbPath, mode)
+	dsn := fmt.Sprintf("file:%s?mode=%s&cache=shared&uri=true", dbPath, mode)
 	log.Info().Str("path", dsn).Msg("connecting to sqlite")
 
 	var (
