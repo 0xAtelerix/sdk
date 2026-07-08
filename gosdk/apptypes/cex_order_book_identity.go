@@ -242,5 +242,8 @@ var defaultCEXSymbols = []cexSymbolIdentity{
 	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 3, "HYPE"},
 	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 4, "PEPE"},
 	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 5, "SPX"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 6, "FAKEUSDC"},
+	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 6, "BTCUSDC"},
+	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 7, "ETHUSDC"},
+	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 8, "PEPEUSDC"},
+	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 9, "FAKEUSDC"},
 }
