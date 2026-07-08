@@ -1,11 +1,58 @@
 package apptypes
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/stretchr/testify/require"
 )
+
+func TestOrderBookIDRegistryCoversConfiguredE2EMarkets(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		exchangeID   CEXExchangeID
+		marketTypeID CEXMarketTypeID
+		symbol       string
+	}{
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, "BTCUSDC"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, "SPXUSDC"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, "PEPEUSDC"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, "FLOKIUSDC"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, "LINKUSDC"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, "UNIUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, "PEPEUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, "FUNUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, "MOGUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "ETHUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "DOGEUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "LINKUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "AAVEUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "UNIUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "SPXUSDC"},
+	} {
+		t.Run(fmt.Sprintf("%d/%d/%s", tc.exchangeID, tc.marketTypeID, tc.symbol), func(t *testing.T) {
+			t.Parallel()
+
+			symbolID, err := DefaultOrderBookIDRegistry.ResolveSymbolID(
+				tc.exchangeID,
+				tc.marketTypeID,
+				tc.symbol,
+			)
+			require.NoError(t, err)
+			require.NotZero(t, symbolID)
+
+			label, ok := DefaultOrderBookIDRegistry.SymbolLabel(
+				tc.exchangeID,
+				tc.marketTypeID,
+				symbolID,
+			)
+			require.True(t, ok)
+			require.Equal(t, tc.symbol, label)
+		})
+	}
+}
 
 func TestCEXPriceLevelCBORUsesCompactArray(t *testing.T) {
 	t.Parallel()
