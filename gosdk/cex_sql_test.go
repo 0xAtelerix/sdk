@@ -33,12 +33,13 @@ func TestCEXDataAccessSQL_ReadCEXOrderBook_ClassifiesPrecisionMiss(t *testing.T)
 	require.NoError(t, err)
 
 	requestedFetchedAt := int64(1_777_000_000_000_000_000)
+	spxSymbolID := cexSymbolIDForTest(t, 1, 1, "SPXUSDT")
 	err = insertCEXOrderBookV6(
 		ctx,
 		db,
 		1,
 		1,
-		1,
+		spxSymbolID,
 		"mexc",
 		"spot",
 		"SPXUSDT",
@@ -58,7 +59,7 @@ func TestCEXDataAccessSQL_ReadCEXOrderBook_ClassifiesPrecisionMiss(t *testing.T)
 	snapshots, errs := accessor.ReadCEXOrderBooks(ctx, []apptypes.CEXOrderBookRef{{
 		ExchangeID:   1,
 		MarketTypeID: 1,
-		SymbolID:     1,
+		SymbolID:     apptypes.CEXSymbolID(spxSymbolID),
 		FetchedAt:    requestedFetchedAt,
 	}})
 	require.Len(t, snapshots, 1)
@@ -126,10 +127,11 @@ func TestCEXDataAccessSQL_ReadCEXOrderBook_ClassifiesTrueAbsence(t *testing.T) {
 
 	defer accessor.Close()
 
+	spxSymbolID := cexSymbolIDForTest(t, 1, 1, "SPXUSDT")
 	snapshots, errs := accessor.ReadCEXOrderBooks(ctx, []apptypes.CEXOrderBookRef{{
 		ExchangeID:   1,
 		MarketTypeID: 1,
-		SymbolID:     1,
+		SymbolID:     apptypes.CEXSymbolID(spxSymbolID),
 		FetchedAt:    time.Now().UnixNano(),
 	}})
 	require.Len(t, snapshots, 1)
@@ -156,12 +158,14 @@ func TestCEXDataAccessSQL_ReadCEXOrderBooks_ReadsPreparedPoints(t *testing.T) {
 	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
 	require.NoError(t, err)
 
+	spxSymbolID := cexSymbolIDForTest(t, 1, 1, "SPXUSDT")
+	ethSymbolID := cexSymbolIDForTest(t, 1, 1, "ETHUSDT")
 	err = insertCEXOrderBookV6(
 		ctx,
 		db,
 		1,
 		1,
-		1,
+		spxSymbolID,
 		"mexc",
 		"spot",
 		"SPXUSDT",
@@ -179,8 +183,8 @@ func TestCEXDataAccessSQL_ReadCEXOrderBooks_ReadsPreparedPoints(t *testing.T) {
 	defer accessor.Close()
 
 	snapshots, errs := accessor.ReadCEXOrderBooks(ctx, []apptypes.CEXOrderBookRef{
-		{ExchangeID: 1, MarketTypeID: 1, SymbolID: 1, FetchedAt: 100},
-		{ExchangeID: 1, MarketTypeID: 1, SymbolID: 2, FetchedAt: 200},
+		{ExchangeID: 1, MarketTypeID: 1, SymbolID: apptypes.CEXSymbolID(spxSymbolID), FetchedAt: 100},
+		{ExchangeID: 1, MarketTypeID: 1, SymbolID: apptypes.CEXSymbolID(ethSymbolID), FetchedAt: 200},
 	})
 	require.Len(t, snapshots, 2)
 	require.Len(t, errs, 2)
@@ -212,12 +216,14 @@ func TestStep159JReadCEXOrderBooksUsesNumericIdentityAndRejectsLegacyRefs(t *tes
 	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
 	require.NoError(t, err)
 
+	spxSpotSymbolID := cexSymbolIDForTest(t, 1, 1, "SPXUSDT")
+	spxPerpsSymbolID := cexSymbolIDForTest(t, 1, 2, "SPXUSDT")
 	err = insertCEXOrderBookV6(
 		ctx,
 		db,
 		1,
 		1,
-		7,
+		spxSpotSymbolID,
 		"mexc",
 		"spot",
 		"SPXUSDT",
@@ -232,7 +238,7 @@ func TestStep159JReadCEXOrderBooksUsesNumericIdentityAndRejectsLegacyRefs(t *tes
 		db,
 		1,
 		2,
-		7,
+		spxPerpsSymbolID,
 		"mexc",
 		"perps",
 		"SPXUSDT",
@@ -249,8 +255,8 @@ func TestStep159JReadCEXOrderBooksUsesNumericIdentityAndRejectsLegacyRefs(t *tes
 	defer accessor.Close()
 
 	snapshots, errs := accessor.ReadCEXOrderBooks(ctx, []apptypes.CEXOrderBookRef{
-		{ExchangeID: 1, MarketTypeID: 1, SymbolID: 7, FetchedAt: 100},
-		{ExchangeID: 1, MarketTypeID: 2, SymbolID: 7, FetchedAt: 100},
+		{ExchangeID: 1, MarketTypeID: 1, SymbolID: apptypes.CEXSymbolID(spxSpotSymbolID), FetchedAt: 100},
+		{ExchangeID: 1, MarketTypeID: 2, SymbolID: apptypes.CEXSymbolID(spxPerpsSymbolID), FetchedAt: 100},
 		{Exchange: "mexc", Symbol: "SPXUSDT", FetchedAt: 100},
 	})
 	require.Len(t, snapshots, 3)
@@ -277,7 +283,7 @@ func TestStep159JDeprecatedReadCEXOrderBookResolvesUnambiguousLabels(t *testing.
 	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
 	require.NoError(t, err)
 
-	spxSymbolID := cexSymbolIDForTest(t, "SPXUSDT")
+	spxSymbolID := cexSymbolIDForTest(t, 1, 1, "SPXUSDT")
 	err = insertCEXOrderBookV6(ctx, db, 1, 1, spxSymbolID, "mexc", "spot", "SPXUSDT", 33, bids, asks, 100)
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
@@ -305,10 +311,11 @@ func TestStep159JDeprecatedReadCEXOrderBookRejectsAmbiguousMarketLabels(t *testi
 	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
 	require.NoError(t, err)
 
-	spxSymbolID := cexSymbolIDForTest(t, "SPXUSDT")
-	err = insertCEXOrderBookV6(ctx, db, 1, 1, spxSymbolID, "mexc", "spot", "SPXUSDT", 33, bids, asks, 100)
+	spxSpotSymbolID := cexSymbolIDForTest(t, 1, 1, "SPXUSDT")
+	spxPerpsSymbolID := cexSymbolIDForTest(t, 1, 2, "SPXUSDT")
+	err = insertCEXOrderBookV6(ctx, db, 1, 1, spxSpotSymbolID, "mexc", "spot", "SPXUSDT", 33, bids, asks, 100)
 	require.NoError(t, err)
-	err = insertCEXOrderBookV6(ctx, db, 1, 2, spxSymbolID, "mexc", "perps", "SPXUSDT", 44, bids, asks, 100)
+	err = insertCEXOrderBookV6(ctx, db, 1, 2, spxPerpsSymbolID, "mexc", "perps", "SPXUSDT", 44, bids, asks, 100)
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
@@ -335,10 +342,11 @@ func TestStep159JReadCEXOrderBookForMarketReadsRequestedMarket(t *testing.T) {
 	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
 	require.NoError(t, err)
 
-	spxSymbolID := cexSymbolIDForTest(t, "SPXUSDT")
-	err = insertCEXOrderBookV6(ctx, db, 1, 1, spxSymbolID, "mexc", "spot", "SPXUSDT", 33, bids, asks, 100)
+	spxSpotSymbolID := cexSymbolIDForTest(t, 1, 1, "SPXUSDT")
+	spxPerpsSymbolID := cexSymbolIDForTest(t, 1, 2, "SPXUSDT")
+	err = insertCEXOrderBookV6(ctx, db, 1, 1, spxSpotSymbolID, "mexc", "spot", "SPXUSDT", 33, bids, asks, 100)
 	require.NoError(t, err)
-	err = insertCEXOrderBookV6(ctx, db, 1, 2, spxSymbolID, "mexc", "perps", "SPXUSDT", 44, bids, asks, 100)
+	err = insertCEXOrderBookV6(ctx, db, 1, 2, spxPerpsSymbolID, "mexc", "perps", "SPXUSDT", 44, bids, asks, 100)
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
@@ -398,13 +406,14 @@ func BenchmarkCEXDataAccessSQL_ReadCEXOrderBooks_PreparedPoints(b *testing.B) {
 	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
 	require.NoError(b, err)
 
+	spxSymbolID := cexSymbolIDForTest(b, 1, 1, "SPXUSDT")
 	for i := range 100 {
 		err = insertCEXOrderBookV6(
 			ctx,
 			db,
 			1,
 			1,
-			1,
+			spxSymbolID,
 			"mexc",
 			"spot",
 			"SPXUSDT",
@@ -429,7 +438,7 @@ func BenchmarkCEXDataAccessSQL_ReadCEXOrderBooks_PreparedPoints(b *testing.B) {
 			refs[i] = apptypes.CEXOrderBookRef{
 				ExchangeID:   1,
 				MarketTypeID: 1,
-				SymbolID:     1,
+				SymbolID:     apptypes.CEXSymbolID(spxSymbolID),
 				FetchedAt:    int64(1_000 + i),
 			}
 		}
@@ -502,10 +511,14 @@ func insertCEXOrderBookV6(
 	return nil
 }
 
-func cexSymbolIDForTest(tb testing.TB, symbol string) uint32 {
+func cexSymbolIDForTest(tb testing.TB, exchangeID uint16, marketTypeID uint8, symbol string) uint32 {
 	tb.Helper()
 
-	symbolID, err := apptypes.DefaultOrderBookIDRegistry.ResolveSymbolID(symbol)
+	symbolID, err := apptypes.DefaultOrderBookIDRegistry.ResolveSymbolID(
+		apptypes.CEXExchangeID(exchangeID),
+		apptypes.CEXMarketTypeID(marketTypeID),
+		symbol,
+	)
 	require.NoError(tb, err)
 
 	return uint32(symbolID)
