@@ -21,6 +21,14 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/library"
 )
 
+func TestMultichainStateAccessSQLReadOnlyOpenerDoesNotUseSharedCache(t *testing.T) {
+	t.Parallel()
+
+	source, err := os.ReadFile("multichain_sql.go")
+	require.NoError(t, err)
+	require.NotContains(t, string(source), "cache=shared")
+}
+
 // Ensures the SQLite-backed MultichainStateAccessSQL can read blocks/receipts that match the simpleappchain schema.
 func TestMultichainStateAccessSQL_EthBlockAndReceipts(t *testing.T) {
 	t.Parallel()
