@@ -112,6 +112,161 @@ func TestStep159JOrderBookIDRegistryScopesSymbolsByExchangeAndMarketType(t *test
 	require.Equal(t, "BTCUSDC", perpLabel)
 }
 
+func TestStep159JOrderBookIDRegistryLoadsJSONOnlySymbol(t *testing.T) {
+	t.Parallel()
+
+	registry, err := NewOrderBookIDRegistryFromJSON(OrderBookIdentityJSON{
+		Version: 1,
+		Exchanges: []OrderBookExchangeJSON{
+			{ID: CEXExchangeIDMEXC, Label: cexExchangeLabelMEXC},
+		},
+		MarketTypes: []OrderBookMarketJSON{
+			{ID: CEXMarketTypeIDSpot, Label: cexMarketTypeLabelSpot},
+		},
+		Symbols: []OrderBookSymbolJSON{
+			{
+				ExchangeID:   CEXExchangeIDMEXC,
+				MarketTypeID: CEXMarketTypeIDSpot,
+				SymbolID:     77,
+				Label:        "JSONONLYUSDC",
+				BaseAsset:    "JSONONLY",
+				QuoteAsset:   "USDC",
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	symbolID, err := registry.ResolveSymbolID(CEXExchangeIDMEXC, CEXMarketTypeIDSpot, "JSONONLYUSDC")
+	require.NoError(t, err)
+	require.Equal(t, CEXSymbolID(77), symbolID)
+
+	label, ok := registry.SymbolLabel(CEXExchangeIDMEXC, CEXMarketTypeIDSpot, symbolID)
+	require.True(t, ok)
+	require.Equal(t, "JSONONLYUSDC", label)
+}
+
+func TestStep159JOrderBookIDRegistryRejectsInvalidJSON(t *testing.T) {
+	t.Parallel()
+
+	base := func() OrderBookIdentityJSON {
+		return OrderBookIdentityJSON{
+			Version: 1,
+			Exchanges: []OrderBookExchangeJSON{
+				{ID: CEXExchangeIDMEXC, Label: cexExchangeLabelMEXC},
+			},
+			MarketTypes: []OrderBookMarketJSON{
+				{ID: CEXMarketTypeIDSpot, Label: cexMarketTypeLabelSpot},
+			},
+			Symbols: []OrderBookSymbolJSON{
+				{
+					ExchangeID:   CEXExchangeIDMEXC,
+					MarketTypeID: CEXMarketTypeIDSpot,
+					SymbolID:     1,
+					Label:        "BTCUSDC",
+					BaseAsset:    "BTC",
+					QuoteAsset:   "USDC",
+				},
+			},
+		}
+	}
+
+	for _, tc := range []struct {
+		name    string
+		mutate  func(*OrderBookIdentityJSON)
+		wantErr string
+	}{
+		{
+			name: "duplicate exchange id",
+			mutate: func(doc *OrderBookIdentityJSON) {
+				doc.Exchanges = append(doc.Exchanges, OrderBookExchangeJSON{ID: CEXExchangeIDMEXC, Label: "mexc-copy"})
+			},
+			wantErr: "duplicate order-book exchange id",
+		},
+		{
+			name: "duplicate exchange label",
+			mutate: func(doc *OrderBookIdentityJSON) {
+				doc.Exchanges = append(doc.Exchanges, OrderBookExchangeJSON{ID: 9, Label: cexExchangeLabelMEXC})
+			},
+			wantErr: "duplicate order-book exchange label",
+		},
+		{
+			name: "duplicate market id",
+			mutate: func(doc *OrderBookIdentityJSON) {
+				doc.MarketTypes = append(doc.MarketTypes, OrderBookMarketJSON{ID: CEXMarketTypeIDSpot, Label: "spot-copy"})
+			},
+			wantErr: "duplicate order-book market_type id",
+		},
+		{
+			name: "duplicate market label",
+			mutate: func(doc *OrderBookIdentityJSON) {
+				doc.MarketTypes = append(doc.MarketTypes, OrderBookMarketJSON{ID: 9, Label: cexMarketTypeLabelSpot})
+			},
+			wantErr: "duplicate order-book market_type label",
+		},
+		{
+			name: "duplicate symbol id",
+			mutate: func(doc *OrderBookIdentityJSON) {
+				doc.Symbols = append(doc.Symbols, OrderBookSymbolJSON{
+					ExchangeID:   CEXExchangeIDMEXC,
+					MarketTypeID: CEXMarketTypeIDSpot,
+					SymbolID:     1,
+					Label:        "ETHUSDC",
+				})
+			},
+			wantErr: "duplicate order-book symbol id",
+		},
+		{
+			name: "duplicate symbol label",
+			mutate: func(doc *OrderBookIdentityJSON) {
+				doc.Symbols = append(doc.Symbols, OrderBookSymbolJSON{
+					ExchangeID:   CEXExchangeIDMEXC,
+					MarketTypeID: CEXMarketTypeIDSpot,
+					SymbolID:     2,
+					Label:        "BTCUSDC",
+				})
+			},
+			wantErr: "duplicate order-book symbol label",
+		},
+		{
+			name: "zero id",
+			mutate: func(doc *OrderBookIdentityJSON) {
+				doc.Symbols[0].SymbolID = 0
+			},
+			wantErr: "non-zero",
+		},
+		{
+			name: "empty label",
+			mutate: func(doc *OrderBookIdentityJSON) {
+				doc.Symbols[0].Label = " "
+			},
+			wantErr: "symbol label is empty",
+		},
+		{
+			name: "unknown exchange",
+			mutate: func(doc *OrderBookIdentityJSON) {
+				doc.Symbols[0].ExchangeID = 42
+			},
+			wantErr: "unknown exchange_id",
+		},
+		{
+			name: "unknown market type",
+			mutate: func(doc *OrderBookIdentityJSON) {
+				doc.Symbols[0].MarketTypeID = 42
+			},
+			wantErr: "unknown market_type_id",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			doc := base()
+			tc.mutate(&doc)
+			_, err := NewOrderBookIDRegistryFromJSON(doc)
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}
+
 func TestCEXPriceLevelCBORUsesCompactArray(t *testing.T) {
 	t.Parallel()
 
