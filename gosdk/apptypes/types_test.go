@@ -55,6 +55,63 @@ func TestOrderBookIDRegistryCoversConfiguredE2EMarkets(t *testing.T) {
 	}
 }
 
+func TestStep159JOrderBookIDRegistryScopesSymbolsByExchangeAndMarketType(t *testing.T) {
+	t.Parallel()
+
+	btcSpotUSDC, err := DefaultOrderBookIDRegistry.ResolveSymbolID(
+		CEXExchangeIDHyperliquid,
+		CEXMarketTypeIDSpot,
+		"BTCUSDC",
+	)
+	require.NoError(t, err)
+
+	btcPerpUSDC, err := DefaultOrderBookIDRegistry.ResolveSymbolID(
+		CEXExchangeIDHyperliquid,
+		CEXMarketTypeIDPerp,
+		"BTCUSDC",
+	)
+	require.NoError(t, err)
+	require.Equal(t, btcSpotUSDC, btcPerpUSDC)
+
+	legacyBTCUSDC, err := DefaultOrderBookIDRegistry.ResolveLegacySymbolID(
+		CEXExchangeIDHyperliquid,
+		"BTCUSDC",
+	)
+	require.NoError(t, err)
+	require.Equal(t, btcSpotUSDC, legacyBTCUSDC)
+
+	_, err = DefaultOrderBookIDRegistry.ResolveSymbolID(
+		CEXExchangeIDHyperliquid,
+		CEXMarketTypeIDSpot,
+		"BTC",
+	)
+	require.Error(t, err)
+
+	btcPerpBase, err := DefaultOrderBookIDRegistry.ResolveSymbolID(
+		CEXExchangeIDHyperliquid,
+		CEXMarketTypeIDPerp,
+		"BTC",
+	)
+	require.NoError(t, err)
+	require.NotEqual(t, legacyBTCUSDC, btcPerpBase)
+
+	spotLabel, ok := DefaultOrderBookIDRegistry.SymbolLabel(
+		CEXExchangeIDHyperliquid,
+		CEXMarketTypeIDSpot,
+		legacyBTCUSDC,
+	)
+	require.True(t, ok)
+	require.Equal(t, "BTCUSDC", spotLabel)
+
+	perpLabel, ok := DefaultOrderBookIDRegistry.SymbolLabel(
+		CEXExchangeIDHyperliquid,
+		CEXMarketTypeIDPerp,
+		legacyBTCUSDC,
+	)
+	require.True(t, ok)
+	require.Equal(t, "BTCUSDC", perpLabel)
+}
+
 func TestCEXPriceLevelCBORUsesCompactArray(t *testing.T) {
 	t.Parallel()
 

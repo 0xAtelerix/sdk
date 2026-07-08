@@ -32,6 +32,7 @@ var (
 	errUnknownCEXExchange   = errors.New("unknown cex exchange")
 	errUnknownCEXMarketType = errors.New("unknown cex market_type")
 	errUnknownCEXSymbol     = errors.New("unknown cex symbol")
+	errAmbiguousCEXSymbolID = errors.New("ambiguous cex symbol id")
 )
 
 // OrderBookIDRegistry owns source-controlled CEX order-book label-to-ID mappings.
@@ -124,6 +125,58 @@ func (OrderBookIDRegistry) ResolveSymbolID(
 	)
 }
 
+// ResolveLegacySymbolID maps a deprecated exchange+symbol boundary lookup to the
+// committed symbol ID shared by every registered market with that label. Storage
+// still keys exact books by exchange ID, market-type ID, and symbol ID; this
+// helper exists only so compatibility readers can run the bounded DB ambiguity
+// check over exchange ID and symbol ID before choosing a market type.
+func (OrderBookIDRegistry) ResolveLegacySymbolID(
+	exchangeID CEXExchangeID,
+	symbol string,
+) (CEXSymbolID, error) {
+	label := strings.TrimSpace(symbol)
+	if label == "" {
+		return 0, errEmptyCEXSymbol
+	}
+
+	var (
+		resolved CEXSymbolID
+		found    bool
+	)
+	for _, identity := range defaultCEXSymbols() {
+		if identity.exchangeID != exchangeID || identity.label != label {
+			continue
+		}
+
+		if !found {
+			resolved = identity.symbolID
+			found = true
+
+			continue
+		}
+
+		if identity.symbolID != resolved {
+			return 0, fmt.Errorf(
+				"%w: exchange_id=%d symbol=%q",
+				errAmbiguousCEXSymbolID,
+				exchangeID,
+				symbol,
+			)
+		}
+	}
+
+	if !found {
+		return 0, fmt.Errorf(
+			"%w: exchange_id=%d symbol=%q",
+			errUnknownCEXSymbol,
+			exchangeID,
+			symbol,
+		)
+	}
+
+	return resolved, nil
+}
+
 // SymbolLabel maps a scoped source-controlled symbol ID to its diagnostic label.
 func (OrderBookIDRegistry) SymbolLabel(
 	exchangeID CEXExchangeID,
@@ -214,19 +267,19 @@ func defaultCEXSymbols() []cexSymbolIdentity {
 		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 11, "SPXUSDC"},
 		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 12, "ZZINSTRUMENTUSDC"},
 		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 13, "MOGUSDC"},
-		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 1, "BTC"},
-		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 2, "ETH"},
-		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 3, "HYPE"},
-		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 4, "PEPE"},
-		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 5, "SPX"},
-		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 6, "BTCUSDC"},
-		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 7, "ETHUSDC"},
-		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 8, "PEPEUSDC"},
-		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 9, "FAKEUSDC"},
-		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 10, "DOGEUSDC"},
-		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 11, "LINKUSDC"},
-		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 12, "AAVEUSDC"},
-		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 13, "UNIUSDC"},
-		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 14, "SPXUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 101, "BTC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 102, "ETH"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 103, "HYPE"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 104, "PEPE"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 105, "SPX"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 1, "BTCUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 2, "ETHUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 4, "PEPEUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 10, "FAKEUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 7, "DOGEUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 106, "LINKUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 107, "AAVEUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 108, "UNIUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 11, "SPXUSDC"},
 	}
 }

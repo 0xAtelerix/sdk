@@ -14,10 +14,16 @@ import (
 
 const (
 	cexOrderBookPairIDQuery = `
-	SELECT id
-	FROM cex_orderbook_pairs_v3
+		SELECT id
+		FROM cex_orderbook_pairs_v3
 WHERE exchange_id = ? AND market_type_id = ? AND symbol_id = ?
 LIMIT 1`
+	cexOrderBookLegacyMarketTypeQuery = `
+SELECT market_type_id
+FROM cex_orderbook_pairs_v3
+WHERE exchange_id = ? AND symbol_id = ?
+ORDER BY market_type_id
+LIMIT 2`
 	cexOrderBookExactReadQuery = `
 SELECT ob.last_update_id, ob.bids, ob.asks
 FROM cex_orderbooks_v6 AS ob
@@ -42,6 +48,7 @@ type cexOrderBookFastReader struct {
 
 	conn       *zsqlite.Conn
 	pair       *zsqlite.Stmt
+	legacy     *zsqlite.Stmt
 	exact      *zsqlite.Stmt
 	older      *zsqlite.Stmt
 	newer      *zsqlite.Stmt
@@ -88,6 +95,12 @@ func prepareCEXOrderBookFastReader(conn *zsqlite.Conn) (*cexOrderBookFastReader,
 		return nil, fmt.Errorf("prepare cex order-book pair lookup: %w", err)
 	}
 
+	if reader.legacy, err = conn.Prepare(cexOrderBookLegacyMarketTypeQuery); err != nil {
+		reader.finalizePrepared()
+
+		return nil, fmt.Errorf("prepare cex order-book legacy market lookup: %w", err)
+	}
+
 	if reader.exact, err = conn.Prepare(cexOrderBookExactReadQuery); err != nil {
 		reader.finalizePrepared()
 
@@ -126,6 +139,7 @@ func (r *cexOrderBookFastReader) finalizePrepared() {
 
 	for _, stmt := range []*zsqlite.Stmt{
 		r.pair,
+		r.legacy,
 		r.exact,
 		r.older,
 		r.newer,
@@ -136,6 +150,7 @@ func (r *cexOrderBookFastReader) finalizePrepared() {
 	}
 
 	r.pair = nil
+	r.legacy = nil
 	r.exact = nil
 	r.older = nil
 	r.newer = nil
@@ -257,12 +272,12 @@ func (r *cexOrderBookFastReader) resolveCEXOrderBookRefByLabels(
 		}, nil
 	}
 
-	ref, ok, err := resolveUniqueCEXOrderBookMarket(
-		r.pair,
-		exchangeID,
-		r.idRegistry.SymbolCandidates(exchangeID, symbol),
-		fetchedAt,
-	)
+	symbolID, symbolErr := r.idRegistry.ResolveLegacySymbolID(exchangeID, symbol)
+	if symbolErr != nil {
+		return apptypes.CEXOrderBookRef{}, symbolErr
+	}
+
+	ref, ok, err := resolveUniqueCEXOrderBookMarket(r.legacy, exchangeID, symbolID, fetchedAt)
 	if err != nil {
 		return apptypes.CEXOrderBookRef{}, err
 	}
@@ -481,49 +496,53 @@ func readCEXOrderBookPairID(
 func resolveUniqueCEXOrderBookMarket(
 	stmt *zsqlite.Stmt,
 	exchangeID apptypes.CEXExchangeID,
-	candidates []apptypes.CEXSymbolCandidate,
+	symbolID apptypes.CEXSymbolID,
 	fetchedAt int64,
 ) (apptypes.CEXOrderBookRef, bool, error) {
-	var resolved *apptypes.CEXOrderBookRef
+	stmt.BindInt64(1, int64(exchangeID))
+	stmt.BindInt64(2, int64(symbolID))
 
-	for _, candidate := range candidates {
-		if candidate.MarketTypeID == 0 || candidate.SymbolID == 0 {
-			continue
-		}
+	hasRow, err := stmt.Step()
+	if err != nil {
+		_ = resetCEXOrderBookStmt(stmt)
 
-		_, ok, err := readCEXOrderBookPairID(
-			stmt,
-			exchangeID,
-			candidate.MarketTypeID,
-			candidate.SymbolID,
-		)
-		if err != nil {
-			return apptypes.CEXOrderBookRef{}, false, err
-		}
-
-		if !ok {
-			continue
-		}
-
-		next := apptypes.CEXOrderBookRef{
-			FetchedAt:    fetchedAt,
-			ExchangeID:   exchangeID,
-			MarketTypeID: candidate.MarketTypeID,
-			SymbolID:     candidate.SymbolID,
-		}
-
-		if resolved != nil {
-			return apptypes.CEXOrderBookRef{}, false, ErrCEXOrderBookAmbiguousMarket
-		}
-
-		resolved = &next
+		return apptypes.CEXOrderBookRef{}, false, err
 	}
 
-	if resolved == nil {
+	if !hasRow {
+		if resetErr := resetCEXOrderBookStmt(stmt); resetErr != nil {
+			return apptypes.CEXOrderBookRef{}, false, resetErr
+		}
+
 		return apptypes.CEXOrderBookRef{}, false, nil
 	}
 
-	return *resolved, true, nil
+	marketTypeID := apptypes.CEXMarketTypeID(stmt.ColumnInt64(0))
+	hasSecondRow, err := stmt.Step()
+	if err != nil {
+		_ = resetCEXOrderBookStmt(stmt)
+
+		return apptypes.CEXOrderBookRef{}, false, err
+	}
+
+	if hasSecondRow {
+		if resetErr := resetCEXOrderBookStmt(stmt); resetErr != nil {
+			return apptypes.CEXOrderBookRef{}, false, resetErr
+		}
+
+		return apptypes.CEXOrderBookRef{}, false, ErrCEXOrderBookAmbiguousMarket
+	}
+
+	if resetErr := resetCEXOrderBookStmt(stmt); resetErr != nil {
+		return apptypes.CEXOrderBookRef{}, false, resetErr
+	}
+
+	return apptypes.CEXOrderBookRef{
+		FetchedAt:    fetchedAt,
+		ExchangeID:   exchangeID,
+		MarketTypeID: marketTypeID,
+		SymbolID:     symbolID,
+	}, true, nil
 }
 
 func probeCEXOrderBookTimestamp(

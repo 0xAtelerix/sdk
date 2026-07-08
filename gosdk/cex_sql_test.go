@@ -463,6 +463,10 @@ func TestStep159JDeprecatedCEXOrderBookWrapperStaysBoundaryOnly(t *testing.T) {
 	require.NoError(t, err)
 
 	readerText := string(readerSource)
+	require.Contains(t, readerText, "cexOrderBookLegacyMarketTypeQuery")
+	require.Contains(t, readerText, "WHERE exchange_id = ? AND symbol_id = ?")
+	require.Contains(t, readerText, "ORDER BY market_type_id")
+	require.Contains(t, readerText, "LIMIT 2")
 	require.NotContains(t, readerText, "cex_orderbooks_v5")
 	require.NotContains(t, readerText, "cex_orderbook_dirty_pair_refs_v1")
 	require.NotContains(t, readerText, "cex_pairs_v2")
@@ -472,6 +476,26 @@ func TestStep159JDeprecatedCEXOrderBookWrapperStaysBoundaryOnly(t *testing.T) {
 	require.NotContains(t, readerText, "cex_exchange_dim")
 	require.NotContains(t, readerText, "cex_market_type_dim")
 	require.NotContains(t, readerText, "cex_symbol_dim")
+
+	labelResolverBody := extractFunctionBodyForTest(
+		t,
+		readerText,
+		"func (r *cexOrderBookFastReader) resolveCEXOrderBookRefByLabels(",
+	)
+	require.Contains(t, labelResolverBody, "ResolveLegacySymbolID")
+	require.Contains(t, labelResolverBody, "resolveUniqueCEXOrderBookMarket(r.legacy")
+	require.NotContains(t, labelResolverBody, "SymbolCandidates(")
+
+	legacyResolverBody := extractFunctionBodyForTest(
+		t,
+		readerText,
+		"func resolveUniqueCEXOrderBookMarket(",
+	)
+	require.Contains(t, legacyResolverBody, "stmt.BindInt64(1, int64(exchangeID))")
+	require.Contains(t, legacyResolverBody, "stmt.BindInt64(2, int64(symbolID))")
+	require.Contains(t, legacyResolverBody, "ErrCEXOrderBookAmbiguousMarket")
+	require.NotContains(t, legacyResolverBody, "for _, candidate")
+	require.NotContains(t, legacyResolverBody, "readCEXOrderBookPairID(")
 
 	apiSource, err := os.ReadFile("cex_sql.go")
 	require.NoError(t, err)
