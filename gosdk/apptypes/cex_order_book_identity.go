@@ -134,7 +134,13 @@ type OrderBookIDRegistry struct {
 
 // NewOrderBookIDRegistry constructs the default embedded JSON-backed registry.
 func NewOrderBookIDRegistry() (*OrderBookIDRegistry, error) {
-	return NewOrderBookIDRegistryFromLoader(context.Background(), embeddedOrderBookIdentityJSONLoader{})
+	return NewOrderBookIDRegistryWithContext(context.Background())
+}
+
+// NewOrderBookIDRegistryWithContext constructs the default embedded
+// JSON-backed registry while preserving caller cancellation.
+func NewOrderBookIDRegistryWithContext(ctx context.Context) (*OrderBookIDRegistry, error) {
+	return NewOrderBookIDRegistryFromLoader(ctx, embeddedOrderBookIdentityJSONLoader{})
 }
 
 // ResolveExchangeID maps a committed exchange label to its numeric ID.
@@ -254,7 +260,10 @@ func (embeddedOrderBookIdentityJSONLoader) LoadOrderBookIdentity(
 
 	var doc OrderBookIdentityJSON
 	if err := json.Unmarshal(defaultOrderBookIdentityJSON, &doc); err != nil {
-		return OrderBookIdentityJSON{}, fmt.Errorf("decode embedded cex order-book identity: %w", err)
+		return OrderBookIdentityJSON{}, fmt.Errorf(
+			"decode embedded cex order-book identity: %w",
+			err,
+		)
 	}
 
 	return doc, nil
