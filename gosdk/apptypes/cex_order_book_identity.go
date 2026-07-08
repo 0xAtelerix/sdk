@@ -10,6 +10,8 @@ const (
 	CEXExchangeIDMEXC CEXExchangeID = 1
 	// CEXExchangeIDHyperliquid is the committed numeric exchange identity for Hyperliquid.
 	CEXExchangeIDHyperliquid CEXExchangeID = 2
+	// CEXExchangeIDBinance is the committed numeric exchange identity for Binance.
+	CEXExchangeIDBinance CEXExchangeID = 3
 
 	// CEXMarketTypeIDSpot is the committed numeric market-type identity for spot.
 	CEXMarketTypeIDSpot CEXMarketTypeID = 1
@@ -60,6 +62,8 @@ func (r *OrderBookIDRegistry) ResolveExchangeID(exchange string) (CEXExchangeID,
 		return CEXExchangeIDMEXC, nil
 	case "hyperliquid":
 		return CEXExchangeIDHyperliquid, nil
+	case "binance":
+		return CEXExchangeIDBinance, nil
 	default:
 		return 0, fmt.Errorf("unknown cex exchange %q", exchange)
 	}
@@ -72,6 +76,8 @@ func (r *OrderBookIDRegistry) ExchangeLabel(id CEXExchangeID) (string, bool) {
 		return "mexc", true
 	case CEXExchangeIDHyperliquid:
 		return "hyperliquid", true
+	case CEXExchangeIDBinance:
+		return "binance", true
 	default:
 		return "", false
 	}
@@ -262,4 +268,6 @@ var defaultCEXSymbols = []cexSymbolIdentity{
 	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 12, "AAVEUSDC"},
 	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 13, "UNIUSDC"},
 	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 14, "SPXUSDC"},
+	{CEXExchangeIDBinance, CEXMarketTypeIDSpot, 1, "BTCUSDT"},
+	{CEXExchangeIDBinance, CEXMarketTypeIDSpot, 2, "ETHUSDT"},
 }
