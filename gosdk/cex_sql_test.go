@@ -73,43 +73,23 @@ func TestCEXDataAccessSQL_ReadCEXOrderBook_ClassifiesPrecisionMiss(t *testing.T)
 	require.Equal(t, requestedFetchedAt+1, readErr.Diagnostic.NearestNewerFetchedAt)
 }
 
-func TestCEXDataAccessSQL_WaitsForV6SchemaReadiness(t *testing.T) {
+func TestCEXDataAccessSQL_OpensBeforeV6SchemaExists(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
-	defer cancel()
+	ctx := t.Context()
 
 	dbPath := filepath.Join(t.TempDir(), "cex.sqlite")
 	db, err := openSQLite(ctx, dbPath, "rwc")
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
-	schemaReady := make(chan error, 1)
-	go func() {
-		time.Sleep(cexOrderBookSchemaRetryInterval / 2)
-
-		db, openErr := openSQLite(ctx, dbPath, "rwc")
-		if openErr != nil {
-			schemaReady <- openErr
-
-			return
-		}
-
-		if _, execErr := db.ExecContext(ctx, createCEXOrderBooksV6SQL); execErr != nil {
-			_ = db.Close()
-			schemaReady <- execErr
-
-			return
-		}
-
-		schemaReady <- db.Close()
-	}()
-
 	accessor, err := NewCEXDataAccessSQL(ctx, dbPath)
 	require.NoError(t, err)
 	defer accessor.Close()
 
-	require.NoError(t, <-schemaReady)
+	_, readErr := accessor.ReadCEXOrderBookForMarket(ctx, "mexc", "spot", "SPXUSDT", 100)
+	require.Error(t, readErr)
+	require.Contains(t, readErr.Error(), "cex_orderbook_pairs_v3")
 }
 
 func TestCEXDataAccessSQL_ReadCEXOrderBook_ClassifiesTrueAbsence(t *testing.T) {
