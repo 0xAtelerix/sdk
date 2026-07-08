@@ -216,17 +216,17 @@ func TestStep159JReadCEXOrderBooksUsesNumericIdentityAndRejectsLegacyRefs(t *tes
 	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
 	require.NoError(t, err)
 
-	spxSpotSymbolID := cexSymbolIDForTest(t, 1, 1, "SPXUSDT")
-	spxPerpsSymbolID := cexSymbolIDForTest(t, 1, 2, "SPXUSDT")
+	btcSpotSymbolID := cexSymbolIDForTest(t, 2, 1, "BTCUSDC")
+	btcPerpsSymbolID := cexSymbolIDForTest(t, 2, 2, "BTCUSDC")
 	err = insertCEXOrderBookV6(
 		ctx,
 		db,
+		2,
 		1,
-		1,
-		spxSpotSymbolID,
-		"mexc",
+		btcSpotSymbolID,
+		"hyperliquid",
 		"spot",
-		"SPXUSDT",
+		"BTCUSDC",
 		11,
 		bids,
 		asks,
@@ -236,12 +236,12 @@ func TestStep159JReadCEXOrderBooksUsesNumericIdentityAndRejectsLegacyRefs(t *tes
 	err = insertCEXOrderBookV6(
 		ctx,
 		db,
-		1,
 		2,
-		spxPerpsSymbolID,
-		"mexc",
+		2,
+		btcPerpsSymbolID,
+		"hyperliquid",
 		"perps",
-		"SPXUSDT",
+		"BTCUSDC",
 		22,
 		bids,
 		asks,
@@ -255,9 +255,9 @@ func TestStep159JReadCEXOrderBooksUsesNumericIdentityAndRejectsLegacyRefs(t *tes
 	defer accessor.Close()
 
 	snapshots, errs := accessor.ReadCEXOrderBooks(ctx, []apptypes.CEXOrderBookRef{
-		{ExchangeID: 1, MarketTypeID: 1, SymbolID: apptypes.CEXSymbolID(spxSpotSymbolID), FetchedAt: 100},
-		{ExchangeID: 1, MarketTypeID: 2, SymbolID: apptypes.CEXSymbolID(spxPerpsSymbolID), FetchedAt: 100},
-		{Exchange: "mexc", Symbol: "SPXUSDT", FetchedAt: 100},
+		{ExchangeID: 2, MarketTypeID: 1, SymbolID: apptypes.CEXSymbolID(btcSpotSymbolID), FetchedAt: 100},
+		{ExchangeID: 2, MarketTypeID: 2, SymbolID: apptypes.CEXSymbolID(btcPerpsSymbolID), FetchedAt: 100},
+		{Exchange: "hyperliquid", Symbol: "BTCUSDC", FetchedAt: 100},
 	})
 	require.Len(t, snapshots, 3)
 	require.Len(t, errs, 3)
@@ -311,11 +311,37 @@ func TestStep159JDeprecatedReadCEXOrderBookRejectsAmbiguousMarketLabels(t *testi
 	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
 	require.NoError(t, err)
 
-	spxSpotSymbolID := cexSymbolIDForTest(t, 1, 1, "SPXUSDT")
-	spxPerpsSymbolID := cexSymbolIDForTest(t, 1, 2, "SPXUSDT")
-	err = insertCEXOrderBookV6(ctx, db, 1, 1, spxSpotSymbolID, "mexc", "spot", "SPXUSDT", 33, bids, asks, 100)
+	btcSpotSymbolID := cexSymbolIDForTest(t, 2, 1, "BTCUSDC")
+	btcPerpsSymbolID := cexSymbolIDForTest(t, 2, 2, "BTCUSDC")
+	err = insertCEXOrderBookV6(
+		ctx,
+		db,
+		2,
+		1,
+		btcSpotSymbolID,
+		"hyperliquid",
+		"spot",
+		"BTCUSDC",
+		33,
+		bids,
+		asks,
+		100,
+	)
 	require.NoError(t, err)
-	err = insertCEXOrderBookV6(ctx, db, 1, 2, spxPerpsSymbolID, "mexc", "perps", "SPXUSDT", 44, bids, asks, 100)
+	err = insertCEXOrderBookV6(
+		ctx,
+		db,
+		2,
+		2,
+		btcPerpsSymbolID,
+		"hyperliquid",
+		"perps",
+		"BTCUSDC",
+		44,
+		bids,
+		asks,
+		100,
+	)
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
@@ -323,7 +349,7 @@ func TestStep159JDeprecatedReadCEXOrderBookRejectsAmbiguousMarketLabels(t *testi
 	require.NoError(t, err)
 	defer accessor.Close()
 
-	snapshot, err := accessor.ReadCEXOrderBook(ctx, "mexc", "SPXUSDT", 100)
+	snapshot, err := accessor.ReadCEXOrderBook(ctx, "hyperliquid", "BTCUSDC", 100)
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrCEXOrderBookAmbiguousMarket)
 	require.Nil(t, snapshot)
@@ -342,11 +368,37 @@ func TestStep159JReadCEXOrderBookForMarketReadsRequestedMarket(t *testing.T) {
 	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
 	require.NoError(t, err)
 
-	spxSpotSymbolID := cexSymbolIDForTest(t, 1, 1, "SPXUSDT")
-	spxPerpsSymbolID := cexSymbolIDForTest(t, 1, 2, "SPXUSDT")
-	err = insertCEXOrderBookV6(ctx, db, 1, 1, spxSpotSymbolID, "mexc", "spot", "SPXUSDT", 33, bids, asks, 100)
+	btcSpotSymbolID := cexSymbolIDForTest(t, 2, 1, "BTCUSDC")
+	btcPerpsSymbolID := cexSymbolIDForTest(t, 2, 2, "BTCUSDC")
+	err = insertCEXOrderBookV6(
+		ctx,
+		db,
+		2,
+		1,
+		btcSpotSymbolID,
+		"hyperliquid",
+		"spot",
+		"BTCUSDC",
+		33,
+		bids,
+		asks,
+		100,
+	)
 	require.NoError(t, err)
-	err = insertCEXOrderBookV6(ctx, db, 1, 2, spxPerpsSymbolID, "mexc", "perps", "SPXUSDT", 44, bids, asks, 100)
+	err = insertCEXOrderBookV6(
+		ctx,
+		db,
+		2,
+		2,
+		btcPerpsSymbolID,
+		"hyperliquid",
+		"perps",
+		"BTCUSDC",
+		44,
+		bids,
+		asks,
+		100,
+	)
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
@@ -354,12 +406,24 @@ func TestStep159JReadCEXOrderBookForMarketReadsRequestedMarket(t *testing.T) {
 	require.NoError(t, err)
 	defer accessor.Close()
 
-	spotSnapshot, err := accessor.ReadCEXOrderBookForMarket(ctx, "mexc", "spot", "SPXUSDT", 100)
+	spotSnapshot, err := accessor.ReadCEXOrderBookForMarket(
+		ctx,
+		"hyperliquid",
+		"spot",
+		"BTCUSDC",
+		100,
+	)
 	require.NoError(t, err)
 	require.NotNil(t, spotSnapshot)
 	require.Equal(t, int64(33), spotSnapshot.LastUpdateID)
 
-	perpsSnapshot, err := accessor.ReadCEXOrderBookForMarket(ctx, "mexc", "perps", "SPXUSDT", 100)
+	perpsSnapshot, err := accessor.ReadCEXOrderBookForMarket(
+		ctx,
+		"hyperliquid",
+		"perps",
+		"BTCUSDC",
+		100,
+	)
 	require.NoError(t, err)
 	require.NotNil(t, perpsSnapshot)
 	require.Equal(t, int64(44), perpsSnapshot.LastUpdateID)
