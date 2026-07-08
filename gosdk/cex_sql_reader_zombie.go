@@ -518,6 +518,7 @@ func resolveUniqueCEXOrderBookMarket(
 	}
 
 	marketTypeID := apptypes.CEXMarketTypeID(stmt.ColumnInt64(0))
+
 	hasSecondRow, err := stmt.Step()
 	if err != nil {
 		_ = resetCEXOrderBookStmt(stmt)

@@ -136,7 +136,11 @@ func TestStep159JOrderBookIDRegistryLoadsJSONOnlySymbol(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	symbolID, err := registry.ResolveSymbolID(CEXExchangeIDMEXC, CEXMarketTypeIDSpot, "JSONONLYUSDC")
+	symbolID, err := registry.ResolveSymbolID(
+		CEXExchangeIDMEXC,
+		CEXMarketTypeIDSpot,
+		"JSONONLYUSDC",
+	)
 	require.NoError(t, err)
 	require.Equal(t, CEXSymbolID(77), symbolID)
 
