@@ -32,7 +32,8 @@ func TestOrderBookIDRegistryCoversConfiguredE2EMarkets(t *testing.T) {
 		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "UNIUSDC"},
 		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "SPXUSDC"},
 	} {
-		t.Run(fmt.Sprintf("%d/%d/%s", tc.exchangeID, tc.marketTypeID, tc.symbol), func(t *testing.T) {
+		name := fmt.Sprintf("%d/%d/%s", tc.exchangeID, tc.marketTypeID, tc.symbol)
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			symbolID, err := DefaultOrderBookIDRegistry.ResolveSymbolID(

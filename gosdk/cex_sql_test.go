@@ -74,43 +74,20 @@ func TestCEXDataAccessSQL_ReadCEXOrderBook_ClassifiesPrecisionMiss(t *testing.T)
 	require.Equal(t, requestedFetchedAt+1, readErr.Diagnostic.NearestNewerFetchedAt)
 }
 
-func TestCEXDataAccessSQL_WaitsForV6SchemaReadiness(t *testing.T) {
+func TestStep159JCEXDataAccessSQLDoesNotWaitForV6SchemaReadiness(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
-	defer cancel()
+	ctx := t.Context()
 
 	dbPath := filepath.Join(t.TempDir(), "cex.sqlite")
 	db, err := openSQLite(ctx, dbPath, "rwc")
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
-	schemaReady := make(chan error, 1)
-	go func() {
-		time.Sleep(cexOrderBookSchemaRetryInterval / 2)
-
-		db, openErr := openSQLite(ctx, dbPath, "rwc")
-		if openErr != nil {
-			schemaReady <- openErr
-
-			return
-		}
-
-		if _, execErr := db.ExecContext(ctx, createCEXOrderBooksV6SQL); execErr != nil {
-			_ = db.Close()
-			schemaReady <- execErr
-
-			return
-		}
-
-		schemaReady <- db.Close()
-	}()
-
 	accessor, err := NewCEXDataAccessSQL(ctx, dbPath)
-	require.NoError(t, err)
-	defer accessor.Close()
-
-	require.NoError(t, <-schemaReady)
+	require.Error(t, err)
+	require.Nil(t, accessor)
+	require.Contains(t, err.Error(), "cex_orderbook_pairs_v3")
 }
 
 func TestCEXDataAccessSQL_ReadCEXOrderBook_ClassifiesTrueAbsence(t *testing.T) {
@@ -183,8 +160,18 @@ func TestCEXDataAccessSQL_ReadCEXOrderBooks_ReadsPreparedPoints(t *testing.T) {
 	defer accessor.Close()
 
 	snapshots, errs := accessor.ReadCEXOrderBooks(ctx, []apptypes.CEXOrderBookRef{
-		{ExchangeID: 1, MarketTypeID: 1, SymbolID: apptypes.CEXSymbolID(spxSymbolID), FetchedAt: 100},
-		{ExchangeID: 1, MarketTypeID: 1, SymbolID: apptypes.CEXSymbolID(ethSymbolID), FetchedAt: 200},
+		{
+			ExchangeID:   1,
+			MarketTypeID: 1,
+			SymbolID:     apptypes.CEXSymbolID(spxSymbolID),
+			FetchedAt:    100,
+		},
+		{
+			ExchangeID:   1,
+			MarketTypeID: 1,
+			SymbolID:     apptypes.CEXSymbolID(ethSymbolID),
+			FetchedAt:    200,
+		},
 	})
 	require.Len(t, snapshots, 2)
 	require.Len(t, errs, 2)
@@ -252,11 +239,22 @@ func TestStep159JReadCEXOrderBooksUsesNumericIdentityAndRejectsLegacyRefs(t *tes
 
 	accessor, err := NewCEXDataAccessSQL(ctx, dbPath)
 	require.NoError(t, err)
+
 	defer accessor.Close()
 
 	snapshots, errs := accessor.ReadCEXOrderBooks(ctx, []apptypes.CEXOrderBookRef{
-		{ExchangeID: 2, MarketTypeID: 1, SymbolID: apptypes.CEXSymbolID(btcSpotSymbolID), FetchedAt: 100},
-		{ExchangeID: 2, MarketTypeID: 2, SymbolID: apptypes.CEXSymbolID(btcPerpsSymbolID), FetchedAt: 100},
+		{
+			ExchangeID:   2,
+			MarketTypeID: 1,
+			SymbolID:     apptypes.CEXSymbolID(btcSpotSymbolID),
+			FetchedAt:    100,
+		},
+		{
+			ExchangeID:   2,
+			MarketTypeID: 2,
+			SymbolID:     apptypes.CEXSymbolID(btcPerpsSymbolID),
+			FetchedAt:    100,
+		},
 		{Exchange: "hyperliquid", Symbol: "BTCUSDC", FetchedAt: 100},
 	})
 	require.Len(t, snapshots, 3)
@@ -265,6 +263,12 @@ func TestStep159JReadCEXOrderBooksUsesNumericIdentityAndRejectsLegacyRefs(t *tes
 	require.NoError(t, errs[1])
 	require.Equal(t, int64(11), snapshots[0].LastUpdateID)
 	require.Equal(t, int64(22), snapshots[1].LastUpdateID)
+	require.Equal(t, apptypes.CEXExchangeID(2), snapshots[0].ExchangeID)
+	require.Equal(t, apptypes.CEXMarketTypeID(1), snapshots[0].MarketTypeID)
+	require.Equal(t, apptypes.CEXSymbolID(btcSpotSymbolID), snapshots[0].SymbolID)
+	require.Equal(t, apptypes.CEXExchangeID(2), snapshots[1].ExchangeID)
+	require.Equal(t, apptypes.CEXMarketTypeID(2), snapshots[1].MarketTypeID)
+	require.Equal(t, apptypes.CEXSymbolID(btcPerpsSymbolID), snapshots[1].SymbolID)
 	require.Error(t, errs[2])
 	require.ErrorIs(t, errs[2], ErrCEXLegacyOrderBookRef)
 	require.Nil(t, snapshots[2])
@@ -284,18 +288,35 @@ func TestStep159JDeprecatedReadCEXOrderBookResolvesUnambiguousLabels(t *testing.
 	require.NoError(t, err)
 
 	spxSymbolID := cexSymbolIDForTest(t, 1, 1, "SPXUSDT")
-	err = insertCEXOrderBookV6(ctx, db, 1, 1, spxSymbolID, "mexc", "spot", "SPXUSDT", 33, bids, asks, 100)
+	err = insertCEXOrderBookV6(
+		ctx,
+		db,
+		1,
+		1,
+		spxSymbolID,
+		"mexc",
+		"spot",
+		"SPXUSDT",
+		33,
+		bids,
+		asks,
+		100,
+	)
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
 	accessor, err := NewCEXDataAccessSQL(ctx, dbPath)
 	require.NoError(t, err)
+
 	defer accessor.Close()
 
 	snapshot, err := accessor.ReadCEXOrderBook(ctx, "mexc", "SPXUSDT", 100)
 	require.NoError(t, err)
 	require.NotNil(t, snapshot)
 	require.Equal(t, int64(33), snapshot.LastUpdateID)
+	require.Equal(t, apptypes.CEXExchangeID(1), snapshot.ExchangeID)
+	require.Equal(t, apptypes.CEXMarketTypeID(1), snapshot.MarketTypeID)
+	require.Equal(t, apptypes.CEXSymbolID(spxSymbolID), snapshot.SymbolID)
 }
 
 func TestStep159JDeprecatedReadCEXOrderBookRejectsAmbiguousMarketLabels(t *testing.T) {
@@ -347,6 +368,7 @@ func TestStep159JDeprecatedReadCEXOrderBookRejectsAmbiguousMarketLabels(t *testi
 
 	accessor, err := NewCEXDataAccessSQL(ctx, dbPath)
 	require.NoError(t, err)
+
 	defer accessor.Close()
 
 	snapshot, err := accessor.ReadCEXOrderBook(ctx, "hyperliquid", "BTCUSDC", 100)
@@ -404,6 +426,7 @@ func TestStep159JReadCEXOrderBookForMarketReadsRequestedMarket(t *testing.T) {
 
 	accessor, err := NewCEXDataAccessSQL(ctx, dbPath)
 	require.NoError(t, err)
+
 	defer accessor.Close()
 
 	spotSnapshot, err := accessor.ReadCEXOrderBookForMarket(
@@ -416,6 +439,8 @@ func TestStep159JReadCEXOrderBookForMarketReadsRequestedMarket(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, spotSnapshot)
 	require.Equal(t, int64(33), spotSnapshot.LastUpdateID)
+	require.Equal(t, apptypes.CEXMarketTypeID(1), spotSnapshot.MarketTypeID)
+	require.Equal(t, apptypes.CEXSymbolID(btcSpotSymbolID), spotSnapshot.SymbolID)
 
 	perpsSnapshot, err := accessor.ReadCEXOrderBookForMarket(
 		ctx,
@@ -427,6 +452,8 @@ func TestStep159JReadCEXOrderBookForMarketReadsRequestedMarket(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, perpsSnapshot)
 	require.Equal(t, int64(44), perpsSnapshot.LastUpdateID)
+	require.Equal(t, apptypes.CEXMarketTypeID(2), perpsSnapshot.MarketTypeID)
+	require.Equal(t, apptypes.CEXSymbolID(btcPerpsSymbolID), perpsSnapshot.SymbolID)
 }
 
 func TestStep159JDeprecatedCEXOrderBookWrapperStaysBoundaryOnly(t *testing.T) {
@@ -434,16 +461,21 @@ func TestStep159JDeprecatedCEXOrderBookWrapperStaysBoundaryOnly(t *testing.T) {
 
 	readerSource, err := os.ReadFile("cex_sql_reader_zombie.go")
 	require.NoError(t, err)
+
 	readerText := string(readerSource)
 	require.NotContains(t, readerText, "cex_orderbooks_v5")
 	require.NotContains(t, readerText, "cex_orderbook_dirty_pair_refs_v1")
 	require.NotContains(t, readerText, "cex_pairs_v2")
+	require.NotContains(t, readerText, "cexOrderBookSchemaRetryInterval")
+	require.NotContains(t, readerText, "time.NewTimer")
+	require.NotContains(t, readerText, "wait for cex order-book v6 schema")
 	require.NotContains(t, readerText, "cex_exchange_dim")
 	require.NotContains(t, readerText, "cex_market_type_dim")
 	require.NotContains(t, readerText, "cex_symbol_dim")
 
 	apiSource, err := os.ReadFile("cex_sql.go")
 	require.NoError(t, err)
+
 	apiText := string(apiSource)
 	wrapperBody := extractFunctionBodyForTest(
 		t,
@@ -575,7 +607,12 @@ func insertCEXOrderBookV6(
 	return nil
 }
 
-func cexSymbolIDForTest(tb testing.TB, exchangeID uint16, marketTypeID uint8, symbol string) uint32 {
+func cexSymbolIDForTest(
+	tb testing.TB,
+	exchangeID uint16,
+	marketTypeID uint8,
+	symbol string,
+) uint32 {
 	tb.Helper()
 
 	symbolID, err := apptypes.DefaultOrderBookIDRegistry.ResolveSymbolID(
@@ -651,6 +688,8 @@ func extractFunctionBodyForTest(t *testing.T, source string, signature string) s
 			if depth == 0 {
 				return source[bodyStart : i+1]
 			}
+		default:
+			continue
 		}
 	}
 

@@ -247,6 +247,9 @@ type CEXOrderBookSnapshot struct {
 	Bids         []CEXPriceLevel `cbor:"4,keyasint"`
 	Asks         []CEXPriceLevel `cbor:"5,keyasint"`
 	FetchedAt    int64           `cbor:"6,keyasint"`
+	ExchangeID   CEXExchangeID   `cbor:"7,keyasint,omitempty"`
+	MarketTypeID CEXMarketTypeID `cbor:"8,keyasint,omitempty"`
+	SymbolID     CEXSymbolID     `cbor:"9,keyasint,omitempty"`
 }
 
 // CEXExchangeID is the numeric exchange dimension id used by fresh CEX

@@ -1,6 +1,7 @@
 package apptypes
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -15,87 +16,80 @@ const (
 	CEXMarketTypeIDSpot CEXMarketTypeID = 1
 	// CEXMarketTypeIDPerp is the committed numeric market-type identity for perpetual futures.
 	CEXMarketTypeIDPerp CEXMarketTypeID = 2
+
+	cexExchangeLabelMEXC        = "mexc"
+	cexExchangeLabelHyperliquid = "hyperliquid"
+	cexMarketTypeLabelSpot      = "spot"
+	cexMarketTypeLabelPerp      = "perp"
+
+	// DefaultOrderBookIDRegistry is the stateless source-controlled CEX
+	// order-book identity registry used by compatibility wrappers.
+	DefaultOrderBookIDRegistry OrderBookIDRegistry = 0
+)
+
+var (
+	errEmptyCEXSymbol       = errors.New("empty cex symbol")
+	errUnknownCEXExchange   = errors.New("unknown cex exchange")
+	errUnknownCEXMarketType = errors.New("unknown cex market_type")
+	errUnknownCEXSymbol     = errors.New("unknown cex symbol")
 )
 
 // OrderBookIDRegistry owns source-controlled CEX order-book label-to-ID mappings.
 // Storage and event refs consume only numeric IDs; label lookups stay at config,
 // wrapper, diagnostics, and fixture boundaries.
-type OrderBookIDRegistry struct {
-	symbolByScopedID map[cexSymbolIDKey]string
-	idByScopedSymbol map[cexScopedSymbolKey]CEXSymbolID
-}
+type OrderBookIDRegistry uint8
 
 // NewOrderBookIDRegistry constructs the committed exchange, market-type, and
 // scoped symbol ID registry.
 func NewOrderBookIDRegistry() *OrderBookIDRegistry {
-	r := &OrderBookIDRegistry{
-		symbolByScopedID: make(map[cexSymbolIDKey]string, len(defaultCEXSymbols)),
-		idByScopedSymbol: make(map[cexScopedSymbolKey]CEXSymbolID, len(defaultCEXSymbols)),
-	}
+	r := DefaultOrderBookIDRegistry
 
-	for _, symbol := range defaultCEXSymbols {
-		r.symbolByScopedID[cexSymbolIDKey{
-			exchangeID:   symbol.exchangeID,
-			marketTypeID: symbol.marketTypeID,
-			symbolID:     symbol.symbolID,
-		}] = symbol.label
-		r.idByScopedSymbol[cexScopedSymbolKey{
-			exchangeID:   symbol.exchangeID,
-			marketTypeID: symbol.marketTypeID,
-			label:        symbol.label,
-		}] = symbol.symbolID
-	}
-
-	return r
+	return &r
 }
 
-// DefaultOrderBookIDRegistry is the shared process-local CEX order-book
-// identity registry used by compatibility wrappers.
-var DefaultOrderBookIDRegistry = NewOrderBookIDRegistry()
-
 // ResolveExchangeID maps a committed exchange label to its numeric ID.
-func (r *OrderBookIDRegistry) ResolveExchangeID(exchange string) (CEXExchangeID, error) {
+func (OrderBookIDRegistry) ResolveExchangeID(exchange string) (CEXExchangeID, error) {
 	switch strings.ToLower(strings.TrimSpace(exchange)) {
-	case "mexc":
+	case cexExchangeLabelMEXC:
 		return CEXExchangeIDMEXC, nil
-	case "hyperliquid":
+	case cexExchangeLabelHyperliquid:
 		return CEXExchangeIDHyperliquid, nil
 	default:
-		return 0, fmt.Errorf("unknown cex exchange %q", exchange)
+		return 0, fmt.Errorf("%w: %q", errUnknownCEXExchange, exchange)
 	}
 }
 
 // ExchangeLabel maps a committed exchange ID to its diagnostic label.
-func (r *OrderBookIDRegistry) ExchangeLabel(id CEXExchangeID) (string, bool) {
+func (OrderBookIDRegistry) ExchangeLabel(id CEXExchangeID) (string, bool) {
 	switch id {
 	case CEXExchangeIDMEXC:
-		return "mexc", true
+		return cexExchangeLabelMEXC, true
 	case CEXExchangeIDHyperliquid:
-		return "hyperliquid", true
+		return cexExchangeLabelHyperliquid, true
 	default:
 		return "", false
 	}
 }
 
 // ResolveMarketTypeID maps a committed market-type label to its numeric ID.
-func (r *OrderBookIDRegistry) ResolveMarketTypeID(marketType string) (CEXMarketTypeID, error) {
+func (OrderBookIDRegistry) ResolveMarketTypeID(marketType string) (CEXMarketTypeID, error) {
 	switch strings.ToLower(strings.TrimSpace(marketType)) {
-	case "spot":
+	case cexMarketTypeLabelSpot:
 		return CEXMarketTypeIDSpot, nil
-	case "perp", "perps", "perpetual":
+	case cexMarketTypeLabelPerp, "perps", "perpetual":
 		return CEXMarketTypeIDPerp, nil
 	default:
-		return 0, fmt.Errorf("unknown cex market_type %q", marketType)
+		return 0, fmt.Errorf("%w: %q", errUnknownCEXMarketType, marketType)
 	}
 }
 
 // MarketTypeLabel maps a committed market-type ID to its diagnostic label.
-func (r *OrderBookIDRegistry) MarketTypeLabel(id CEXMarketTypeID) (string, bool) {
+func (OrderBookIDRegistry) MarketTypeLabel(id CEXMarketTypeID) (string, bool) {
 	switch id {
 	case CEXMarketTypeIDSpot:
-		return "spot", true
+		return cexMarketTypeLabelSpot, true
 	case CEXMarketTypeIDPerp:
-		return "perp", true
+		return cexMarketTypeLabelPerp, true
 	default:
 		return "", false
 	}
@@ -103,54 +97,48 @@ func (r *OrderBookIDRegistry) MarketTypeLabel(id CEXMarketTypeID) (string, bool)
 
 // ResolveSymbolID maps an exact source-controlled venue symbol label to the
 // numeric symbol ID scoped by exchange and market type.
-func (r *OrderBookIDRegistry) ResolveSymbolID(
+func (OrderBookIDRegistry) ResolveSymbolID(
 	exchangeID CEXExchangeID,
 	marketTypeID CEXMarketTypeID,
 	symbol string,
 ) (CEXSymbolID, error) {
-	if r == nil {
-		return 0, fmt.Errorf("nil cex order-book id registry")
-	}
-
 	label := strings.TrimSpace(symbol)
 	if label == "" {
-		return 0, fmt.Errorf("empty cex symbol")
+		return 0, errEmptyCEXSymbol
 	}
 
-	id, ok := r.idByScopedSymbol[cexScopedSymbolKey{
-		exchangeID:   exchangeID,
-		marketTypeID: marketTypeID,
-		label:        label,
-	}]
-	if !ok {
-		return 0, fmt.Errorf(
-			"unknown cex symbol exchange_id=%d market_type_id=%d symbol=%q",
-			exchangeID,
-			marketTypeID,
-			symbol,
-		)
+	for _, identity := range defaultCEXSymbols() {
+		if identity.exchangeID == exchangeID &&
+			identity.marketTypeID == marketTypeID &&
+			identity.label == label {
+			return identity.symbolID, nil
+		}
 	}
 
-	return id, nil
+	return 0, fmt.Errorf(
+		"%w: exchange_id=%d market_type_id=%d symbol=%q",
+		errUnknownCEXSymbol,
+		exchangeID,
+		marketTypeID,
+		symbol,
+	)
 }
 
 // SymbolLabel maps a scoped source-controlled symbol ID to its diagnostic label.
-func (r *OrderBookIDRegistry) SymbolLabel(
+func (OrderBookIDRegistry) SymbolLabel(
 	exchangeID CEXExchangeID,
 	marketTypeID CEXMarketTypeID,
 	id CEXSymbolID,
 ) (string, bool) {
-	if r == nil {
-		return "", false
+	for _, identity := range defaultCEXSymbols() {
+		if identity.exchangeID == exchangeID &&
+			identity.marketTypeID == marketTypeID &&
+			identity.symbolID == id {
+			return identity.label, true
+		}
 	}
 
-	label := r.symbolByScopedID[cexSymbolIDKey{
-		exchangeID:   exchangeID,
-		marketTypeID: marketTypeID,
-		symbolID:     id,
-	}]
-
-	return label, label != ""
+	return "", false
 }
 
 // CEXSymbolCandidate is one source-controlled market candidate for a legacy
@@ -162,50 +150,27 @@ type CEXSymbolCandidate struct {
 
 // SymbolCandidates returns bounded source-controlled market candidates for a
 // deprecated exchange+symbol boundary lookup.
-func (r *OrderBookIDRegistry) SymbolCandidates(
+func (OrderBookIDRegistry) SymbolCandidates(
 	exchangeID CEXExchangeID,
 	symbol string,
 ) []CEXSymbolCandidate {
-	if r == nil {
-		return nil
-	}
-
 	label := strings.TrimSpace(symbol)
 	if label == "" {
 		return nil
 	}
 
 	out := make([]CEXSymbolCandidate, 0, 2)
-	for _, marketTypeID := range []CEXMarketTypeID{
-		CEXMarketTypeIDSpot,
-		CEXMarketTypeIDPerp,
-	} {
-		id, ok := r.idByScopedSymbol[cexScopedSymbolKey{
-			exchangeID:   exchangeID,
-			marketTypeID: marketTypeID,
-			label:        label,
-		}]
-		if ok {
+
+	for _, identity := range defaultCEXSymbols() {
+		if identity.exchangeID == exchangeID && identity.label == label {
 			out = append(out, CEXSymbolCandidate{
-				MarketTypeID: marketTypeID,
-				SymbolID:     id,
+				MarketTypeID: identity.marketTypeID,
+				SymbolID:     identity.symbolID,
 			})
 		}
 	}
 
 	return out
-}
-
-type cexScopedSymbolKey struct {
-	exchangeID   CEXExchangeID
-	marketTypeID CEXMarketTypeID
-	label        string
-}
-
-type cexSymbolIDKey struct {
-	exchangeID   CEXExchangeID
-	marketTypeID CEXMarketTypeID
-	symbolID     CEXSymbolID
 }
 
 type cexSymbolIdentity struct {
@@ -215,51 +180,53 @@ type cexSymbolIdentity struct {
 	label        string
 }
 
-var defaultCEXSymbols = []cexSymbolIdentity{
-	{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 1, "BTCUSDT"},
-	{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 2, "ETHUSDT"},
-	{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 3, "SPXUSDT"},
-	{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 4, "NPCUSDT"},
-	{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 5, "PEPEUSDT"},
-	{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 6, "WBTCUSDT"},
-	{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 7, "FAKEUSDC"},
-	{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 8, "SOLUSDT"},
-	{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 9, "ETHUSDC"},
-	{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 10, "BTCUSDC"},
-	{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 11, "SPXUSDC"},
-	{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 12, "PEPEUSDC"},
-	{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 13, "FLOKIUSDT"},
-	{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 14, "FLOKIUSDC"},
-	{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 15, "LINKUSDT"},
-	{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 16, "LINKUSDC"},
-	{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 17, "UNIUSDT"},
-	{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 18, "UNIUSDC"},
-	{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 19, "DOGEUSDT"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 1, "BTCUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 2, "ETHUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 3, "HYPEUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 4, "PEPEUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 5, "FUNUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 6, "AZTECUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 7, "DOGEUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 8, "UETHUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 9, "OTHERUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 10, "FAKEUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 11, "SPXUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 12, "ZZINSTRUMENTUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 13, "MOGUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 1, "BTC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 2, "ETH"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 3, "HYPE"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 4, "PEPE"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 5, "SPX"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 6, "BTCUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 7, "ETHUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 8, "PEPEUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 9, "FAKEUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 10, "DOGEUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 11, "LINKUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 12, "AAVEUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 13, "UNIUSDC"},
-	{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 14, "SPXUSDC"},
+func defaultCEXSymbols() []cexSymbolIdentity {
+	return []cexSymbolIdentity{
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 1, "BTCUSDT"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 2, "ETHUSDT"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 3, "SPXUSDT"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 4, "NPCUSDT"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 5, "PEPEUSDT"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 6, "WBTCUSDT"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 7, "FAKEUSDC"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 8, "SOLUSDT"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 9, "ETHUSDC"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 10, "BTCUSDC"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 11, "SPXUSDC"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 12, "PEPEUSDC"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 13, "FLOKIUSDT"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 14, "FLOKIUSDC"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 15, "LINKUSDT"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 16, "LINKUSDC"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 17, "UNIUSDT"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 18, "UNIUSDC"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, 19, "DOGEUSDT"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 1, "BTCUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 2, "ETHUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 3, "HYPEUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 4, "PEPEUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 5, "FUNUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 6, "AZTECUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 7, "DOGEUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 8, "UETHUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 9, "OTHERUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 10, "FAKEUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 11, "SPXUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 12, "ZZINSTRUMENTUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, 13, "MOGUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 1, "BTC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 2, "ETH"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 3, "HYPE"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 4, "PEPE"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 5, "SPX"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 6, "BTCUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 7, "ETHUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 8, "PEPEUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 9, "FAKEUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 10, "DOGEUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 11, "LINKUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 12, "AAVEUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 13, "UNIUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, 14, "SPXUSDC"},
+	}
 }

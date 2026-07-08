@@ -215,6 +215,9 @@ func decodeCEXOrderBookRow(
 		Symbol:       row.key.symbol.String(),
 		LastUpdateID: row.lastUpdateID,
 		FetchedAt:    row.key.fetchedAt,
+		ExchangeID:   row.key.exchangeID,
+		MarketTypeID: row.key.marketTypeID,
+		SymbolID:     row.key.symbolID,
 	}
 
 	bidsStart := time.Now()

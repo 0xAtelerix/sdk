@@ -13,11 +13,9 @@ import (
 )
 
 const (
-	cexOrderBookSchemaRetryInterval = 250 * time.Millisecond
-
 	cexOrderBookPairIDQuery = `
-SELECT id
-FROM cex_orderbook_pairs_v3
+	SELECT id
+	FROM cex_orderbook_pairs_v3
 WHERE exchange_id = ? AND market_type_id = ? AND symbol_id = ?
 LIMIT 1`
 	cexOrderBookExactReadQuery = `
@@ -57,43 +55,30 @@ func openCEXOrderBookFastReader(
 	ctx context.Context,
 	dbPath string,
 ) (*cexOrderBookFastReader, error) {
-	var lastErr error
-
-	for {
-		conn, err := sqlitez.OpenConn(ctx, dbPath, sqlitez.OpenOptions{
-			QueryOnly:                true,
-			DisableWALAutoCheckpoint: true,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		reader, err := prepareCEXOrderBookFastReader(conn)
-		if err == nil {
-			return reader, nil
-		}
-
-		lastErr = err
-
-		if closeErr := conn.Close(); closeErr != nil {
-			lastErr = fmt.Errorf("%w; close sqlite after prepare failure: %v", lastErr, closeErr)
-		}
-
-		timer := time.NewTimer(cexOrderBookSchemaRetryInterval)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-
-			return nil, fmt.Errorf("wait for cex order-book v6 schema: %w: %w", ctx.Err(), lastErr)
-		case <-timer.C:
-		}
+	conn, err := sqlitez.OpenConn(ctx, dbPath, sqlitez.OpenOptions{
+		QueryOnly:                true,
+		DisableWALAutoCheckpoint: true,
+	})
+	if err != nil {
+		return nil, err
 	}
+
+	reader, err := prepareCEXOrderBookFastReader(conn)
+	if err == nil {
+		return reader, nil
+	}
+
+	if closeErr := conn.Close(); closeErr != nil {
+		return nil, fmt.Errorf("%w; close sqlite after prepare failure: %w", err, closeErr)
+	}
+
+	return nil, err
 }
 
 func prepareCEXOrderBookFastReader(conn *zsqlite.Conn) (*cexOrderBookFastReader, error) {
 	reader := &cexOrderBookFastReader{
 		conn:       conn,
-		idRegistry: apptypes.DefaultOrderBookIDRegistry,
+		idRegistry: apptypes.NewOrderBookIDRegistry(),
 	}
 
 	var err error
@@ -254,14 +239,14 @@ func (r *cexOrderBookFastReader) resolveCEXOrderBookRefByLabels(
 	}
 
 	if marketType != "" {
-		marketTypeID, err := r.idRegistry.ResolveMarketTypeID(marketType)
-		if err != nil {
-			return apptypes.CEXOrderBookRef{}, err
+		marketTypeID, marketTypeErr := r.idRegistry.ResolveMarketTypeID(marketType)
+		if marketTypeErr != nil {
+			return apptypes.CEXOrderBookRef{}, marketTypeErr
 		}
 
-		symbolID, err := r.idRegistry.ResolveSymbolID(exchangeID, marketTypeID, symbol)
-		if err != nil {
-			return apptypes.CEXOrderBookRef{}, err
+		symbolID, symbolErr := r.idRegistry.ResolveSymbolID(exchangeID, marketTypeID, symbol)
+		if symbolErr != nil {
+			return apptypes.CEXOrderBookRef{}, symbolErr
 		}
 
 		return apptypes.CEXOrderBookRef{
@@ -335,6 +320,7 @@ func (r *cexOrderBookFastReader) readCEXOrderBookRow(
 
 	bidsRaw := readSQLiteColumnBytes(stmt, 1, &r.bidsBuf)
 	asksRaw := readSQLiteColumnBytes(stmt, 2, &r.asksBuf)
+
 	exchange := ref.Exchange
 	if exchange == "" {
 		if label, ok := r.idRegistry.ExchangeLabel(ref.ExchangeID); ok {
