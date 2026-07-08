@@ -83,12 +83,16 @@ func openCEXOrderBookFastReader(
 }
 
 func prepareCEXOrderBookFastReader(conn *zsqlite.Conn) (*cexOrderBookFastReader, error) {
-	reader := &cexOrderBookFastReader{
-		conn:       conn,
-		idRegistry: apptypes.NewOrderBookIDRegistry(),
+	registry, err := apptypes.NewOrderBookIDRegistry()
+	if err != nil {
+		return nil, fmt.Errorf("load cex order-book identity registry: %w", err)
 	}
 
-	var err error
+	reader := &cexOrderBookFastReader{
+		conn:       conn,
+		idRegistry: registry,
+	}
+
 	if reader.pair, err = conn.Prepare(cexOrderBookPairIDQuery); err != nil {
 		reader.finalizePrepared()
 

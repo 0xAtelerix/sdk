@@ -62,6 +62,7 @@ var (
 	errDuplicateOrderBookSymbolID     = errors.New("duplicate order-book symbol id")
 	errConflictingOrderBookSymbolMeta = errors.New("conflicting order-book symbol metadata")
 	errDuplicateOrderBookLegacySymbol = errors.New("duplicate order-book legacy candidate")
+	errNilOrderBookIdentityLoader     = errors.New("nil order-book identity loader")
 )
 
 const (
@@ -132,32 +133,52 @@ type OrderBookIDRegistry struct {
 }
 
 // NewOrderBookIDRegistry constructs the default embedded JSON-backed registry.
-func NewOrderBookIDRegistry() *OrderBookIDRegistry {
-	return mustNewDefaultOrderBookIDRegistry()
+func NewOrderBookIDRegistry() (*OrderBookIDRegistry, error) {
+	return NewOrderBookIDRegistryFromLoader(context.Background(), embeddedOrderBookIdentityJSONLoader{})
 }
 
 // ResolveExchangeID maps a committed exchange label to its numeric ID.
 func (h DefaultOrderBookIDRegistryHandle) ResolveExchangeID(
 	exchange string,
 ) (CEXExchangeID, error) {
-	return h.registry().ResolveExchangeID(exchange)
+	registry, err := h.registry()
+	if err != nil {
+		return 0, err
+	}
+
+	return registry.ResolveExchangeID(exchange)
 }
 
 // ExchangeLabel maps a committed exchange ID to its diagnostic label.
 func (h DefaultOrderBookIDRegistryHandle) ExchangeLabel(id CEXExchangeID) (string, bool) {
-	return h.registry().ExchangeLabel(id)
+	registry, err := h.registry()
+	if err != nil {
+		return "", false
+	}
+
+	return registry.ExchangeLabel(id)
 }
 
 // ResolveMarketTypeID maps a committed market-type label to its numeric ID.
 func (h DefaultOrderBookIDRegistryHandle) ResolveMarketTypeID(
 	marketType string,
 ) (CEXMarketTypeID, error) {
-	return h.registry().ResolveMarketTypeID(marketType)
+	registry, err := h.registry()
+	if err != nil {
+		return 0, err
+	}
+
+	return registry.ResolveMarketTypeID(marketType)
 }
 
 // MarketTypeLabel maps a committed market-type ID to its diagnostic label.
 func (h DefaultOrderBookIDRegistryHandle) MarketTypeLabel(id CEXMarketTypeID) (string, bool) {
-	return h.registry().MarketTypeLabel(id)
+	registry, err := h.registry()
+	if err != nil {
+		return "", false
+	}
+
+	return registry.MarketTypeLabel(id)
 }
 
 // ResolveSymbolID maps an exact venue symbol label to the numeric symbol ID.
@@ -166,7 +187,12 @@ func (h DefaultOrderBookIDRegistryHandle) ResolveSymbolID(
 	marketTypeID CEXMarketTypeID,
 	symbol string,
 ) (CEXSymbolID, error) {
-	return h.registry().ResolveSymbolID(exchangeID, marketTypeID, symbol)
+	registry, err := h.registry()
+	if err != nil {
+		return 0, err
+	}
+
+	return registry.ResolveSymbolID(exchangeID, marketTypeID, symbol)
 }
 
 // ResolveLegacySymbolID maps a deprecated exchange+symbol boundary lookup to
@@ -175,7 +201,12 @@ func (h DefaultOrderBookIDRegistryHandle) ResolveLegacySymbolID(
 	exchangeID CEXExchangeID,
 	symbol string,
 ) (CEXSymbolID, error) {
-	return h.registry().ResolveLegacySymbolID(exchangeID, symbol)
+	registry, err := h.registry()
+	if err != nil {
+		return 0, err
+	}
+
+	return registry.ResolveLegacySymbolID(exchangeID, symbol)
 }
 
 // SymbolLabel maps a scoped symbol ID to its diagnostic label.
@@ -184,7 +215,12 @@ func (h DefaultOrderBookIDRegistryHandle) SymbolLabel(
 	marketTypeID CEXMarketTypeID,
 	id CEXSymbolID,
 ) (string, bool) {
-	return h.registry().SymbolLabel(exchangeID, marketTypeID, id)
+	registry, err := h.registry()
+	if err != nil {
+		return "", false
+	}
+
+	return registry.SymbolLabel(exchangeID, marketTypeID, id)
 }
 
 // SymbolCandidates returns bounded market candidates for a deprecated
@@ -193,11 +229,58 @@ func (h DefaultOrderBookIDRegistryHandle) SymbolCandidates(
 	exchangeID CEXExchangeID,
 	symbol string,
 ) []CEXSymbolCandidate {
-	return h.registry().SymbolCandidates(exchangeID, symbol)
+	registry, err := h.registry()
+	if err != nil {
+		return nil
+	}
+
+	return registry.SymbolCandidates(exchangeID, symbol)
 }
 
-func (DefaultOrderBookIDRegistryHandle) registry() *OrderBookIDRegistry {
+func (DefaultOrderBookIDRegistryHandle) registry() (*OrderBookIDRegistry, error) {
 	return NewOrderBookIDRegistry()
+}
+
+type embeddedOrderBookIdentityJSONLoader struct{}
+
+func (embeddedOrderBookIdentityJSONLoader) LoadOrderBookIdentity(
+	ctx context.Context,
+) (OrderBookIdentityJSON, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return OrderBookIdentityJSON{}, err
+		}
+	}
+
+	var doc OrderBookIdentityJSON
+	if err := json.Unmarshal(defaultOrderBookIdentityJSON, &doc); err != nil {
+		return OrderBookIdentityJSON{}, fmt.Errorf("decode embedded cex order-book identity: %w", err)
+	}
+
+	return doc, nil
+}
+
+// NewOrderBookIDRegistryFromLoader loads and validates a JSON-backed CEX
+// order-book identity document without installing hidden globals or panics.
+func NewOrderBookIDRegistryFromLoader(
+	ctx context.Context,
+	loader OrderBookIdentityJSONLoader,
+) (*OrderBookIDRegistry, error) {
+	if loader == nil {
+		return nil, errNilOrderBookIdentityLoader
+	}
+
+	doc, err := loader.LoadOrderBookIdentity(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load cex order-book identity: %w", err)
+	}
+
+	registry, err := NewOrderBookIDRegistryFromJSON(doc)
+	if err != nil {
+		return nil, fmt.Errorf("validate cex order-book identity: %w", err)
+	}
+
+	return registry, nil
 }
 
 // NewOrderBookIDRegistryFromJSON validates a checked-in JSON identity document
@@ -472,20 +555,6 @@ func (r *OrderBookIDRegistry) SymbolCandidates(
 	copy(out, candidates)
 
 	return out
-}
-
-func mustNewDefaultOrderBookIDRegistry() *OrderBookIDRegistry {
-	var doc OrderBookIdentityJSON
-	if err := json.Unmarshal(defaultOrderBookIdentityJSON, &doc); err != nil {
-		panic(fmt.Sprintf("decode embedded cex order-book identity: %v", err))
-	}
-
-	registry, err := NewOrderBookIDRegistryFromJSON(doc)
-	if err != nil {
-		panic(fmt.Sprintf("validate embedded cex order-book identity: %v", err))
-	}
-
-	return registry
 }
 
 func (r *OrderBookIDRegistry) addSymbol(symbol OrderBookSymbolJSON) error {

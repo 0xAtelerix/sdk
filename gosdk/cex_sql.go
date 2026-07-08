@@ -119,7 +119,7 @@ func NewCEXDataAccessSQL(ctx context.Context, dbPath string) (*CEXDataAccessSQL,
 
 // ReadCEXOrderBook reads a specific order book snapshot by exchange, symbol,
 // and fetchedAt timestamp. It is a deprecated boundary wrapper for older
-// callers: it resolves labels through the code-owned ID registry, requires the
+// callers: it resolves labels through the JSON-backed ID registry, requires the
 // exchange+symbol pair to have exactly one active market type, then delegates to
 // the numeric ref reader.
 func (c *CEXDataAccessSQL) ReadCEXOrderBook(
@@ -145,7 +145,7 @@ func (c *CEXDataAccessSQL) ReadCEXOrderBook(
 
 // ReadCEXOrderBookForMarket reads a specific order book snapshot by label
 // boundary fields when the caller already knows the market type. It resolves
-// labels through the code-owned ID registry and delegates to the numeric ref
+// labels through the JSON-backed ID registry and delegates to the numeric ref
 // reader.
 func (c *CEXDataAccessSQL) ReadCEXOrderBookForMarket(
 	ctx context.Context,

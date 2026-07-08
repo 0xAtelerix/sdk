@@ -1,12 +1,21 @@
 package apptypes
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/stretchr/testify/require"
 )
+
+type orderBookIdentityJSONLoaderFunc func(context.Context) (OrderBookIdentityJSON, error)
+
+func (f orderBookIdentityJSONLoaderFunc) LoadOrderBookIdentity(
+	ctx context.Context,
+) (OrderBookIdentityJSON, error) {
+	return f(ctx)
+}
 
 func TestOrderBookIDRegistryCoversConfiguredE2EMarkets(t *testing.T) {
 	t.Parallel()
@@ -147,6 +156,22 @@ func TestStep159JOrderBookIDRegistryLoadsJSONOnlySymbol(t *testing.T) {
 	label, ok := registry.SymbolLabel(CEXExchangeIDMEXC, CEXMarketTypeIDSpot, symbolID)
 	require.True(t, ok)
 	require.Equal(t, "JSONONLYUSDC", label)
+}
+
+func TestStep159JOrderBookIDRegistryLoaderReturnsErrorsWithoutPanic(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewOrderBookIDRegistryFromLoader(context.Background(), nil)
+	require.ErrorContains(t, err, "nil order-book identity loader")
+
+	_, err = NewOrderBookIDRegistryFromLoader(
+		context.Background(),
+		orderBookIdentityJSONLoaderFunc(func(context.Context) (OrderBookIdentityJSON, error) {
+			return OrderBookIdentityJSON{}, nil
+		}),
+	)
+	require.ErrorContains(t, err, "validate cex order-book identity")
+	require.ErrorContains(t, err, "version is zero")
 }
 
 func TestStep159JOrderBookIDRegistryRejectsInvalidJSON(t *testing.T) {
