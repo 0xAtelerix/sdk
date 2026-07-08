@@ -112,6 +112,14 @@ func TestCEXDataAccessSQL_WaitsForV6SchemaReadiness(t *testing.T) {
 	require.NoError(t, <-schemaReady)
 }
 
+func TestCEXDataAccessSQLReadOnlyOpenerDoesNotUseSharedCache(t *testing.T) {
+	t.Parallel()
+
+	source, err := os.ReadFile(filepath.Join("internal", "sqlitez", "sqlite.go"))
+	require.NoError(t, err)
+	require.NotContains(t, string(source), "cache=shared")
+}
+
 func TestCEXDataAccessSQL_ReadCEXOrderBook_ClassifiesTrueAbsence(t *testing.T) {
 	t.Parallel()
 

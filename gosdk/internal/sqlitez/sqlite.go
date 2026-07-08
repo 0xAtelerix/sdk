@@ -22,7 +22,7 @@ func OpenConn(
 	dbPath string,
 	opts OpenOptions,
 ) (*zsqlite.Conn, error) {
-	dsn := fmt.Sprintf("file:%s?mode=ro&cache=shared&uri=true", dbPath)
+	dsn := fmt.Sprintf("file:%s?mode=ro&uri=true", dbPath)
 	log.Info().Str("path", dsn).Msg("connecting to sqlite")
 
 	maxTries := 50
