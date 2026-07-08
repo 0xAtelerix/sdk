@@ -217,7 +217,7 @@ func TestStep159JReadCEXOrderBooksUsesNumericIdentityAndRejectsLegacyRefs(t *tes
 	require.NoError(t, err)
 
 	btcSpotSymbolID := cexSymbolIDForTest(t, 2, 1, "BTCUSDC")
-	btcPerpsSymbolID := cexSymbolIDForTest(t, 2, 2, "BTCUSDC")
+	btcPerpsSymbolID := cexSymbolIDForTest(t, 2, 2, "BTC")
 	err = insertCEXOrderBookV6(
 		ctx,
 		db,
@@ -241,7 +241,7 @@ func TestStep159JReadCEXOrderBooksUsesNumericIdentityAndRejectsLegacyRefs(t *tes
 		btcPerpsSymbolID,
 		"hyperliquid",
 		"perps",
-		"BTCUSDC",
+		"BTC",
 		22,
 		bids,
 		asks,
@@ -311,8 +311,8 @@ func TestStep159JDeprecatedReadCEXOrderBookRejectsAmbiguousMarketLabels(t *testi
 	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
 	require.NoError(t, err)
 
-	btcSpotSymbolID := cexSymbolIDForTest(t, 2, 1, "BTCUSDC")
-	btcPerpsSymbolID := cexSymbolIDForTest(t, 2, 2, "BTCUSDC")
+	btcSpotSymbolID := cexSymbolIDForTest(t, 2, 1, "FAKEUSDC")
+	btcPerpsSymbolID := cexSymbolIDForTest(t, 2, 2, "FAKEUSDC")
 	err = insertCEXOrderBookV6(
 		ctx,
 		db,
@@ -321,7 +321,7 @@ func TestStep159JDeprecatedReadCEXOrderBookRejectsAmbiguousMarketLabels(t *testi
 		btcSpotSymbolID,
 		"hyperliquid",
 		"spot",
-		"BTCUSDC",
+		"FAKEUSDC",
 		33,
 		bids,
 		asks,
@@ -336,7 +336,7 @@ func TestStep159JDeprecatedReadCEXOrderBookRejectsAmbiguousMarketLabels(t *testi
 		btcPerpsSymbolID,
 		"hyperliquid",
 		"perps",
-		"BTCUSDC",
+		"FAKEUSDC",
 		44,
 		bids,
 		asks,
@@ -349,7 +349,7 @@ func TestStep159JDeprecatedReadCEXOrderBookRejectsAmbiguousMarketLabels(t *testi
 	require.NoError(t, err)
 	defer accessor.Close()
 
-	snapshot, err := accessor.ReadCEXOrderBook(ctx, "hyperliquid", "BTCUSDC", 100)
+	snapshot, err := accessor.ReadCEXOrderBook(ctx, "hyperliquid", "FAKEUSDC", 100)
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrCEXOrderBookAmbiguousMarket)
 	require.Nil(t, snapshot)
@@ -368,8 +368,8 @@ func TestStep159JReadCEXOrderBookForMarketReadsRequestedMarket(t *testing.T) {
 	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
 	require.NoError(t, err)
 
-	btcSpotSymbolID := cexSymbolIDForTest(t, 2, 1, "BTCUSDC")
-	btcPerpsSymbolID := cexSymbolIDForTest(t, 2, 2, "BTCUSDC")
+	btcSpotSymbolID := cexSymbolIDForTest(t, 2, 1, "FAKEUSDC")
+	btcPerpsSymbolID := cexSymbolIDForTest(t, 2, 2, "FAKEUSDC")
 	err = insertCEXOrderBookV6(
 		ctx,
 		db,
@@ -378,7 +378,7 @@ func TestStep159JReadCEXOrderBookForMarketReadsRequestedMarket(t *testing.T) {
 		btcSpotSymbolID,
 		"hyperliquid",
 		"spot",
-		"BTCUSDC",
+		"FAKEUSDC",
 		33,
 		bids,
 		asks,
@@ -393,7 +393,7 @@ func TestStep159JReadCEXOrderBookForMarketReadsRequestedMarket(t *testing.T) {
 		btcPerpsSymbolID,
 		"hyperliquid",
 		"perps",
-		"BTCUSDC",
+		"FAKEUSDC",
 		44,
 		bids,
 		asks,
@@ -410,7 +410,7 @@ func TestStep159JReadCEXOrderBookForMarketReadsRequestedMarket(t *testing.T) {
 		ctx,
 		"hyperliquid",
 		"spot",
-		"BTCUSDC",
+		"FAKEUSDC",
 		100,
 	)
 	require.NoError(t, err)
@@ -421,7 +421,7 @@ func TestStep159JReadCEXOrderBookForMarketReadsRequestedMarket(t *testing.T) {
 		ctx,
 		"hyperliquid",
 		"perps",
-		"BTCUSDC",
+		"FAKEUSDC",
 		100,
 	)
 	require.NoError(t, err)
