@@ -91,6 +91,7 @@ type OrderBookIDRegistry struct {
 	symbolLabelByID     map[cexSymbolIDKey]string
 	legacyCandidates    map[cexLegacySymbolKey][]CEXSymbolCandidate
 	legacyCandidateSeen map[cexLegacyCandidateKey]struct{}
+	metadataByLabel     map[cexLegacySymbolKey]cexSymbolMetadata
 }
 
 // NewOrderBookIDRegistry constructs the default embedded JSON-backed registry.
@@ -123,6 +124,7 @@ func NewOrderBookIDRegistryFromJSON(doc OrderBookIdentityJSON) (*OrderBookIDRegi
 		symbolLabelByID:     make(map[cexSymbolIDKey]string, len(doc.Symbols)),
 		legacyCandidates:    make(map[cexLegacySymbolKey][]CEXSymbolCandidate, len(doc.Symbols)),
 		legacyCandidateSeen: make(map[cexLegacyCandidateKey]struct{}, len(doc.Symbols)),
+		metadataByLabel:     make(map[cexLegacySymbolKey]cexSymbolMetadata, len(doc.Symbols)),
 	}
 
 	for _, exchange := range doc.Exchanges {
@@ -425,6 +427,19 @@ func (r *OrderBookIDRegistry) addSymbol(symbol OrderBookSymbolJSON) error {
 		exchangeID: symbol.ExchangeID,
 		label:      label,
 	}
+	metadata := cexSymbolMetadata{
+		baseAsset:  strings.TrimSpace(symbol.BaseAsset),
+		quoteAsset: strings.TrimSpace(symbol.QuoteAsset),
+	}
+	if previous, exists := r.metadataByLabel[legacyKey]; exists && previous != metadata {
+		return fmt.Errorf(
+			"conflicting order-book symbol metadata: exchange_id=%d label=%q",
+			symbol.ExchangeID,
+			label,
+		)
+	}
+	r.metadataByLabel[legacyKey] = metadata
+
 	candidate := CEXSymbolCandidate{
 		MarketTypeID: symbol.MarketTypeID,
 		SymbolID:     symbol.SymbolID,
@@ -480,6 +495,11 @@ type cexLegacyCandidateKey struct {
 
 type cexSymbolRecord struct {
 	symbolID   CEXSymbolID
+	baseAsset  string
+	quoteAsset string
+}
+
+type cexSymbolMetadata struct {
 	baseAsset  string
 	quoteAsset string
 }

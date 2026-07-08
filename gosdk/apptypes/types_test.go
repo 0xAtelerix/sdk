@@ -255,6 +255,24 @@ func TestStep159JOrderBookIDRegistryRejectsInvalidJSON(t *testing.T) {
 			},
 			wantErr: "unknown market_type_id",
 		},
+		{
+			name: "conflicting metadata",
+			mutate: func(doc *OrderBookIdentityJSON) {
+				doc.MarketTypes = append(doc.MarketTypes, OrderBookMarketJSON{
+					ID:    CEXMarketTypeIDPerp,
+					Label: cexMarketTypeLabelPerp,
+				})
+				doc.Symbols = append(doc.Symbols, OrderBookSymbolJSON{
+					ExchangeID:   CEXExchangeIDMEXC,
+					MarketTypeID: CEXMarketTypeIDPerp,
+					SymbolID:     1,
+					Label:        "BTCUSDC",
+					BaseAsset:    "WBTC",
+					QuoteAsset:   "USDC",
+				})
+			},
+			wantErr: "conflicting order-book symbol metadata",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
