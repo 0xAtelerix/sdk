@@ -306,4 +306,35 @@ type HyperliquidAllMidsRef struct {
 	FetchedAtUnixMS   uint64                    `json:"fetchedAtUnixMs"   cbor:"7,keyasint"`
 }
 
+type HyperliquidPublicDataKind string
+
+const HyperliquidPublicDataKindAllMids HyperliquidPublicDataKind = "all_mids"
+
+type HyperliquidNetwork string
+
+const (
+	HyperliquidNetworkMainnet HyperliquidNetwork = "mainnet"
+	HyperliquidNetworkTestnet HyperliquidNetwork = "testnet"
+)
+
+type HyperliquidMarketType string
+
+const (
+	HyperliquidMarketTypePerp HyperliquidMarketType = "perp"
+	HyperliquidMarketTypeSpot HyperliquidMarketType = "spot"
+)
+
+// HyperliquidAllMidsRef is a typed public-data sample from Hyperliquid allMids.
+// It is intentionally separate from CEXOrderBookRef: allMids carries one market
+// scalar, not an order-book snapshot.
+type HyperliquidAllMidsRef struct {
+	Kind              HyperliquidPublicDataKind `json:"kind"              cbor:"1,keyasint"`
+	Network           HyperliquidNetwork        `json:"network"           cbor:"2,keyasint"`
+	MarketType        HyperliquidMarketType     `json:"marketType"        cbor:"3,keyasint"`
+	AssetID           uint32                    `json:"assetId"           cbor:"4,keyasint"`
+	Symbol            string                    `json:"symbol"            cbor:"5,keyasint"`
+	MidPriceQuoteUnit string                    `json:"midPriceQuoteUnit" cbor:"6,keyasint"`
+	FetchedAtUnixMS   uint64                    `json:"fetchedAtUnixMs"   cbor:"7,keyasint"`
+}
+
 type ChainType uint32
