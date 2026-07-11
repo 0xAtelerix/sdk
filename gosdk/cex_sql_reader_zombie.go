@@ -301,8 +301,8 @@ func (r *cexOrderBookFastReader) readCEXOrderBookRow(
 ) (*cexOrderBookRow, time.Duration, error) {
 	queryStart := time.Now()
 
-	if ref.ExchangeID == 0 || ref.MarketTypeID == 0 || ref.SymbolID == 0 {
-		return nil, time.Since(queryStart), ErrCEXLegacyOrderBookRef
+	if err := r.validateCEXOrderBookRefIdentity(ref); err != nil {
+		return nil, time.Since(queryStart), err
 	}
 
 	pairID, ok, err := readCEXOrderBookPairID(
@@ -380,6 +380,34 @@ func (r *cexOrderBookFastReader) readCEXOrderBookRow(
 	}
 
 	return row, queryDuration, nil
+}
+
+func (r *cexOrderBookFastReader) validateCEXOrderBookRefIdentity(
+	ref apptypes.CEXOrderBookRef,
+) error {
+	if ref.ExchangeID == 0 || ref.MarketTypeID == 0 || ref.SymbolID == 0 {
+		return ErrCEXLegacyOrderBookRef
+	}
+
+	if _, ok := r.idRegistry.ExchangeLabel(ref.ExchangeID); !ok {
+		return fmt.Errorf("%w: exchange_id=%d", errCEXOrderBookUnknownIdentity, ref.ExchangeID)
+	}
+
+	if _, ok := r.idRegistry.MarketTypeLabel(ref.MarketTypeID); !ok {
+		return fmt.Errorf("%w: market_type_id=%d", errCEXOrderBookUnknownIdentity, ref.MarketTypeID)
+	}
+
+	if _, ok := r.idRegistry.SymbolLabel(ref.ExchangeID, ref.MarketTypeID, ref.SymbolID); !ok {
+		return fmt.Errorf(
+			"%w: exchange_id=%d market_type_id=%d symbol_id=%d",
+			errCEXOrderBookUnknownIdentity,
+			ref.ExchangeID,
+			ref.MarketTypeID,
+			ref.SymbolID,
+		)
+	}
+
+	return nil
 }
 
 func (r *cexOrderBookFastReader) readCEXOrderBookMiss(

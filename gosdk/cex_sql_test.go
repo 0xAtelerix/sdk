@@ -190,6 +190,64 @@ func TestCEXDataAccessSQL_ReadCEXOrderBooks_ReadsPreparedPoints(t *testing.T) {
 	require.Equal(t, "true_absence", readErr.Diagnostic.MissHint)
 }
 
+func TestStep159VExactNumericReadRejectsUnknownRegistryIdentity(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	dbPath := filepath.Join(t.TempDir(), "cex.sqlite")
+	db, err := openCEXTestDB(ctx, dbPath)
+	require.NoError(t, err)
+
+	bids, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "1", Quantity: "2"}})
+	require.NoError(t, err)
+	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
+	require.NoError(t, err)
+
+	validSymbolID := cexSymbolIDForTest(t, 1, 1, "SPXUSDT")
+	require.NoError(t, insertCEXOrderBookV6(
+		ctx,
+		db,
+		1,
+		1,
+		validSymbolID,
+		"mexc",
+		"spot",
+		"SPXUSDT",
+		11,
+		bids,
+		asks,
+		100,
+	))
+	require.NoError(t, db.Close())
+
+	accessor, err := NewCEXDataAccessSQL(ctx, dbPath)
+	require.NoError(t, err)
+
+	defer accessor.Close()
+
+	snapshots, readErrs := accessor.ReadCEXOrderBooks(ctx, []apptypes.CEXOrderBookRef{
+		{
+			ExchangeID: 1, MarketTypeID: 1,
+			SymbolID: apptypes.CEXSymbolID(validSymbolID), FetchedAt: 100,
+		},
+		{ExchangeID: 65_535, MarketTypeID: 1, SymbolID: 1, FetchedAt: 100},
+	})
+	require.Len(t, snapshots, 2)
+	require.Len(t, readErrs, 2)
+	require.NoError(t, readErrs[0])
+	require.NotNil(t, snapshots[0])
+	require.Nil(t, snapshots[1])
+	require.Error(t, readErrs[1])
+	require.NotErrorIs(t, readErrs[1], ErrCEXOrderBookNotFound)
+	require.ErrorIs(t, readErrs[1], errCEXOrderBookUnknownIdentity)
+
+	var exactReadErr *CEXOrderBookReadError
+	require.ErrorAs(t, readErrs[1], &exactReadErr)
+	require.Equal(t, cexOrderBookReadResultQueryError, exactReadErr.Diagnostic.Result)
+	require.Empty(t, exactReadErr.Diagnostic.MissHint)
+	require.Zero(t, exactReadErr.Diagnostic.NearestProbeDuration)
+}
+
 func TestStep159JReadCEXOrderBooksUsesNumericIdentityAndRejectsLegacyRefs(t *testing.T) {
 	t.Parallel()
 

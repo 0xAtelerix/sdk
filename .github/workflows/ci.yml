@@ -44,6 +44,9 @@ jobs:
           go-version-file: ./go.mod
           cache: true
 
+      - name: Validate CEX identity registry evolution
+        run: go run ./gosdk/internal/cmd/cexidentitycheck -base-ref origin/main -current gosdk/apptypes/cex_order_book_identity.json
+
       - name: Capture Go cache paths
         run: |
           echo "GOMODCACHE=$(go env GOMODCACHE)" >> $GITHUB_ENV

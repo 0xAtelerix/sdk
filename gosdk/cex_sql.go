@@ -18,6 +18,7 @@ const (
 	cexOrderBookReadResultQueryError                        = "query_error"
 	errEmptyCEXOrderBookReadResult       sdkerrors.SDKError = "empty cex order book read result"
 	errCEXSQLiteReaderNotInit            sdkerrors.SDKError = "cex sqlite reader is not initialized"
+	errCEXOrderBookUnknownIdentity       sdkerrors.SDKError = "unknown cex order book registry identity"
 	// ErrCEXLegacyOrderBookRef is returned when a cutover SQLite reader receives
 	// an old string-keyed CEX order-book ref instead of numeric identity.
 	ErrCEXLegacyOrderBookRef sdkerrors.SDKError = "legacy cex order book ref"
