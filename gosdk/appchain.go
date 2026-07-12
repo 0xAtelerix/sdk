@@ -424,6 +424,19 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 		return fmt.Errorf("failed to commit: %w", err)
 	}
 
+	if observer, ok := batchProcessor.(BatchCommitObserver); ok {
+		result := "success"
+		if observerErr := observer.AfterBatchCommit(ctx, checkpoint); observerErr != nil {
+			result = "error"
+
+			logger.Error().Err(observerErr).
+				Uint64("block_number", checkpoint.BlockNumber).
+				Msg("post-commit batch observer failed")
+		}
+
+		BatchCommitObserverCalls.WithLabelValues(vid, cid, result).Inc()
+	}
+
 	logger.
 		Info().
 		Uint64("block_number", blockNumber).
