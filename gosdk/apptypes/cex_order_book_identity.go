@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 )
 
 const (
@@ -61,8 +62,10 @@ var (
 	errDuplicateOrderBookSymbolLabel  = errors.New("duplicate order-book symbol label")
 	errDuplicateOrderBookSymbolID     = errors.New("duplicate order-book symbol id")
 	errConflictingOrderBookSymbolMeta = errors.New("conflicting order-book symbol metadata")
-	errDuplicateOrderBookLegacySymbol = errors.New("duplicate order-book legacy candidate")
-	errNilOrderBookIdentityLoader     = errors.New("nil order-book identity loader")
+	errInconsistentLegacySymbolID     = errors.New(
+		"order-book identity legacy symbol id diverges across market types",
+	)
+	errNilOrderBookIdentityLoader = errors.New("nil order-book identity loader")
 )
 
 const (
@@ -75,8 +78,8 @@ const (
 var defaultOrderBookIdentityJSON []byte
 
 // DefaultOrderBookIDRegistryHandle exposes the embedded registry through the
-// historical package-level handle without making the registry cache itself a
-// package global.
+// historical package-level handle, resolving against a single memoized registry
+// instance rather than rebuilding one per call.
 type DefaultOrderBookIDRegistryHandle uint8
 
 // OrderBookIdentityJSON is the checked-in order-book identity snapshot format.
@@ -121,15 +124,14 @@ type OrderBookIdentityJSONLoader interface {
 // Storage and event refs consume only numeric IDs; label lookups stay at config,
 // wrapper, diagnostics, and fixture boundaries.
 type OrderBookIDRegistry struct {
-	exchangeIDByLabel   map[string]CEXExchangeID
-	exchangeLabelByID   map[CEXExchangeID]string
-	marketIDByLabel     map[string]CEXMarketTypeID
-	marketLabelByID     map[CEXMarketTypeID]string
-	symbolByLookup      map[cexSymbolLookupKey]cexSymbolRecord
-	symbolLabelByID     map[cexSymbolIDKey]string
-	legacyCandidates    map[cexLegacySymbolKey][]CEXSymbolCandidate
-	legacyCandidateSeen map[cexLegacyCandidateKey]struct{}
-	metadataByLabel     map[cexLegacySymbolKey]cexSymbolMetadata
+	exchangeIDByLabel map[string]CEXExchangeID
+	exchangeLabelByID map[CEXExchangeID]string
+	marketIDByLabel   map[string]CEXMarketTypeID
+	marketLabelByID   map[CEXMarketTypeID]string
+	symbolByLookup    map[cexSymbolLookupKey]CEXSymbolID
+	symbolLabelByID   map[cexSymbolIDKey]string
+	legacyCandidates  map[cexLegacySymbolKey][]CEXSymbolCandidate
+	metadataByLabel   map[cexLegacySymbolKey]cexSymbolMetadata
 }
 
 // NewOrderBookIDRegistry constructs the default embedded JSON-backed registry.
@@ -243,8 +245,15 @@ func (h DefaultOrderBookIDRegistryHandle) SymbolCandidates(
 	return registry.SymbolCandidates(exchangeID, symbol)
 }
 
+// defaultOrderBookRegistry memoizes the embedded registry. It is immutable after
+// construction (its maps are only read), so a single shared instance keeps the
+// handle cheap for hot callers instead of re-parsing the embedded JSON per call.
+//
+//nolint:gochecknoglobals // immutable, lazily-built read-only registry cache
+var defaultOrderBookRegistry = sync.OnceValues(NewOrderBookIDRegistry)
+
 func (DefaultOrderBookIDRegistryHandle) registry() (*OrderBookIDRegistry, error) {
-	return NewOrderBookIDRegistry()
+	return defaultOrderBookRegistry()
 }
 
 type embeddedOrderBookIdentityJSONLoader struct{}
@@ -312,15 +321,14 @@ func NewOrderBookIDRegistryFromJSON(doc OrderBookIdentityJSON) (*OrderBookIDRegi
 	}
 
 	registry := &OrderBookIDRegistry{
-		exchangeIDByLabel:   make(map[string]CEXExchangeID, len(doc.Exchanges)),
-		exchangeLabelByID:   make(map[CEXExchangeID]string, len(doc.Exchanges)),
-		marketIDByLabel:     make(map[string]CEXMarketTypeID, len(doc.MarketTypes)),
-		marketLabelByID:     make(map[CEXMarketTypeID]string, len(doc.MarketTypes)),
-		symbolByLookup:      make(map[cexSymbolLookupKey]cexSymbolRecord, len(doc.Symbols)),
-		symbolLabelByID:     make(map[cexSymbolIDKey]string, len(doc.Symbols)),
-		legacyCandidates:    make(map[cexLegacySymbolKey][]CEXSymbolCandidate, len(doc.Symbols)),
-		legacyCandidateSeen: make(map[cexLegacyCandidateKey]struct{}, len(doc.Symbols)),
-		metadataByLabel:     make(map[cexLegacySymbolKey]cexSymbolMetadata, len(doc.Symbols)),
+		exchangeIDByLabel: make(map[string]CEXExchangeID, len(doc.Exchanges)),
+		exchangeLabelByID: make(map[CEXExchangeID]string, len(doc.Exchanges)),
+		marketIDByLabel:   make(map[string]CEXMarketTypeID, len(doc.MarketTypes)),
+		marketLabelByID:   make(map[CEXMarketTypeID]string, len(doc.MarketTypes)),
+		symbolByLookup:    make(map[cexSymbolLookupKey]CEXSymbolID, len(doc.Symbols)),
+		symbolLabelByID:   make(map[cexSymbolIDKey]string, len(doc.Symbols)),
+		legacyCandidates:  make(map[cexLegacySymbolKey][]CEXSymbolCandidate, len(doc.Symbols)),
+		metadataByLabel:   make(map[cexLegacySymbolKey]cexSymbolMetadata, len(doc.Symbols)),
 	}
 
 	for _, exchange := range doc.Exchanges {
@@ -447,7 +455,7 @@ func (r *OrderBookIDRegistry) ResolveSymbolID(
 		return 0, errEmptyCEXSymbol
 	}
 
-	record, ok := r.symbolByLookup[cexSymbolLookupKey{
+	symbolID, ok := r.symbolByLookup[cexSymbolLookupKey{
 		exchangeID:   exchangeID,
 		marketTypeID: marketTypeID,
 		label:        label,
@@ -462,7 +470,7 @@ func (r *OrderBookIDRegistry) ResolveSymbolID(
 		)
 	}
 
-	return record.symbolID, nil
+	return symbolID, nil
 }
 
 // ResolveLegacySymbolID maps a deprecated exchange+symbol boundary lookup to
@@ -616,12 +624,7 @@ func (r *OrderBookIDRegistry) addSymbol(symbol OrderBookSymbolJSON) error {
 		)
 	}
 
-	record := cexSymbolRecord{
-		symbolID:   symbol.SymbolID,
-		baseAsset:  strings.TrimSpace(symbol.BaseAsset),
-		quoteAsset: strings.TrimSpace(symbol.QuoteAsset),
-	}
-	r.symbolByLookup[lookupKey] = record
+	r.symbolByLookup[lookupKey] = symbol.SymbolID
 	r.symbolLabelByID[idKey] = label
 
 	legacyKey := cexLegacySymbolKey{
@@ -649,24 +652,19 @@ func (r *OrderBookIDRegistry) addSymbol(symbol OrderBookSymbolJSON) error {
 		SymbolID:     symbol.SymbolID,
 	}
 
-	candidateKey := cexLegacyCandidateKey{
-		exchangeID:   symbol.ExchangeID,
-		label:        label,
-		marketTypeID: symbol.MarketTypeID,
-		symbolID:     symbol.SymbolID,
-	}
-	if _, exists := r.legacyCandidateSeen[candidateKey]; exists {
-		return fmt.Errorf(
-			"%w: exchange_id=%d market_type_id=%d symbol_id=%d label=%q",
-			errDuplicateOrderBookLegacySymbol,
-			symbol.ExchangeID,
-			symbol.MarketTypeID,
-			symbol.SymbolID,
-			label,
-		)
+	for _, existing := range r.legacyCandidates[legacyKey] {
+		if existing.SymbolID != symbol.SymbolID {
+			return fmt.Errorf(
+				"%w: exchange_id=%d label=%q existing_symbol_id=%d new_symbol_id=%d",
+				errInconsistentLegacySymbolID,
+				symbol.ExchangeID,
+				label,
+				existing.SymbolID,
+				symbol.SymbolID,
+			)
+		}
 	}
 
-	r.legacyCandidateSeen[candidateKey] = struct{}{}
 	r.legacyCandidates[legacyKey] = append(r.legacyCandidates[legacyKey], candidate)
 
 	return nil
@@ -691,19 +689,6 @@ type cexSymbolIDKey struct {
 type cexLegacySymbolKey struct {
 	exchangeID CEXExchangeID
 	label      string
-}
-
-type cexLegacyCandidateKey struct {
-	exchangeID   CEXExchangeID
-	label        string
-	marketTypeID CEXMarketTypeID
-	symbolID     CEXSymbolID
-}
-
-type cexSymbolRecord struct {
-	symbolID   CEXSymbolID
-	baseAsset  string
-	quoteAsset string
 }
 
 type cexSymbolMetadata struct {

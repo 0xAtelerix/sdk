@@ -14,8 +14,8 @@ import (
 
 const (
 	cexOrderBookPairIDQuery = `
-		SELECT id
-		FROM cex_orderbook_pairs_v3
+SELECT id
+FROM cex_orderbook_pairs_v3
 WHERE exchange_id = ? AND market_type_id = ? AND symbol_id = ?
 LIMIT 1`
 	cexOrderBookLegacyMarketTypeQuery = `
@@ -230,6 +230,11 @@ func (r *cexOrderBookFastReader) readCEXOrderBookByLabels(
 
 		return nil, wrapCEXOrderBookReadError(ctx, diag, err)
 	}
+
+	// resolveCEXOrderBookRefByLabels returns numeric ids only; carry the caller's
+	// labels so a miss or query error reports names, not blank fields.
+	ref.Exchange = exchange
+	ref.Symbol = symbol
 
 	diag := newCEXOrderBookReadDiagnostic(ref, 0)
 	row, queryDuration, queryErr := r.readCEXOrderBookRow(ref)

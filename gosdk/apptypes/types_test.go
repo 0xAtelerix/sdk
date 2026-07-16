@@ -394,3 +394,52 @@ func BenchmarkCEXPriceLevelCBORShape(b *testing.B) {
 		}
 	})
 }
+
+// The DefaultOrderBookIDRegistry handle must resolve against a memoized
+// registry. Rebuilding it per call re-parses the embedded JSON and every map,
+// a cost core pays on its per-pair order-book identity path.
+//
+//nolint:paralleltest // AllocsPerRun measures the heap; a parallel peer would skew it
+func TestDefaultRegistryHandleReusesMemoizedRegistry(t *testing.T) {
+	// Warm the memoized registry so the measured runs exclude first-build cost.
+	id, err := DefaultOrderBookIDRegistry.ResolveExchangeID(cexExchangeLabelMEXC)
+	require.NoError(t, err)
+	require.Equal(t, CEXExchangeIDMEXC, id)
+
+	allocs := testing.AllocsPerRun(200, func() {
+		_, _ = DefaultOrderBookIDRegistry.ResolveExchangeID(cexExchangeLabelMEXC)
+	})
+
+	require.LessOrEqualf(t, allocs, float64(1),
+		"handle rebuilds the registry per call: %.0f allocs/op", allocs)
+}
+
+// One (exchange, symbol label) must map to a single symbol id across market
+// types, or the deprecated single-market label reader cannot disambiguate. The
+// registry must reject a document that violates this at load time.
+func TestRegistryRejectsDivergentLegacySymbolID(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewOrderBookIDRegistryFromJSON(OrderBookIdentityJSON{
+		Version: 1,
+		Exchanges: []OrderBookExchangeJSON{
+			{ID: CEXExchangeIDMEXC, Label: cexExchangeLabelMEXC},
+		},
+		MarketTypes: []OrderBookMarketJSON{
+			{ID: CEXMarketTypeIDSpot, Label: cexMarketTypeLabelSpot},
+			{ID: CEXMarketTypeIDPerp, Label: cexMarketTypeLabelPerp},
+		},
+		Symbols: []OrderBookSymbolJSON{
+			{
+				ExchangeID: CEXExchangeIDMEXC, MarketTypeID: CEXMarketTypeIDSpot,
+				SymbolID: 50, Label: "FOOUSDC", BaseAsset: "FOO", QuoteAsset: "USDC",
+			},
+			{
+				ExchangeID: CEXExchangeIDMEXC, MarketTypeID: CEXMarketTypeIDPerp,
+				SymbolID: 77, Label: "FOOUSDC", BaseAsset: "FOO", QuoteAsset: "USDC",
+			},
+		},
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "legacy symbol id")
+}

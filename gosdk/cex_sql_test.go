@@ -435,6 +435,58 @@ func TestStep159JDeprecatedReadCEXOrderBookRejectsAmbiguousMarketLabels(t *testi
 	require.Nil(t, snapshot)
 }
 
+// The deprecated label reader resolves to numeric ids internally, but a miss
+// diagnostic must still carry the exchange and symbol labels the caller passed,
+// or operators reading the error see blank names.
+func TestDeprecatedReadCEXOrderBookMissKeepsLabels(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	dbPath := filepath.Join(t.TempDir(), "cex.sqlite")
+	db, err := openCEXTestDB(ctx, dbPath)
+	require.NoError(t, err)
+
+	bids, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "1", Quantity: "2"}})
+	require.NoError(t, err)
+	asks, err := cbor.Marshal([]apptypes.CEXPriceLevel{{Price: "3", Quantity: "4"}})
+	require.NoError(t, err)
+
+	spxSymbolID := cexSymbolIDForTest(t, 1, 1, "SPXUSDT")
+	// A row at 200 makes the pair resolvable; the read at 100 then misses on the
+	// exact timestamp, exercising the resolve-succeeds-then-miss path.
+	err = insertCEXOrderBookV6(
+		ctx,
+		db,
+		1,
+		1,
+		spxSymbolID,
+		"mexc",
+		"spot",
+		"SPXUSDT",
+		11,
+		bids,
+		asks,
+		200,
+	)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	accessor, err := NewCEXDataAccessSQL(ctx, dbPath)
+	require.NoError(t, err)
+
+	defer accessor.Close()
+
+	_, err = accessor.ReadCEXOrderBook(ctx, "mexc", "SPXUSDT", 100)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrCEXOrderBookNotFound)
+
+	var readErr *CEXOrderBookReadError
+	require.ErrorAs(t, err, &readErr)
+	require.Equal(t, "no_row", readErr.Diagnostic.Result)
+	require.Equal(t, "mexc", readErr.Diagnostic.Exchange)
+	require.Equal(t, "SPXUSDT", readErr.Diagnostic.Symbol)
+}
+
 func TestStep159JReadCEXOrderBookForMarketReadsRequestedMarket(t *testing.T) {
 	t.Parallel()
 

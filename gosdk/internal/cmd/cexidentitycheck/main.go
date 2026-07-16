@@ -134,13 +134,23 @@ func readBaseDocument(ctx context.Context, baseRef, gitPath string) ([]byte, boo
 }
 
 func gitOutput(ctx context.Context, args ...string) (string, error) {
-	output, err := exec.CommandContext(ctx, "git", args...).CombinedOutput()
+	// Output() returns stdout only, so a stderr warning on an otherwise-successful
+	// `git show` cannot corrupt the JSON bytes fed to the decoder. Stderr is still
+	// surfaced from the exit error when the command fails.
+	output, err := exec.CommandContext(ctx, "git", args...).Output()
 	if err != nil {
+		stderr := ""
+
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			stderr = strings.TrimSpace(string(exitErr.Stderr))
+		}
+
 		return "", fmt.Errorf(
 			"git %s: %w: %s",
 			strings.Join(args, " "),
 			err,
-			strings.TrimSpace(string(output)),
+			stderr,
 		)
 	}
 
