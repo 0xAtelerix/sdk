@@ -83,6 +83,15 @@ var (
 		},
 		[]string{"validator_id", "chain_id"},
 	)
+	BatchCommitObserverCalls = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "appchain",
+			Subsystem: "run",
+			Name:      "batch_commit_observer_calls_total",
+			Help:      "Post-commit batch observer calls partitioned by success or error",
+		},
+		[]string{"validator_id", "chain_id", "result"},
+	)
 	EventStreamBlockingDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "appchain",
@@ -287,6 +296,7 @@ func init() {
 		BatchExternalBlocks,
 		BatchCheckpoints,
 		BatchCEXOrderBookRefs,
+		BatchCommitObserverCalls,
 		EventStreamBlockingDuration,
 
 		HeadBlockNumber, EventStreamPosition,

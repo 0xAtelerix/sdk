@@ -18,6 +18,13 @@ const (
 	cexOrderBookReadResultQueryError                        = "query_error"
 	errEmptyCEXOrderBookReadResult       sdkerrors.SDKError = "empty cex order book read result"
 	errCEXSQLiteReaderNotInit            sdkerrors.SDKError = "cex sqlite reader is not initialized"
+	errCEXOrderBookUnknownIdentity       sdkerrors.SDKError = "unknown cex order book registry identity"
+	// ErrCEXLegacyOrderBookRef is returned when a cutover SQLite reader receives
+	// an old string-keyed CEX order-book ref instead of numeric identity.
+	ErrCEXLegacyOrderBookRef sdkerrors.SDKError = "legacy cex order book ref"
+	// ErrCEXOrderBookAmbiguousMarket is returned by deprecated label-based
+	// boundary reads when exchange+symbol resolves to multiple market types.
+	ErrCEXOrderBookAmbiguousMarket sdkerrors.SDKError = "ambiguous cex order book market"
 	// ErrCEXOrderBookNotFound is returned through CEXOrderBookReadError when an
 	// exact CEX order-book snapshot ref has no matching SQLite row.
 	ErrCEXOrderBookNotFound sdkerrors.SDKError = "cex order book not found"
@@ -27,6 +34,9 @@ const (
 type CEXOrderBookReadDiagnostic struct {
 	Exchange              string
 	Symbol                string
+	ExchangeID            apptypes.CEXExchangeID
+	MarketTypeID          apptypes.CEXMarketTypeID
+	SymbolID              apptypes.CEXSymbolID
 	RequestedFetchedAtNs  int64
 	RequestedFetchedAtMs  int64
 	Result                string
@@ -83,9 +93,12 @@ func (s cexOrderBookSymbol) String() string {
 }
 
 type cexOrderBookRefKey struct {
-	exchange  cexOrderBookExchange
-	symbol    cexOrderBookSymbol
-	fetchedAt int64
+	exchange     cexOrderBookExchange
+	symbol       cexOrderBookSymbol
+	exchangeID   apptypes.CEXExchangeID
+	marketTypeID apptypes.CEXMarketTypeID
+	symbolID     apptypes.CEXSymbolID
+	fetchedAt    int64
 }
 
 type cexOrderBookRow struct {
@@ -105,29 +118,56 @@ func NewCEXDataAccessSQL(ctx context.Context, dbPath string) (*CEXDataAccessSQL,
 	return &CEXDataAccessSQL{reader: reader}, nil
 }
 
-// ReadCEXOrderBook reads a specific order book snapshot by exchange, symbol, and fetchedAt timestamp.
+// ReadCEXOrderBook reads a specific order book snapshot by exchange, symbol,
+// and fetchedAt timestamp. It is a deprecated boundary wrapper for older
+// callers: it resolves labels through the JSON-backed ID registry, requires the
+// exchange+symbol pair to have exactly one active market type, then delegates to
+// the numeric ref reader.
 func (c *CEXDataAccessSQL) ReadCEXOrderBook(
 	ctx context.Context,
 	exchange string,
 	symbol string,
 	fetchedAt int64,
 ) (*apptypes.CEXOrderBookSnapshot, error) {
-	snapshots, errs := c.ReadCEXOrderBooks(ctx, []apptypes.CEXOrderBookRef{{
-		Exchange:  exchange,
-		Symbol:    symbol,
-		FetchedAt: fetchedAt,
-	}})
-	if len(errs) == 0 {
-		return nil, fmt.Errorf(
-			"read order book %s/%s@%d: %w",
-			exchange,
-			symbol,
-			fetchedAt,
-			errEmptyCEXOrderBookReadResult,
-		)
+	if c == nil || c.reader == nil {
+		diag := CEXOrderBookReadDiagnostic{
+			Exchange:             exchange,
+			Symbol:               symbol,
+			RequestedFetchedAtNs: fetchedAt,
+			RequestedFetchedAtMs: fetchedAt / int64(time.Millisecond),
+			Result:               cexOrderBookReadResultQueryError,
+		}
+
+		return nil, wrapCEXOrderBookReadError(ctx, diag, errCEXSQLiteReaderNotInit)
 	}
 
-	return snapshots[0], errs[0]
+	return c.reader.readCEXOrderBookByLabels(ctx, exchange, "", symbol, fetchedAt)
+}
+
+// ReadCEXOrderBookForMarket reads a specific order book snapshot by label
+// boundary fields when the caller already knows the market type. It resolves
+// labels through the JSON-backed ID registry and delegates to the numeric ref
+// reader.
+func (c *CEXDataAccessSQL) ReadCEXOrderBookForMarket(
+	ctx context.Context,
+	exchange string,
+	marketType string,
+	symbol string,
+	fetchedAt int64,
+) (*apptypes.CEXOrderBookSnapshot, error) {
+	if c == nil || c.reader == nil {
+		diag := CEXOrderBookReadDiagnostic{
+			Exchange:             exchange,
+			Symbol:               symbol,
+			RequestedFetchedAtNs: fetchedAt,
+			RequestedFetchedAtMs: fetchedAt / int64(time.Millisecond),
+			Result:               cexOrderBookReadResultQueryError,
+		}
+
+		return nil, wrapCEXOrderBookReadError(ctx, diag, errCEXSQLiteReaderNotInit)
+	}
+
+	return c.reader.readCEXOrderBookByLabels(ctx, exchange, marketType, symbol, fetchedAt)
 }
 
 // ReadCEXOrderBooks reads a batch of exact order-book refs from the CEX SQLite DB
@@ -176,6 +216,9 @@ func decodeCEXOrderBookRow(
 		Symbol:       row.key.symbol.String(),
 		LastUpdateID: row.lastUpdateID,
 		FetchedAt:    row.key.fetchedAt,
+		ExchangeID:   row.key.exchangeID,
+		MarketTypeID: row.key.marketTypeID,
+		SymbolID:     row.key.symbolID,
 	}
 
 	bidsStart := time.Now()
@@ -234,6 +277,9 @@ func newCEXOrderBookReadDiagnostic(
 	return CEXOrderBookReadDiagnostic{
 		Exchange:             ref.Exchange,
 		Symbol:               ref.Symbol,
+		ExchangeID:           ref.ExchangeID,
+		MarketTypeID:         ref.MarketTypeID,
+		SymbolID:             ref.SymbolID,
 		RequestedFetchedAtNs: ref.FetchedAt,
 		RequestedFetchedAtMs: ref.FetchedAt / int64(time.Millisecond),
 		QueryDuration:        queryDuration,
@@ -250,7 +296,10 @@ func wrapCEXOrderBookReadError(
 	return &CEXOrderBookReadError{
 		Diagnostic: diag,
 		Err: fmt.Errorf(
-			"read order book %s/%s@%d: %w",
+			"read order book exchange_id=%d market_type_id=%d symbol_id=%d %s/%s@%d: %w",
+			diag.ExchangeID,
+			diag.MarketTypeID,
+			diag.SymbolID,
 			diag.Exchange,
 			diag.Symbol,
 			diag.RequestedFetchedAtNs,

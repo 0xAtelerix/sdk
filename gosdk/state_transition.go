@@ -26,6 +26,17 @@ type BatchProcessorPreparer[appTx apptypes.AppTransaction[R], R apptypes.Receipt
 	) (BatchProcessor[appTx, R], error)
 }
 
+// BatchCommitObserver observes a checkpoint only after its appchain batch has
+// committed. Observer failure is operational and cannot roll back or retry the
+// already committed batch.
+//
+// AfterBatchCommit runs synchronously on the block-processing path with no
+// timeout or recover around it: a slow implementation stalls block production and
+// a panic takes down the run loop, so implementations must be fast and panic-safe.
+type BatchCommitObserver interface {
+	AfterBatchCommit(ctx context.Context, checkpoint apptypes.Checkpoint) error
+}
+
 type DefaultBatchProcessor[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	extBlockProc ExternalBlockProcessor
 	cexProc      CEXStreamProcessor

@@ -247,13 +247,32 @@ type CEXOrderBookSnapshot struct {
 	Bids         []CEXPriceLevel `cbor:"4,keyasint"`
 	Asks         []CEXPriceLevel `cbor:"5,keyasint"`
 	FetchedAt    int64           `cbor:"6,keyasint"`
+	ExchangeID   CEXExchangeID   `cbor:"7,keyasint,omitempty"`
+	MarketTypeID CEXMarketTypeID `cbor:"8,keyasint,omitempty"`
+	SymbolID     CEXSymbolID     `cbor:"9,keyasint,omitempty"`
 }
+
+// CEXExchangeID is the numeric exchange dimension id used by fresh CEX
+// order-book refs.
+type CEXExchangeID uint16
+
+// CEXMarketTypeID is the numeric market-type dimension id used by fresh CEX
+// order-book refs.
+type CEXMarketTypeID uint8
+
+// CEXSymbolID is the numeric symbol dimension id used by fresh CEX order-book
+// refs.
+type CEXSymbolID uint32
 
 // CEXOrderBookRef is a lightweight reference to a CEX order book snapshot.
 type CEXOrderBookRef struct {
-	Exchange  string `cbor:"1,keyasint"`
-	Symbol    string `cbor:"2,keyasint"`
+	Exchange  string `cbor:"1,keyasint,omitempty"`
+	Symbol    string `cbor:"2,keyasint,omitempty"`
 	FetchedAt int64  `cbor:"3,keyasint"`
+
+	ExchangeID   CEXExchangeID   `cbor:"4,keyasint,omitempty"`
+	MarketTypeID CEXMarketTypeID `cbor:"5,keyasint,omitempty"`
+	SymbolID     CEXSymbolID     `cbor:"6,keyasint,omitempty"`
 }
 
 type HyperliquidPublicDataKind string
