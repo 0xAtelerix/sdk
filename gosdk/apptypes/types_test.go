@@ -39,6 +39,11 @@ func TestOrderBookIDRegistryCoversConfiguredE2EMarkets(t *testing.T) {
 		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "LINKUSDC"},
 		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "AAVEUSDC"},
 		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "UNIUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "SOLUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "XRPUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "NEARUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "TAOUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "POLUSDC"},
 		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "SPXUSDC"},
 	} {
 		name := fmt.Sprintf("%d/%d/%s", tc.exchangeID, tc.marketTypeID, tc.symbol)
