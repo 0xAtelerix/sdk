@@ -15,6 +15,8 @@ const (
 	CEXExchangeIDMEXC CEXExchangeID = 1
 	// CEXExchangeIDHyperliquid is the committed numeric exchange identity for Hyperliquid.
 	CEXExchangeIDHyperliquid CEXExchangeID = 2
+	// CEXExchangeIDBinance is the committed numeric exchange identity for Binance.
+	CEXExchangeIDBinance CEXExchangeID = 3
 
 	// CEXMarketTypeIDSpot is the committed numeric market-type identity for spot.
 	CEXMarketTypeIDSpot CEXMarketTypeID = 1

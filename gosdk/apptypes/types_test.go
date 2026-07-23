@@ -40,6 +40,9 @@ func TestOrderBookIDRegistryCoversConfiguredE2EMarkets(t *testing.T) {
 		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "AAVEUSDC"},
 		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "UNIUSDC"},
 		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "SPXUSDC"},
+		{CEXExchangeIDBinance, CEXMarketTypeIDSpot, "BTCUSDT"},
+		{CEXExchangeIDBinance, CEXMarketTypeIDPerp, "BTCUSDT"},
+		{CEXExchangeIDBinance, CEXMarketTypeIDPerp, "SPXUSDT"},
 	} {
 		name := fmt.Sprintf("%d/%d/%s", tc.exchangeID, tc.marketTypeID, tc.symbol)
 		t.Run(name, func(t *testing.T) {
@@ -62,6 +65,39 @@ func TestOrderBookIDRegistryCoversConfiguredE2EMarkets(t *testing.T) {
 			require.Equal(t, tc.symbol, label)
 		})
 	}
+}
+
+func TestSymbolAssetsResolvesBaseQuoteAndFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	reg := DefaultOrderBookIDRegistry
+
+	// Found: a binance dual-listed pair resolves to explicit base/quote.
+	btcSpotID, err := reg.ResolveSymbolID(CEXExchangeIDBinance, CEXMarketTypeIDSpot, "BTCUSDT")
+	require.NoError(t, err)
+
+	base, quote, ok := reg.SymbolAssets(CEXExchangeIDBinance, CEXMarketTypeIDSpot, btcSpotID)
+	require.True(t, ok)
+	require.Equal(t, "BTC", base)
+	require.Equal(t, "USDT", quote)
+
+	// Not found: an unregistered symbol id fails closed (ok=false, empty).
+	base, quote, ok = reg.SymbolAssets(
+		CEXExchangeIDBinance,
+		CEXMarketTypeIDSpot,
+		CEXSymbolID(999999),
+	)
+	require.False(t, ok)
+	require.Empty(t, base)
+	require.Empty(t, quote)
+
+	// Empty asset: a hyperliquid coin-only perp row carries no quote asset, so
+	// SymbolAssets fails closed rather than returning a half-populated pair.
+	btcPerpID, err := reg.ResolveSymbolID(CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "BTC")
+	require.NoError(t, err)
+
+	_, _, ok = reg.SymbolAssets(CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, btcPerpID)
+	require.False(t, ok)
 }
 
 func TestStep159JOrderBookIDRegistryScopesSymbolsByExchangeAndMarketType(t *testing.T) {
