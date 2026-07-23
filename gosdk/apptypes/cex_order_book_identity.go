@@ -15,6 +15,8 @@ const (
 	CEXExchangeIDMEXC CEXExchangeID = 1
 	// CEXExchangeIDHyperliquid is the committed numeric exchange identity for Hyperliquid.
 	CEXExchangeIDHyperliquid CEXExchangeID = 2
+	// CEXExchangeIDBinance is the committed numeric exchange identity for Binance.
+	CEXExchangeIDBinance CEXExchangeID = 3
 
 	// CEXMarketTypeIDSpot is the committed numeric market-type identity for spot.
 	CEXMarketTypeIDSpot CEXMarketTypeID = 1
@@ -229,6 +231,21 @@ func (h DefaultOrderBookIDRegistryHandle) SymbolLabel(
 	}
 
 	return registry.SymbolLabel(exchangeID, marketTypeID, id)
+}
+
+// SymbolAssets returns the committed base and quote assets for an exact
+// order-book identity, reporting false when the identity is unregistered.
+func (h DefaultOrderBookIDRegistryHandle) SymbolAssets(
+	exchangeID CEXExchangeID,
+	marketTypeID CEXMarketTypeID,
+	id CEXSymbolID,
+) (baseAsset, quoteAsset string, ok bool) {
+	registry, err := h.registry()
+	if err != nil {
+		return "", "", false
+	}
+
+	return registry.SymbolAssets(exchangeID, marketTypeID, id)
 }
 
 // SymbolCandidates returns bounded market candidates for a deprecated
@@ -536,6 +553,41 @@ func (r *OrderBookIDRegistry) SymbolLabel(
 	}]
 
 	return label, ok
+}
+
+// SymbolAssets returns the committed base and quote assets for an exact
+// order-book identity. Owner: the identity registry. Consumers resolve asset
+// units from the identity the storage key was already validated against instead
+// of inferring them from symbol text, which is required for venues that list the
+// same symbol on several products. It reports false for an unregistered identity
+// or a row missing either asset, so callers fail closed rather than fall back.
+func (r *OrderBookIDRegistry) SymbolAssets(
+	exchangeID CEXExchangeID,
+	marketTypeID CEXMarketTypeID,
+	id CEXSymbolID,
+) (baseAsset, quoteAsset string, ok bool) {
+	if r == nil {
+		return "", "", false
+	}
+
+	label, ok := r.symbolLabelByID[cexSymbolIDKey{
+		exchangeID:   exchangeID,
+		marketTypeID: marketTypeID,
+		symbolID:     id,
+	}]
+	if !ok {
+		return "", "", false
+	}
+
+	metadata, ok := r.metadataByLabel[cexLegacySymbolKey{
+		exchangeID: exchangeID,
+		label:      label,
+	}]
+	if !ok || metadata.baseAsset == "" || metadata.quoteAsset == "" {
+		return "", "", false
+	}
+
+	return metadata.baseAsset, metadata.quoteAsset, true
 }
 
 // CEXSymbolCandidate is one JSON-backed market candidate for a legacy
