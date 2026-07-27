@@ -2,12 +2,51 @@ package apptypes
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/stretchr/testify/require"
 )
+
+func TestOrderBookIDRegistryCoversCompleteStudioMarketCatalogSnapshot(t *testing.T) {
+	t.Parallel()
+
+	var snapshot OrderBookIdentityJSON
+	require.NoError(t, json.Unmarshal(defaultOrderBookIdentityJSON, &snapshot))
+
+	type marketKey struct {
+		exchangeID   CEXExchangeID
+		marketTypeID CEXMarketTypeID
+	}
+	counts := make(map[marketKey]int)
+	for _, symbol := range snapshot.Symbols {
+		counts[marketKey{symbol.ExchangeID, symbol.MarketTypeID}]++
+	}
+	require.Equal(t, 67, counts[marketKey{CEXExchangeIDMEXC, CEXMarketTypeIDSpot}])
+	require.Equal(t, 321, counts[marketKey{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot}])
+	require.Equal(t, 184, counts[marketKey{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp}])
+
+	for _, tc := range []struct {
+		exchangeID   CEXExchangeID
+		marketTypeID CEXMarketTypeID
+		symbol       string
+	}{
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, "AAPLUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, "QQQXUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "ATOMUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "POLUSDC"},
+		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, "ATOMUSDC"},
+	} {
+		_, err := DefaultOrderBookIDRegistry.ResolveSymbolID(
+			tc.exchangeID,
+			tc.marketTypeID,
+			tc.symbol,
+		)
+		require.NoError(t, err, "%d/%d/%s", tc.exchangeID, tc.marketTypeID, tc.symbol)
+	}
+}
 
 type orderBookIdentityJSONLoaderFunc func(context.Context) (OrderBookIdentityJSON, error)
 
