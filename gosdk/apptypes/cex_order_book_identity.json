@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "exchanges": [
     {"id": 1, "label": "mexc"},
     {"id": 2, "label": "hyperliquid"},
@@ -56,6 +56,9 @@
     {"exchange_id": 2, "market_type_id": 2, "symbol_id": 107, "label": "AAVEUSDC", "base_asset": "AAVE", "quote_asset": "USDC", "canonical": true},
     {"exchange_id": 2, "market_type_id": 2, "symbol_id": 108, "label": "UNIUSDC", "base_asset": "UNI", "quote_asset": "USDC", "canonical": true},
     {"exchange_id": 2, "market_type_id": 2, "symbol_id": 11, "label": "SPXUSDC", "base_asset": "SPX", "quote_asset": "USDC", "canonical": true},
+    {"exchange_id": 2, "market_type_id": 2, "symbol_id": 109, "label": "NEARUSDC", "base_asset": "NEAR", "quote_asset": "USDC", "canonical": true},
+    {"exchange_id": 2, "market_type_id": 2, "symbol_id": 110, "label": "TAOUSDC", "base_asset": "TAO", "quote_asset": "USDC", "canonical": true},
+    {"exchange_id": 2, "market_type_id": 2, "symbol_id": 111, "label": "POLUSDC", "base_asset": "POL", "quote_asset": "USDC", "canonical": true},
     {"exchange_id": 3, "market_type_id": 1, "symbol_id": 1, "label": "BTCUSDT", "base_asset": "BTC", "quote_asset": "USDT", "canonical": true},
     {"exchange_id": 3, "market_type_id": 1, "symbol_id": 2, "label": "BTCUSDC", "base_asset": "BTC", "quote_asset": "USDC", "canonical": true},
     {"exchange_id": 3, "market_type_id": 1, "symbol_id": 3, "label": "ETHUSDT", "base_asset": "ETH", "quote_asset": "USDT", "canonical": true},
