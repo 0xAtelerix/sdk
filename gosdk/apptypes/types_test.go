@@ -24,7 +24,9 @@ func TestOrderBookIDRegistryCoversCompleteStudioMarketCatalogSnapshot(t *testing
 	for _, symbol := range snapshot.Symbols {
 		counts[marketKey{symbol.ExchangeID, symbol.MarketTypeID}]++
 	}
-	require.Equal(t, 67, counts[marketKey{CEXExchangeIDMEXC, CEXMarketTypeIDSpot}])
+	require.Equal(t, 748, counts[marketKey{CEXExchangeIDBinance, CEXMarketTypeIDSpot}])
+	require.Equal(t, 564, counts[marketKey{CEXExchangeIDBinance, CEXMarketTypeIDPerp}])
+	require.Equal(t, 1988, counts[marketKey{CEXExchangeIDMEXC, CEXMarketTypeIDSpot}])
 	require.Equal(t, 321, counts[marketKey{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot}])
 	require.Equal(t, 184, counts[marketKey{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp}])
 
