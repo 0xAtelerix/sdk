@@ -29,7 +29,7 @@ func TestOrderBookIDRegistryCoversCompleteStudioMarketCatalogSnapshot(t *testing
 	require.Equal(t, 748, counts[marketKey{CEXExchangeIDBinance, CEXMarketTypeIDSpot}])
 	require.Equal(t, 550, counts[marketKey{CEXExchangeIDBinance, CEXMarketTypeIDPerp}])
 	require.Equal(t, 1985, counts[marketKey{CEXExchangeIDMEXC, CEXMarketTypeIDSpot}])
-	require.Equal(t, 321, counts[marketKey{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot}])
+	require.Equal(t, 324, counts[marketKey{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot}])
 	require.Equal(t, 184, counts[marketKey{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp}])
 
 	for _, tc := range []struct {
@@ -39,6 +39,9 @@ func TestOrderBookIDRegistryCoversCompleteStudioMarketCatalogSnapshot(t *testing
 	}{
 		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, "AAPLUSDC"},
 		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, "QQQXUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, "SKHYXUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, "MUXUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, "FLOCKUSDC"},
 		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "ATOMUSDC"},
 		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "POLUSDC"},
 		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, "ATOMUSDC"},

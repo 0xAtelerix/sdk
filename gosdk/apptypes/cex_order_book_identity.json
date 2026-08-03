@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "exchanges": [
     {"id": 1, "label": "mexc"},
     {"id": 2, "label": "hyperliquid"},
@@ -398,6 +398,9 @@
     {"exchange_id": 2, "market_type_id": 1, "symbol_id": 10702, "label": "NVDAXUSDC", "base_asset": "NVDAX", "quote_asset": "USDC", "canonical": false},
     {"exchange_id": 2, "market_type_id": 1, "symbol_id": 10703, "label": "SPYXUSDC", "base_asset": "SPYX", "quote_asset": "USDC", "canonical": false},
     {"exchange_id": 2, "market_type_id": 1, "symbol_id": 10704, "label": "QQQXUSDC", "base_asset": "QQQX", "quote_asset": "USDC", "canonical": false},
+    {"exchange_id": 2, "market_type_id": 1, "symbol_id": 10705, "label": "SKHYXUSDC", "base_asset": "SKHYX", "quote_asset": "USDC", "canonical": false},
+    {"exchange_id": 2, "market_type_id": 1, "symbol_id": 10706, "label": "MUXUSDC", "base_asset": "MUX", "quote_asset": "USDC", "canonical": false},
+    {"exchange_id": 2, "market_type_id": 1, "symbol_id": 10707, "label": "FLOCKUSDC", "base_asset": "FLOCK", "quote_asset": "USDC", "canonical": false},
     {"exchange_id": 2, "market_type_id": 2, "symbol_id": 1, "label": "BTCUSDC", "base_asset": "BTC", "quote_asset": "USDC", "canonical": true},
     {"exchange_id": 2, "market_type_id": 2, "symbol_id": 2, "label": "ETHUSDC", "base_asset": "ETH", "quote_asset": "USDC", "canonical": true},
     {"exchange_id": 2, "market_type_id": 2, "symbol_id": 3, "label": "HYPEUSDC", "base_asset": "HYPE", "quote_asset": "USDC", "canonical": true},
