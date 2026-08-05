@@ -3,11 +3,14 @@ package apptypes
 import (
 	"bytes"
 	"context"
+	"fmt"
 
 	"github.com/blocto/solana-go-sdk/client"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/ledgerwatch/erigon-lib/kv"
+
+	sdkerrors "github.com/0xAtelerix/sdk/gosdk/library/errors"
 )
 
 type AppTransaction[R Receipt] interface {
@@ -40,6 +43,9 @@ type Batch[appTx AppTransaction[R], R Receipt] struct {
 	// These are not CEX order books and must not be routed through
 	// CEXOrderBookRefs.
 	HyperliquidAllMidsRefs []HyperliquidAllMidsRef `cbor:"8,keyasint"`
+	// CEXMarketTradeBatchRefs carries immutable compact trade-batch references.
+	// It is independent from order-book and Hyperliquid allMids references.
+	CEXMarketTradeBatchRefs []CEXMarketTradeBatchRef `cbor:"9,keyasint"`
 }
 
 type ExternalEntity interface {
@@ -204,6 +210,8 @@ type Event struct {
 	CEXOrderBookRefs []CEXOrderBookRef `json:"cexOrderBookRefs" cbor:"8,keyasint"`
 
 	HyperliquidAllMidsRefs []HyperliquidAllMidsRef `json:"hyperliquidAllMidsRefs" cbor:"9,keyasint"`
+
+	CEXMarketTradeBatchRefs []CEXMarketTradeBatchRef `json:"cexMarketTradeBatchRefs" cbor:"10,keyasint"`
 }
 
 func (e Event) Bytes() ([]byte, error) {
@@ -273,6 +281,95 @@ type CEXOrderBookRef struct {
 	ExchangeID   CEXExchangeID   `cbor:"4,keyasint,omitempty"`
 	MarketTypeID CEXMarketTypeID `cbor:"5,keyasint,omitempty"`
 	SymbolID     CEXSymbolID     `cbor:"6,keyasint,omitempty"`
+}
+
+const ErrCEXMarketTradeBatchRefInvalid sdkerrors.SDKError = "invalid cex market trade batch ref"
+
+// CEXMarketTradeBatchRef identifies one immutable compact CEX trade batch.
+// The payload itself remains in the later storage owner; this wire contract
+// carries only the exact registered market identity and bounded provenance.
+type CEXMarketTradeBatchRef struct {
+	ExchangeID        CEXExchangeID   `json:"exchangeId"        cbor:"1,keyasint"`
+	MarketTypeID      CEXMarketTypeID `json:"marketTypeId"      cbor:"2,keyasint"`
+	SymbolID          CEXSymbolID     `json:"symbolId"          cbor:"3,keyasint"`
+	BatchID           uint64          `json:"batchId"           cbor:"4,keyasint"`
+	FirstSourceTimeMS uint64          `json:"firstSourceTimeMs" cbor:"5,keyasint"`
+	LastSourceTimeMS  uint64          `json:"lastSourceTimeMs"  cbor:"6,keyasint"`
+	TradeCount        uint32          `json:"tradeCount"        cbor:"7,keyasint"`
+	EncodedBytes      uint32          `json:"encodedBytes"      cbor:"8,keyasint"`
+	PayloadSHA256     [32]byte        `json:"payloadSha256"     cbor:"9,keyasint"`
+}
+
+// Validate rejects incomplete, unordered, or unregistered trade-batch refs
+// before a producer or consumer can treat the reference as durable provenance.
+func (r CEXMarketTradeBatchRef) Validate() error {
+	if r.ExchangeID == 0 {
+		return fmt.Errorf("%w: exchange_id is zero", ErrCEXMarketTradeBatchRefInvalid)
+	}
+
+	if _, ok := DefaultOrderBookIDRegistry.ExchangeLabel(r.ExchangeID); !ok {
+		return fmt.Errorf(
+			"%w: unknown exchange_id=%d",
+			ErrCEXMarketTradeBatchRefInvalid,
+			r.ExchangeID,
+		)
+	}
+
+	if r.MarketTypeID == 0 {
+		return fmt.Errorf("%w: market_type_id is zero", ErrCEXMarketTradeBatchRefInvalid)
+	}
+
+	if _, ok := DefaultOrderBookIDRegistry.MarketTypeLabel(r.MarketTypeID); !ok {
+		return fmt.Errorf(
+			"%w: unknown market_type_id=%d",
+			ErrCEXMarketTradeBatchRefInvalid,
+			r.MarketTypeID,
+		)
+	}
+
+	if r.SymbolID == 0 {
+		return fmt.Errorf("%w: symbol_id is zero", ErrCEXMarketTradeBatchRefInvalid)
+	}
+
+	if _, ok := DefaultOrderBookIDRegistry.SymbolLabel(
+		r.ExchangeID,
+		r.MarketTypeID,
+		r.SymbolID,
+	); !ok {
+		return fmt.Errorf(
+			"%w: unknown symbol identity=%d/%d/%d",
+			ErrCEXMarketTradeBatchRefInvalid,
+			r.ExchangeID,
+			r.MarketTypeID,
+			r.SymbolID,
+		)
+	}
+
+	if r.BatchID == 0 {
+		return fmt.Errorf("%w: batch_id is zero", ErrCEXMarketTradeBatchRefInvalid)
+	}
+
+	if r.FirstSourceTimeMS == 0 || r.LastSourceTimeMS == 0 {
+		return fmt.Errorf("%w: source time is zero", ErrCEXMarketTradeBatchRefInvalid)
+	}
+
+	if r.FirstSourceTimeMS > r.LastSourceTimeMS {
+		return fmt.Errorf("%w: source time range is reversed", ErrCEXMarketTradeBatchRefInvalid)
+	}
+
+	if r.TradeCount == 0 {
+		return fmt.Errorf("%w: trade_count is zero", ErrCEXMarketTradeBatchRefInvalid)
+	}
+
+	if r.EncodedBytes == 0 {
+		return fmt.Errorf("%w: encoded_bytes is zero", ErrCEXMarketTradeBatchRefInvalid)
+	}
+
+	if r.PayloadSHA256 == [32]byte{} {
+		return fmt.Errorf("%w: payload_sha256 is zero", ErrCEXMarketTradeBatchRefInvalid)
+	}
+
+	return nil
 }
 
 type HyperliquidPublicDataKind string
