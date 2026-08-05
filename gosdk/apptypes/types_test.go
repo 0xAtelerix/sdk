@@ -271,6 +271,57 @@ func TestCEXMarketTradeBatchRefWireSizeCases(t *testing.T) {
 	require.LessOrEqual(t, len(raw), 128)
 }
 
+func TestCEXMarketTradeSchemaValidationAndOrderingCases(t *testing.T) {
+	t.Parallel()
+
+	valid := []CEXMarketTrade{
+		{
+			Price:        "1.25",
+			Size:         "2",
+			Side:         CEXMarketTradeSideBuy,
+			SourceTimeMS: 10,
+			TradeID:      [16]byte{1},
+		},
+		{
+			Price:        "1.5",
+			Size:         "3",
+			Side:         CEXMarketTradeSideSell,
+			SourceTimeMS: 10,
+			TradeID:      [16]byte{2},
+		},
+	}
+	require.NoError(t, ValidateCEXMarketTrades(valid))
+
+	invalid := [][]CEXMarketTrade{
+		{},
+		{
+			{
+				Price: "01", Size: "2", Side: CEXMarketTradeSideBuy,
+				SourceTimeMS: 1, TradeID: [16]byte{1},
+			},
+		},
+		{
+			{
+				Price: "1", Size: "2", Side: "other",
+				SourceTimeMS: 1, TradeID: [16]byte{1},
+			},
+		},
+		{
+			{
+				Price: "1", Size: "2", Side: CEXMarketTradeSideBuy,
+				SourceTimeMS: 1, TradeID: [16]byte{1},
+			},
+			{
+				Price: "2", Size: "2", Side: CEXMarketTradeSideBuy,
+				SourceTimeMS: 1, TradeID: [16]byte{1},
+			},
+		},
+	}
+	for _, trades := range invalid {
+		require.Error(t, ValidateCEXMarketTrades(trades))
+	}
+}
+
 type legacyCEXBatch struct {
 	CEXOrderBookRefs       []CEXOrderBookRef       `cbor:"7,keyasint"`
 	HyperliquidAllMidsRefs []HyperliquidAllMidsRef `cbor:"8,keyasint"`

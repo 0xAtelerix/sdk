@@ -19,6 +19,10 @@ type CEXDataAccessor interface {
 		ctx context.Context,
 		refs []apptypes.CEXOrderBookRef,
 	) ([]*apptypes.CEXOrderBookSnapshot, []error)
+	ReadCEXMarketTradeBatch(
+		ctx context.Context,
+		ref apptypes.CEXMarketTradeBatchRef,
+	) ([]apptypes.CEXMarketTrade, error)
 	Close()
 }
 

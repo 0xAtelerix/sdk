@@ -2,6 +2,7 @@ package gosdk
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"time"
 
@@ -27,7 +28,9 @@ const (
 	ErrCEXOrderBookAmbiguousMarket sdkerrors.SDKError = "ambiguous cex order book market"
 	// ErrCEXOrderBookNotFound is returned through CEXOrderBookReadError when an
 	// exact CEX order-book snapshot ref has no matching SQLite row.
-	ErrCEXOrderBookNotFound sdkerrors.SDKError = "cex order book not found"
+	ErrCEXOrderBookNotFound        sdkerrors.SDKError = "cex order book not found"
+	ErrCEXMarketTradeBatchNotFound sdkerrors.SDKError = "cex market trade batch not found"
+	ErrCEXMarketTradeBatchInvalid  sdkerrors.SDKError = "invalid cex market trade batch"
 )
 
 // CEXOrderBookReadDiagnostic captures one exact-order-book read attempt.
@@ -194,6 +197,58 @@ func (c *CEXDataAccessSQL) ReadCEXOrderBooks(
 	}
 
 	return c.reader.readCEXOrderBooks(ctx, refs)
+}
+
+// ReadCEXMarketTradeBatch performs one exact primary-key lookup and returns a
+// fully validated immutable trade payload. Any mismatch returns no trades.
+func (c *CEXDataAccessSQL) ReadCEXMarketTradeBatch(
+	ctx context.Context,
+	ref apptypes.CEXMarketTradeBatchRef,
+) ([]apptypes.CEXMarketTrade, error) {
+	if c == nil || c.reader == nil {
+		return nil, errCEXSQLiteReaderNotInit
+	}
+
+	if err := ref.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: ref: %w", ErrCEXMarketTradeBatchInvalid, err)
+	}
+
+	row, err := c.reader.readCEXMarketTradeBatchRow(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+
+	metadataMatches := row.exchangeID == ref.ExchangeID &&
+		row.marketTypeID == ref.MarketTypeID &&
+		row.symbolID == ref.SymbolID &&
+		row.firstSourceTimeMS == ref.FirstSourceTimeMS &&
+		row.lastSourceTimeMS == ref.LastSourceTimeMS &&
+		row.tradeCount == ref.TradeCount &&
+		row.encodedBytes == ref.EncodedBytes &&
+		row.digest == ref.PayloadSHA256
+	if !metadataMatches {
+		return nil, fmt.Errorf("%w: row metadata mismatch", ErrCEXMarketTradeBatchInvalid)
+	}
+
+	if uint64(len(row.payload)) != uint64(ref.EncodedBytes) {
+		return nil, fmt.Errorf("%w: row byte length mismatch", ErrCEXMarketTradeBatchInvalid)
+	}
+
+	if sha256.Sum256(row.payload) != ref.PayloadSHA256 {
+		return nil, fmt.Errorf("%w: row digest mismatch", ErrCEXMarketTradeBatchInvalid)
+	}
+
+	trades, err := DecodeCEXMarketTrades(row.payload)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrCEXMarketTradeBatchInvalid, err)
+	}
+
+	if uint32(len(trades)) != ref.TradeCount || trades[0].SourceTimeMS != ref.FirstSourceTimeMS ||
+		trades[len(trades)-1].SourceTimeMS != ref.LastSourceTimeMS {
+		return nil, fmt.Errorf("%w: decoded range mismatch", ErrCEXMarketTradeBatchInvalid)
+	}
+
+	return trades, nil
 }
 
 // Close closes the underlying SQLite database.

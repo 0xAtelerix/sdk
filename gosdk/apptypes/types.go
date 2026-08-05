@@ -283,6 +283,121 @@ type CEXOrderBookRef struct {
 	SymbolID     CEXSymbolID     `cbor:"6,keyasint,omitempty"`
 }
 
+// CEXMarketTradeSide is the exchange-reported aggressor side. It is a typed
+// value so stored batches cannot carry arbitrary direction strings.
+type CEXMarketTradeSide string
+
+const (
+	CEXMarketTradeSideBuy  CEXMarketTradeSide = "buy"
+	CEXMarketTradeSideSell CEXMarketTradeSide = "sell"
+)
+
+// CEXMarketTrade is the compact per-trade payload stored inside an immutable
+// batch. Market identity belongs to the enclosing batch reference, not each
+// trade, so the encoded payload contains no repeated market fields.
+type CEXMarketTrade struct {
+	Price        string             `cbor:"1,keyasint"`
+	Size         string             `cbor:"2,keyasint"`
+	Side         CEXMarketTradeSide `cbor:"3,keyasint"`
+	SourceTimeMS uint64             `cbor:"4,keyasint"`
+	TradeID      [16]byte           `cbor:"5,keyasint"`
+}
+
+const ErrCEXMarketTradeInvalid sdkerrors.SDKError = "invalid cex market trade"
+
+// ValidateCEXMarketTrades validates a fixed-order batch before storage or
+// readback. Equal timestamps are ordered by the immutable 16-byte trade ID.
+func ValidateCEXMarketTrades(trades []CEXMarketTrade) error {
+	if len(trades) == 0 {
+		return fmt.Errorf("%w: empty batch", ErrCEXMarketTradeInvalid)
+	}
+
+	var previous CEXMarketTrade
+
+	for i, trade := range trades {
+		if !isCanonicalPositiveDecimal(trade.Price) || !isCanonicalPositiveDecimal(trade.Size) {
+			return fmt.Errorf(
+				"%w: noncanonical price or size at index=%d",
+				ErrCEXMarketTradeInvalid,
+				i,
+			)
+		}
+
+		if trade.Side != CEXMarketTradeSideBuy && trade.Side != CEXMarketTradeSideSell {
+			return fmt.Errorf("%w: side at index=%d", ErrCEXMarketTradeInvalid, i)
+		}
+
+		if trade.SourceTimeMS == 0 || trade.TradeID == [16]byte{} {
+			return fmt.Errorf(
+				"%w: source time or trade id at index=%d",
+				ErrCEXMarketTradeInvalid,
+				i,
+			)
+		}
+
+		if i > 0 && !cexMarketTradeStrictlyAfter(previous, trade) {
+			return fmt.Errorf(
+				"%w: unordered or duplicate trade at index=%d",
+				ErrCEXMarketTradeInvalid,
+				i,
+			)
+		}
+
+		previous = trade
+	}
+
+	return nil
+}
+
+func cexMarketTradeStrictlyAfter(previous CEXMarketTrade, next CEXMarketTrade) bool {
+	if next.SourceTimeMS != previous.SourceTimeMS {
+		return next.SourceTimeMS > previous.SourceTimeMS
+	}
+
+	return bytes.Compare(next.TradeID[:], previous.TradeID[:]) > 0
+}
+
+func isCanonicalPositiveDecimal(value string) bool {
+	if value == "" || value[0] == '+' || value[0] == '-' {
+		return false
+	}
+
+	dot := -1
+
+	for i := range len(value) {
+		c := value[i]
+		if c == '.' {
+			if dot >= 0 || i == 0 || i == len(value)-1 {
+				return false
+			}
+
+			dot = i
+
+			continue
+		}
+
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+
+	if len(value) > 1 && value[0] == '0' && value[1] != '.' {
+		return false
+	}
+
+	if dot >= 0 && value[len(value)-1] == '0' {
+		return false
+	}
+
+	for i := range len(value) {
+		if value[i] >= '1' && value[i] <= '9' {
+			return true
+		}
+	}
+
+	return false
+}
+
 const ErrCEXMarketTradeBatchRefInvalid sdkerrors.SDKError = "invalid cex market trade batch ref"
 
 // CEXMarketTradeBatchRef identifies one immutable compact CEX trade batch.
