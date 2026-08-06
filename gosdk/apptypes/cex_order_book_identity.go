@@ -62,6 +62,8 @@ var (
 		"order-book identity symbol references unknown market_type_id",
 	)
 	errDuplicateOrderBookSymbolLabel  = errors.New("duplicate order-book symbol label")
+	errDuplicateOrderBookVenueAsset   = errors.New("duplicate order-book venue asset id")
+	errUnknownOrderBookVenueAsset     = errors.New("unknown order-book venue asset id")
 	errDuplicateOrderBookSymbolID     = errors.New("duplicate order-book symbol id")
 	errConflictingOrderBookSymbolMeta = errors.New("conflicting order-book symbol metadata")
 	errInconsistentLegacySymbolID     = errors.New(
@@ -114,6 +116,11 @@ type OrderBookSymbolJSON struct {
 	BaseAsset    string          `json:"base_asset,omitempty"`
 	QuoteAsset   string          `json:"quote_asset,omitempty"`
 	Canonical    bool            `json:"canonical,omitempty"`
+	// VenueAssetIDs maps a venue network label to the venue's own numeric market
+	// id, such as a Hyperliquid asset id. It is a map because that number is
+	// unique only within one network: Hyperliquid asset id 4 is DYDX on mainnet
+	// and ETH on testnet. Only venues that expose such an id carry this field.
+	VenueAssetIDs map[string]uint32 `json:"venue_asset_ids,omitempty"`
 }
 
 // OrderBookIdentityJSONLoader supplies a checked-in or approved runtime JSON
@@ -126,14 +133,15 @@ type OrderBookIdentityJSONLoader interface {
 // Storage and event refs consume only numeric IDs; label lookups stay at config,
 // wrapper, diagnostics, and fixture boundaries.
 type OrderBookIDRegistry struct {
-	exchangeIDByLabel map[string]CEXExchangeID
-	exchangeLabelByID map[CEXExchangeID]string
-	marketIDByLabel   map[string]CEXMarketTypeID
-	marketLabelByID   map[CEXMarketTypeID]string
-	symbolByLookup    map[cexSymbolLookupKey]CEXSymbolID
-	symbolLabelByID   map[cexSymbolIDKey]string
-	legacyCandidates  map[cexLegacySymbolKey][]CEXSymbolCandidate
-	metadataByLabel   map[cexLegacySymbolKey]cexSymbolMetadata
+	exchangeIDByLabel  map[string]CEXExchangeID
+	exchangeLabelByID  map[CEXExchangeID]string
+	marketIDByLabel    map[string]CEXMarketTypeID
+	marketLabelByID    map[CEXMarketTypeID]string
+	symbolByLookup     map[cexSymbolLookupKey]CEXSymbolID
+	symbolLabelByID    map[cexSymbolIDKey]string
+	symbolByVenueAsset map[cexVenueAssetKey]CEXSymbolID
+	legacyCandidates   map[cexLegacySymbolKey][]CEXSymbolCandidate
+	metadataByLabel    map[cexLegacySymbolKey]cexSymbolMetadata
 }
 
 // NewOrderBookIDRegistry constructs the default embedded JSON-backed registry.
@@ -157,6 +165,22 @@ func (h DefaultOrderBookIDRegistryHandle) ResolveExchangeID(
 	}
 
 	return registry.ResolveExchangeID(exchange)
+}
+
+// ResolveVenueAssetSymbolID maps a venue's own numeric market id to the shared
+// registry symbol id through the embedded document.
+func (h DefaultOrderBookIDRegistryHandle) ResolveVenueAssetSymbolID(
+	exchangeID CEXExchangeID,
+	marketTypeID CEXMarketTypeID,
+	network string,
+	venueAssetID uint32,
+) (CEXSymbolID, error) {
+	registry, err := h.registry()
+	if err != nil {
+		return 0, err
+	}
+
+	return registry.ResolveVenueAssetSymbolID(exchangeID, marketTypeID, network, venueAssetID)
 }
 
 // ExchangeLabel maps a committed exchange ID to its diagnostic label.
@@ -338,14 +362,15 @@ func NewOrderBookIDRegistryFromJSON(doc OrderBookIdentityJSON) (*OrderBookIDRegi
 	}
 
 	registry := &OrderBookIDRegistry{
-		exchangeIDByLabel: make(map[string]CEXExchangeID, len(doc.Exchanges)),
-		exchangeLabelByID: make(map[CEXExchangeID]string, len(doc.Exchanges)),
-		marketIDByLabel:   make(map[string]CEXMarketTypeID, len(doc.MarketTypes)),
-		marketLabelByID:   make(map[CEXMarketTypeID]string, len(doc.MarketTypes)),
-		symbolByLookup:    make(map[cexSymbolLookupKey]CEXSymbolID, len(doc.Symbols)),
-		symbolLabelByID:   make(map[cexSymbolIDKey]string, len(doc.Symbols)),
-		legacyCandidates:  make(map[cexLegacySymbolKey][]CEXSymbolCandidate, len(doc.Symbols)),
-		metadataByLabel:   make(map[cexLegacySymbolKey]cexSymbolMetadata, len(doc.Symbols)),
+		exchangeIDByLabel:  make(map[string]CEXExchangeID, len(doc.Exchanges)),
+		exchangeLabelByID:  make(map[CEXExchangeID]string, len(doc.Exchanges)),
+		marketIDByLabel:    make(map[string]CEXMarketTypeID, len(doc.MarketTypes)),
+		marketLabelByID:    make(map[CEXMarketTypeID]string, len(doc.MarketTypes)),
+		symbolByLookup:     make(map[cexSymbolLookupKey]CEXSymbolID, len(doc.Symbols)),
+		symbolLabelByID:    make(map[cexSymbolIDKey]string, len(doc.Symbols)),
+		symbolByVenueAsset: make(map[cexVenueAssetKey]CEXSymbolID, len(doc.Symbols)),
+		legacyCandidates:   make(map[cexLegacySymbolKey][]CEXSymbolCandidate, len(doc.Symbols)),
+		metadataByLabel:    make(map[cexLegacySymbolKey]cexSymbolMetadata, len(doc.Symbols)),
 	}
 
 	for _, exchange := range doc.Exchanges {
@@ -719,7 +744,65 @@ func (r *OrderBookIDRegistry) addSymbol(symbol OrderBookSymbolJSON) error {
 
 	r.legacyCandidates[legacyKey] = append(r.legacyCandidates[legacyKey], candidate)
 
+	for network, venueAssetID := range symbol.VenueAssetIDs {
+		venueKey := cexVenueAssetKey{
+			exchangeID:   symbol.ExchangeID,
+			marketTypeID: symbol.MarketTypeID,
+			network:      normalizeCEXLabel(network),
+			venueAssetID: venueAssetID,
+		}
+		if existing, exists := r.symbolByVenueAsset[venueKey]; exists &&
+			existing != symbol.SymbolID {
+			return fmt.Errorf(
+				"%w: exchange_id=%d market_type_id=%d network=%q venue_asset_id=%d existing_symbol_id=%d new_symbol_id=%d",
+				errDuplicateOrderBookVenueAsset,
+				symbol.ExchangeID,
+				symbol.MarketTypeID,
+				network,
+				venueAssetID,
+				existing,
+				symbol.SymbolID,
+			)
+		}
+
+		r.symbolByVenueAsset[venueKey] = symbol.SymbolID
+	}
+
 	return nil
+}
+
+// ResolveVenueAssetSymbolID maps a venue's own numeric market id, such as a
+// Hyperliquid asset id, to the shared registry symbol id. It exists so
+// deploy-time owners can resolve an authored venue identity deterministically,
+// without loading runtime venue metadata.
+func (r *OrderBookIDRegistry) ResolveVenueAssetSymbolID(
+	exchangeID CEXExchangeID,
+	marketTypeID CEXMarketTypeID,
+	network string,
+	venueAssetID uint32,
+) (CEXSymbolID, error) {
+	if r == nil {
+		return 0, errNilOrderBookIDRegistry
+	}
+
+	symbolID, ok := r.symbolByVenueAsset[cexVenueAssetKey{
+		exchangeID:   exchangeID,
+		marketTypeID: marketTypeID,
+		network:      normalizeCEXLabel(network),
+		venueAssetID: venueAssetID,
+	}]
+	if !ok {
+		return 0, fmt.Errorf(
+			"%w: exchange_id=%d market_type_id=%d network=%q venue_asset_id=%d",
+			errUnknownOrderBookVenueAsset,
+			exchangeID,
+			marketTypeID,
+			network,
+			venueAssetID,
+		)
+	}
+
+	return symbolID, nil
 }
 
 func normalizeCEXLabel(label string) string {
@@ -741,6 +824,16 @@ type cexSymbolIDKey struct {
 type cexLegacySymbolKey struct {
 	exchangeID CEXExchangeID
 	label      string
+}
+
+// cexVenueAssetKey scopes a venue's own numeric market id by exchange and
+// market type, because the same number means different markets on different
+// venues and products.
+type cexVenueAssetKey struct {
+	exchangeID   CEXExchangeID
+	marketTypeID CEXMarketTypeID
+	network      string
+	venueAssetID uint32
 }
 
 type cexSymbolMetadata struct {
