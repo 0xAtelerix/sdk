@@ -154,6 +154,8 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 	var hyperliquidAllMidsRefs []apptypes.HyperliquidAllMidsRef
 
+	var cexMarketTradeBatchRefs []apptypes.CEXMarketTradeBatchRef
+
 	for _, eventBatch := range eventBatches {
 		ews.logger.Debug().
 			Str("atropos", hex.EncodeToString(eventBatch.Atropos[4:])).
@@ -304,6 +306,10 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 			hyperliquidAllMidsRefs = append(
 				hyperliquidAllMidsRefs,
 				evt.HyperliquidAllMidsRefs...,
+			)
+			cexMarketTradeBatchRefs = append(
+				cexMarketTradeBatchRefs,
+				evt.CEXMarketTradeBatchRefs...,
 			)
 		}
 
@@ -458,18 +464,23 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 		}
 
 		result = append(result, apptypes.Batch[appTx, R]{
-			Atropos:                eventBatch.Atropos,
-			Transactions:           allParsedTxs,
-			ExternalBlocks:         ews.votingBlocks.PopFinalized(),      // return only finalized
-			Checkpoints:            ews.votingCheckpoints.PopFinalized(), // return only finalized
-			EndOffset:              eventBatch.EndOffset,
-			CEXOrderBookRefs:       cexOrderBookRefs,
-			HyperliquidAllMidsRefs: hyperliquidAllMidsRefs,
+			Atropos:                 eventBatch.Atropos,
+			Transactions:            allParsedTxs,
+			ExternalBlocks:          ews.votingBlocks.PopFinalized(),      // return only finalized
+			Checkpoints:             ews.votingCheckpoints.PopFinalized(), // return only finalized
+			EndOffset:               eventBatch.EndOffset,
+			CEXOrderBookRefs:        cexOrderBookRefs,
+			HyperliquidAllMidsRefs:  hyperliquidAllMidsRefs,
+			CEXMarketTradeBatchRefs: cexMarketTradeBatchRefs,
 		})
 
-		// Reset for next batch
-		cexOrderBookRefs = cexOrderBookRefs[:0]
-		hyperliquidAllMidsRefs = hyperliquidAllMidsRefs[:0]
+		// Reset for the next batch by dropping the slice, not by reslicing it to
+		// zero length: the batch just appended to result still points at the same
+		// backing array, so reusing it would let the next batch's appends
+		// overwrite the previous batch's references in place.
+		cexOrderBookRefs = nil
+		hyperliquidAllMidsRefs = nil
+		cexMarketTradeBatchRefs = nil
 	}
 
 	if newEpoch > 0 {
