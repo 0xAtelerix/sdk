@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
@@ -201,6 +202,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 				eventDecodeStart,
 				eventDecodeDone,
 			)
+			logCEXMarketTradeRefsAdmitted(ews.logger, evt)
 
 			var notFoundCycleValset int
 
@@ -534,6 +536,49 @@ func logCEXEventAdmitted(
 type cexRefStats struct {
 	newestAgeMs int64
 	oldestAgeMs int64
+}
+
+// logCEXMarketTradeRefsAdmitted reports which markets an event carried trade
+// references for, as decoded, before anything downstream can drop them.
+//
+// The relay reports what it published and adoption reports what it received, and
+// when those disagree there is nothing in between that can say which side lost
+// the reference. Measured on a stand: hyperliquid/spot published 66 references
+// and adoption received none of them, while five other markets balanced.
+func logCEXMarketTradeRefsAdmitted(logger *zerolog.Logger, evt apptypes.Event) {
+	if logger == nil || len(evt.CEXMarketTradeBatchRefs) == 0 {
+		return
+	}
+
+	type marketKey struct {
+		exchange   apptypes.CEXExchangeID
+		marketType apptypes.CEXMarketTypeID
+		symbol     apptypes.CEXSymbolID
+	}
+
+	counts := make(map[marketKey]int, len(evt.CEXMarketTradeBatchRefs))
+	order := make([]marketKey, 0, len(evt.CEXMarketTradeBatchRefs))
+
+	for _, ref := range evt.CEXMarketTradeBatchRefs {
+		key := marketKey{ref.ExchangeID, ref.MarketTypeID, ref.SymbolID}
+		if _, seen := counts[key]; !seen {
+			order = append(order, key)
+		}
+
+		counts[key]++
+	}
+
+	parts := make([]string, 0, len(order))
+	for _, key := range order {
+		parts = append(parts, fmt.Sprintf(
+			"%d/%d/%d=%d", key.exchange, key.marketType, key.symbol, counts[key],
+		))
+	}
+
+	logger.Info().
+		Int("refs", len(evt.CEXMarketTradeBatchRefs)).
+		Str("markets", strings.Join(parts, ",")).
+		Msg("cex market trade refs decoded from event")
 }
 
 func collectCEXRefStats(refs []apptypes.CEXOrderBookRef, at time.Time) cexRefStats {
