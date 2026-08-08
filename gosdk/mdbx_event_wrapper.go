@@ -465,6 +465,16 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 			}
 		}
 
+		// Emission-side counterpart of the decode line: between them lies only an
+		// append, so a market present at decode and absent here narrows the loss
+		// to this accumulation.
+		if ews.logger != nil && len(cexMarketTradeBatchRefs) > 0 {
+			ews.logger.Info().
+				Int("refs", len(cexMarketTradeBatchRefs)).
+				Str("markets", formatCEXMarketTradeRefMarkets(cexMarketTradeBatchRefs)).
+				Msg("cex market trade refs emitted on batch")
+		}
+
 		result = append(result, apptypes.Batch[appTx, R]{
 			Atropos:                 eventBatch.Atropos,
 			Transactions:            allParsedTxs,
@@ -545,21 +555,19 @@ type cexRefStats struct {
 // when those disagree there is nothing in between that can say which side lost
 // the reference. Measured on a stand: hyperliquid/spot published 66 references
 // and adoption received none of them, while five other markets balanced.
-func logCEXMarketTradeRefsAdmitted(logger *zerolog.Logger, evt apptypes.Event) {
-	if logger == nil || len(evt.CEXMarketTradeBatchRefs) == 0 {
-		return
-	}
-
+// formatCEXMarketTradeRefMarkets renders one
+// "exchange/marketType/symbol=refs" entry per market.
+func formatCEXMarketTradeRefMarkets(refs []apptypes.CEXMarketTradeBatchRef) string {
 	type marketKey struct {
 		exchange   apptypes.CEXExchangeID
 		marketType apptypes.CEXMarketTypeID
 		symbol     apptypes.CEXSymbolID
 	}
 
-	counts := make(map[marketKey]int, len(evt.CEXMarketTradeBatchRefs))
-	order := make([]marketKey, 0, len(evt.CEXMarketTradeBatchRefs))
+	counts := make(map[marketKey]int, len(refs))
+	order := make([]marketKey, 0, len(refs))
 
-	for _, ref := range evt.CEXMarketTradeBatchRefs {
+	for _, ref := range refs {
 		key := marketKey{ref.ExchangeID, ref.MarketTypeID, ref.SymbolID}
 		if _, seen := counts[key]; !seen {
 			order = append(order, key)
@@ -575,9 +583,17 @@ func logCEXMarketTradeRefsAdmitted(logger *zerolog.Logger, evt apptypes.Event) {
 		))
 	}
 
+	return strings.Join(parts, ",")
+}
+
+func logCEXMarketTradeRefsAdmitted(logger *zerolog.Logger, evt apptypes.Event) {
+	if logger == nil || len(evt.CEXMarketTradeBatchRefs) == 0 {
+		return
+	}
+
 	logger.Info().
 		Int("refs", len(evt.CEXMarketTradeBatchRefs)).
-		Str("markets", strings.Join(parts, ",")).
+		Str("markets", formatCEXMarketTradeRefMarkets(evt.CEXMarketTradeBatchRefs)).
 		Msg("cex market trade refs decoded from event")
 }
 
