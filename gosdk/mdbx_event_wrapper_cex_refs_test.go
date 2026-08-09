@@ -146,8 +146,12 @@ func newCEXRefTestWrapper(
 	}))
 
 	wrapper := &MdbxEventStreamWrapper[*CustomTransaction[Receipt], Receipt]{
-		streamPath:        path,
-		eventReader:       &EventReader{dataFile: file, pollInterval: time.Millisecond, position: 8},
+		streamPath: path,
+		eventReader: &EventReader{
+			dataFile:     file,
+			pollInterval: time.Millisecond,
+			position:     8,
+		},
 		chainID:           1,
 		logger:            &logger,
 		appchainDB:        db,
