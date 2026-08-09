@@ -418,7 +418,7 @@ func NewOrderBookIDRegistryFromJSON(doc OrderBookIdentityJSON) (*OrderBookIDRegi
 	}
 
 	for _, symbol := range doc.Symbols {
-		if err := registry.addSymbol(symbol); err != nil {
+		if err := addOrderBookSymbol(registry, symbol); err != nil {
 			return nil, err
 		}
 	}
@@ -651,7 +651,7 @@ func (r *OrderBookIDRegistry) SymbolCandidates(
 	return out
 }
 
-func (r *OrderBookIDRegistry) addSymbol(symbol OrderBookSymbolJSON) error {
+func addOrderBookSymbol(r *OrderBookIDRegistry, symbol OrderBookSymbolJSON) error {
 	label := strings.TrimSpace(symbol.Label)
 	if symbol.ExchangeID == 0 || symbol.MarketTypeID == 0 || symbol.SymbolID == 0 {
 		return errOrderBookSymbolIDFieldsZero

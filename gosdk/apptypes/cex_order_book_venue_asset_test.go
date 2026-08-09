@@ -39,7 +39,12 @@ func TestResolveVenueAssetSymbolIDMapsHyperliquidAssetIDs(t *testing.T) {
 		t.Fatalf("venue asset 0 resolved to %q, want BTCUSDC", label)
 	}
 
-	if _, err = registry.ResolveVenueAssetSymbolID(exchangeID, perpID, "mainnet", 4_000_000); err == nil {
+	if _, err = registry.ResolveVenueAssetSymbolID(
+		exchangeID,
+		perpID,
+		"mainnet",
+		4_000_000,
+	); err == nil {
 		t.Fatal("an unknown venue asset id must be rejected")
 	}
 
