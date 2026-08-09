@@ -2,6 +2,7 @@ package gosdk
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -18,6 +19,20 @@ import (
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
 )
+
+const cexMarketTradeBatchesV1TestSchema = `
+CREATE TABLE cex_market_trade_batches_v1 (
+    id INTEGER PRIMARY KEY,
+    exchange_id INTEGER NOT NULL,
+    market_type_id INTEGER NOT NULL,
+    symbol_id INTEGER NOT NULL,
+    first_source_time_ms INTEGER NOT NULL,
+    last_source_time_ms INTEGER NOT NULL,
+    trade_count INTEGER NOT NULL,
+    encoded_bytes INTEGER NOT NULL,
+    payload_sha256 BLOB NOT NULL,
+    payload BLOB NOT NULL
+)`
 
 func TestCEXDataAccessSQL_ReadCEXOrderBook_ClassifiesPrecisionMiss(t *testing.T) {
 	t.Parallel()
@@ -72,6 +87,289 @@ func TestCEXDataAccessSQL_ReadCEXOrderBook_ClassifiesPrecisionMiss(t *testing.T)
 	require.Equal(t, "no_row", readErr.Diagnostic.Result)
 	require.Equal(t, "precision_mismatch", readErr.Diagnostic.MissHint)
 	require.Equal(t, requestedFetchedAt+1, readErr.Diagnostic.NearestNewerFetchedAt)
+}
+
+func TestReadCEXMarketTradeBatchExactCases(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	exact := newCEXMarketTradeBatchReaderFixture(ctx, t)
+	accessor, err := NewCEXDataAccessSQL(ctx, exact.dbPath)
+	require.NoError(t, err)
+	got, err := accessor.ReadCEXMarketTradeBatch(ctx, exact.ref)
+	require.NoError(t, err)
+	require.Equal(t, exact.trades, got)
+	accessor.Close()
+
+	for _, tc := range []struct {
+		name   string
+		mutate func(*sql.DB, *cexMarketTradeBatchReaderFixture) error
+	}{
+		{
+			name: "stored-count-overflow",
+			mutate: func(db *sql.DB, _ *cexMarketTradeBatchReaderFixture) error {
+				_, execErr := db.ExecContext(
+					ctx,
+					`UPDATE cex_market_trade_batches_v1 SET trade_count = ? WHERE id = 1`,
+					uint64(^uint32(0))+1,
+				)
+
+				return execErr
+			},
+		},
+		{
+			name: "metadata-mismatch",
+			mutate: func(db *sql.DB, _ *cexMarketTradeBatchReaderFixture) error {
+				_, execErr := db.ExecContext(ctx, `UPDATE cex_market_trade_batches_v1 SET exchange_id = 2 WHERE id = 1`)
+
+				return execErr
+			},
+		},
+		{
+			name: "byte-length-mismatch",
+			mutate: func(db *sql.DB, fixture *cexMarketTradeBatchReaderFixture) error {
+				_, execErr := db.ExecContext(
+					ctx,
+					`UPDATE cex_market_trade_batches_v1 SET encoded_bytes = ? WHERE id = 1`,
+					len(fixture.payload)-1,
+				)
+
+				return execErr
+			},
+		},
+		{
+			name: "digest-mismatch",
+			mutate: func(db *sql.DB, _ *cexMarketTradeBatchReaderFixture) error {
+				_, execErr := db.ExecContext(
+					ctx,
+					`UPDATE cex_market_trade_batches_v1 SET payload_sha256 = ? WHERE id = 1`,
+					make([]byte, 32),
+				)
+
+				return execErr
+			},
+		},
+		{
+			name: "trailing-payload",
+			mutate: func(db *sql.DB, fixture *cexMarketTradeBatchReaderFixture) error {
+				return replaceCEXMarketTradeBatchPayload(ctx, db, fixture, append(fixture.payload, 0))
+			},
+		},
+		{
+			name: "unordered-payload",
+			mutate: func(db *sql.DB, fixture *cexMarketTradeBatchReaderFixture) error {
+				payload, marshalErr := cbor.Marshal(
+					toCEXMarketTradeWire([]apptypes.CEXMarketTrade{fixture.trades[1], fixture.trades[0]}),
+				)
+				if marshalErr != nil {
+					return marshalErr
+				}
+
+				return replaceCEXMarketTradeBatchPayload(ctx, db, fixture, payload)
+			},
+		},
+		{
+			name: "duplicate-trade-identity",
+			mutate: func(db *sql.DB, fixture *cexMarketTradeBatchReaderFixture) error {
+				duplicate := []apptypes.CEXMarketTrade{fixture.trades[0], fixture.trades[0]}
+
+				payload, marshalErr := cbor.Marshal(toCEXMarketTradeWire(duplicate))
+				if marshalErr != nil {
+					return marshalErr
+				}
+
+				return replaceCEXMarketTradeBatchPayload(ctx, db, fixture, payload)
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			fixture := newCEXMarketTradeBatchReaderFixture(ctx, t)
+			db, openErr := openSQLite(ctx, fixture.dbPath, "rw")
+			require.NoError(t, openErr)
+			require.NoError(t, tc.mutate(db, &fixture))
+			require.NoError(t, db.Close())
+
+			caseAccessor, openErr := NewCEXDataAccessSQL(ctx, fixture.dbPath)
+			require.NoError(t, openErr)
+
+			defer caseAccessor.Close()
+
+			actual, readErr := caseAccessor.ReadCEXMarketTradeBatch(ctx, fixture.ref)
+			require.ErrorIs(t, readErr, ErrCEXMarketTradeBatchInvalid)
+			require.Nil(t, actual)
+		})
+	}
+
+	notFound := newCEXMarketTradeBatchReaderFixture(ctx, t)
+	notFound.ref.BatchID++
+	notFoundAccessor, err := NewCEXDataAccessSQL(ctx, notFound.dbPath)
+	require.NoError(t, err)
+
+	defer notFoundAccessor.Close()
+
+	_, err = notFoundAccessor.ReadCEXMarketTradeBatch(ctx, notFound.ref)
+	require.ErrorIs(t, err, ErrCEXMarketTradeBatchNotFound)
+}
+
+type cexMarketTradeBatchReaderFixture struct {
+	dbPath  string
+	ref     apptypes.CEXMarketTradeBatchRef
+	trades  []apptypes.CEXMarketTrade
+	payload []byte
+}
+
+func newCEXMarketTradeBatchReaderFixture(
+	ctx context.Context,
+	t *testing.T,
+) cexMarketTradeBatchReaderFixture {
+	t.Helper()
+	dbPath := filepath.Join(t.TempDir(), "cex.sqlite")
+	db, err := openSQLite(ctx, dbPath, "rwc")
+	require.NoError(t, err)
+	_, err = db.ExecContext(
+		ctx,
+		`CREATE TABLE cex_orderbook_pairs_v3 (
+			id INTEGER PRIMARY KEY, exchange_id INTEGER NOT NULL,
+			market_type_id INTEGER NOT NULL, symbol_id INTEGER NOT NULL
+		)`,
+	)
+	require.NoError(t, err)
+	_, err = db.ExecContext(
+		ctx,
+		`CREATE TABLE cex_orderbooks_v6 (
+			id INTEGER PRIMARY KEY, pair_id INTEGER NOT NULL,
+			last_update_id INTEGER NOT NULL, bids BLOB NOT NULL,
+			asks BLOB NOT NULL, fetched_at INTEGER NOT NULL
+		)`,
+	)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, cexMarketTradeBatchesV1TestSchema)
+	require.NoError(t, err)
+
+	trades := []apptypes.CEXMarketTrade{
+		{
+			Price:        "10",
+			Size:         "2",
+			Side:         apptypes.CEXMarketTradeSideBuy,
+			SourceTimeMS: 100,
+			TradeID:      [16]byte{1},
+		},
+		{
+			Price:        "11",
+			Size:         "3",
+			Side:         apptypes.CEXMarketTradeSideSell,
+			SourceTimeMS: 101,
+			TradeID:      [16]byte{2},
+		},
+	}
+	payload, digest, err := EncodeCEXMarketTrades(trades)
+	require.NoError(t, err)
+	symbolID := cexSymbolIDForTest(t, 1, 1, "BTCUSDT")
+	_, err = db.ExecContext(
+		ctx,
+		`INSERT INTO cex_market_trade_batches_v1 VALUES(1,1,1,?,?,?,?,?,?,?)`,
+		symbolID,
+		100,
+		101,
+		len(trades),
+		len(payload),
+		digest[:],
+		payload,
+	)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	return cexMarketTradeBatchReaderFixture{
+		dbPath: dbPath, trades: trades, payload: payload,
+		ref: apptypes.CEXMarketTradeBatchRef{
+			ExchangeID: 1, MarketTypeID: 1, SymbolID: apptypes.CEXSymbolID(symbolID), BatchID: 1,
+			FirstSourceTimeMS: 100, LastSourceTimeMS: 101, TradeCount: uint32(len(trades)),
+			EncodedBytes: uint32(len(payload)), PayloadSHA256: digest,
+		},
+	}
+}
+
+func replaceCEXMarketTradeBatchPayload(
+	ctx context.Context,
+	db *sql.DB,
+	fixture *cexMarketTradeBatchReaderFixture,
+	payload []byte,
+) error {
+	digest := sha256.Sum256(payload)
+
+	_, err := db.ExecContext(
+		ctx,
+		`UPDATE cex_market_trade_batches_v1 SET encoded_bytes = ?, payload_sha256 = ?, payload = ? WHERE id = 1`,
+		len(payload),
+		digest[:],
+		payload,
+	)
+	if err != nil {
+		return err
+	}
+
+	fixture.ref.EncodedBytes = uint32(len(payload))
+	fixture.ref.PayloadSHA256 = digest
+
+	return nil
+}
+
+func TestReadCEXMarketTradeBatchUsesOneExactPrimaryKeyLookup(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	db, err := openSQLite(ctx, filepath.Join(t.TempDir(), "cex.sqlite"), "rwc")
+	require.NoError(t, err)
+
+	defer db.Close()
+
+	_, err = db.ExecContext(ctx, cexMarketTradeBatchesV1TestSchema)
+	require.NoError(t, err)
+	rows, err := db.QueryContext(ctx, "EXPLAIN QUERY PLAN "+cexMarketTradeBatchExactReadQuery, 1)
+	require.NoError(t, err)
+
+	defer rows.Close()
+
+	var details []string
+
+	for rows.Next() {
+		var (
+			selectID, orderID, fromID int
+			detail                    string
+		)
+
+		require.NoError(t, rows.Scan(&selectID, &orderID, &fromID, &detail))
+		details = append(details, detail)
+	}
+
+	require.NoError(t, rows.Err())
+
+	plan := strings.Join(details, "\n")
+	require.Contains(t, plan, "SEARCH cex_market_trade_batches_v1 USING INTEGER PRIMARY KEY")
+	require.NotContains(t, plan, "SCAN cex_market_trade_batches_v1")
+}
+
+func TestEncodeCEXMarketTradesUsesFixedOrderArrays(t *testing.T) {
+	t.Parallel()
+
+	trades := []apptypes.CEXMarketTrade{{
+		Price: "10", Size: "2", Side: apptypes.CEXMarketTradeSideBuy,
+		SourceTimeMS: 100, TradeID: [16]byte{1},
+	}}
+	payload, _, err := EncodeCEXMarketTrades(trades)
+	require.NoError(t, err)
+
+	var wire []any
+	require.NoError(t, cbor.Unmarshal(payload, &wire))
+	require.Len(t, wire, 1)
+	fields, ok := wire[0].([]any)
+	require.True(t, ok, "each compact trade must be a fixed-order CBOR array")
+	require.Len(t, fields, 5)
+
+	mapPayload, err := cbor.Marshal(trades)
+	require.NoError(t, err)
+	_, err = DecodeCEXMarketTrades(mapPayload)
+	require.Error(t, err, "map-encoded public structs are not the batch wire contract")
 }
 
 func TestStep159JCEXDataAccessSQLDoesNotWaitForV6SchemaReadiness(t *testing.T) {

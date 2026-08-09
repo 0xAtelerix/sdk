@@ -127,7 +127,8 @@ func validateExistingSymbols(
 			marketTypeID: symbol.MarketTypeID,
 			symbolID:     symbol.SymbolID,
 		}
-		if currentSymbol, ok := currentSymbols[key]; !ok || currentSymbol != symbol {
+		if currentSymbol, ok := currentSymbols[key]; !ok ||
+			!sameSymbolIdentity(symbol, currentSymbol) {
 			return fmt.Errorf(
 				"%w: exchange_id=%d market_type_id=%d symbol_id=%d",
 				errIdentityChanged,
@@ -139,4 +140,29 @@ func validateExistingSymbols(
 	}
 
 	return nil
+}
+
+// sameSymbolIdentity reports whether a published symbol kept its identity. The
+// struct can no longer be compared with != because it carries a venue asset map,
+// and that map has its own rule: a network mapping may be added later, but an
+// existing one may not be repointed, because storage keys already depend on it.
+func sameSymbolIdentity(previous, current apptypes.OrderBookSymbolJSON) bool {
+	if previous.ExchangeID != current.ExchangeID ||
+		previous.MarketTypeID != current.MarketTypeID ||
+		previous.SymbolID != current.SymbolID ||
+		previous.Label != current.Label ||
+		previous.BaseAsset != current.BaseAsset ||
+		previous.QuoteAsset != current.QuoteAsset ||
+		previous.Canonical != current.Canonical {
+		return false
+	}
+
+	for network, venueAssetID := range previous.VenueAssetIDs {
+		currentAssetID, ok := current.VenueAssetIDs[network]
+		if !ok || currentAssetID != venueAssetID {
+			return false
+		}
+	}
+
+	return true
 }

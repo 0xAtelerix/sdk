@@ -154,6 +154,8 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 	var hyperliquidAllMidsRefs []apptypes.HyperliquidAllMidsRef
 
+	var cexMarketTradeBatchRefs []apptypes.CEXMarketTradeBatchRef
+
 	for _, eventBatch := range eventBatches {
 		ews.logger.Debug().
 			Str("atropos", hex.EncodeToString(eventBatch.Atropos[4:])).
@@ -199,6 +201,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 				eventDecodeStart,
 				eventDecodeDone,
 			)
+			logCEXMarketTradeRefsAdmitted(ews.logger, evt)
 
 			var notFoundCycleValset int
 
@@ -304,6 +307,10 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 			hyperliquidAllMidsRefs = append(
 				hyperliquidAllMidsRefs,
 				evt.HyperliquidAllMidsRefs...,
+			)
+			cexMarketTradeBatchRefs = append(
+				cexMarketTradeBatchRefs,
+				evt.CEXMarketTradeBatchRefs...,
 			)
 		}
 
@@ -457,19 +464,34 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 			}
 		}
 
+		// Emission-side counterpart of the decode line: between them lies only an
+		// append, so a market present at decode and absent here narrows the loss
+		// to this accumulation.
+		if ews.logger != nil && len(cexMarketTradeBatchRefs) > 0 {
+			ews.logger.Info().
+				Int("refs", len(cexMarketTradeBatchRefs)).
+				Str("markets", apptypes.FormatCEXMarketTradeRefMarkets(cexMarketTradeBatchRefs)).
+				Msg("cex market trade refs emitted on batch")
+		}
+
 		result = append(result, apptypes.Batch[appTx, R]{
-			Atropos:                eventBatch.Atropos,
-			Transactions:           allParsedTxs,
-			ExternalBlocks:         ews.votingBlocks.PopFinalized(),      // return only finalized
-			Checkpoints:            ews.votingCheckpoints.PopFinalized(), // return only finalized
-			EndOffset:              eventBatch.EndOffset,
-			CEXOrderBookRefs:       cexOrderBookRefs,
-			HyperliquidAllMidsRefs: hyperliquidAllMidsRefs,
+			Atropos:                 eventBatch.Atropos,
+			Transactions:            allParsedTxs,
+			ExternalBlocks:          ews.votingBlocks.PopFinalized(),      // return only finalized
+			Checkpoints:             ews.votingCheckpoints.PopFinalized(), // return only finalized
+			EndOffset:               eventBatch.EndOffset,
+			CEXOrderBookRefs:        cexOrderBookRefs,
+			HyperliquidAllMidsRefs:  hyperliquidAllMidsRefs,
+			CEXMarketTradeBatchRefs: cexMarketTradeBatchRefs,
 		})
 
-		// Reset for next batch
-		cexOrderBookRefs = cexOrderBookRefs[:0]
-		hyperliquidAllMidsRefs = hyperliquidAllMidsRefs[:0]
+		// Reset for the next batch by dropping the slice, not by reslicing it to
+		// zero length: the batch just appended to result still points at the same
+		// backing array, so reusing it would let the next batch's appends
+		// overwrite the previous batch's references in place.
+		cexOrderBookRefs = nil
+		hyperliquidAllMidsRefs = nil
+		cexMarketTradeBatchRefs = nil
 	}
 
 	if newEpoch > 0 {
@@ -523,6 +545,24 @@ func logCEXEventAdmitted(
 type cexRefStats struct {
 	newestAgeMs int64
 	oldestAgeMs int64
+}
+
+// logCEXMarketTradeRefsAdmitted reports which markets an event carried trade
+// references for, as decoded, before anything downstream can drop them.
+//
+// The relay reports what it published and adoption reports what it received, and
+// when those disagree there is nothing in between that can say which side lost
+// the reference. Measured on a stand: hyperliquid/spot published 66 references
+// and adoption received none of them, while five other markets balanced.
+func logCEXMarketTradeRefsAdmitted(logger *zerolog.Logger, evt apptypes.Event) {
+	if logger == nil || len(evt.CEXMarketTradeBatchRefs) == 0 {
+		return
+	}
+
+	logger.Info().
+		Int("refs", len(evt.CEXMarketTradeBatchRefs)).
+		Str("markets", apptypes.FormatCEXMarketTradeRefMarkets(evt.CEXMarketTradeBatchRefs)).
+		Msg("cex market trade refs decoded from event")
 }
 
 func collectCEXRefStats(refs []apptypes.CEXOrderBookRef, at time.Time) cexRefStats {

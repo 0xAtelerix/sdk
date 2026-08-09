@@ -13,6 +13,12 @@ import (
 )
 
 const (
+	maxCEXMarketTradeBatchSQLiteInt uint64 = 1<<63 - 1
+	maxCEXMarketTradeBatchExchange         = int64(^uint16(0))
+	maxCEXMarketTradeBatchMarket           = int64(^uint8(0))
+	maxCEXMarketTradeBatchSymbol           = int64(^uint32(0))
+	maxCEXMarketTradeBatchCount            = int64(^uint32(0))
+
 	cexOrderBookPairIDQuery = `
 SELECT id
 FROM cex_orderbook_pairs_v3
@@ -41,6 +47,12 @@ FROM cex_orderbooks_v6
 WHERE pair_id = ? AND fetched_at > ?
 ORDER BY fetched_at ASC
 LIMIT 1`
+	cexMarketTradeBatchExactReadQuery = `
+SELECT exchange_id, market_type_id, symbol_id, first_source_time_ms,
+       last_source_time_ms, trade_count, encoded_bytes, payload_sha256, payload
+FROM cex_market_trade_batches_v1
+WHERE id = ?
+LIMIT 1`
 )
 
 type cexOrderBookFastReader struct {
@@ -52,10 +64,13 @@ type cexOrderBookFastReader struct {
 	exact      *zsqlite.Stmt
 	older      *zsqlite.Stmt
 	newer      *zsqlite.Stmt
+	trade      *zsqlite.Stmt
 	idRegistry *apptypes.OrderBookIDRegistry
 
-	bidsBuf []byte
-	asksBuf []byte
+	bidsBuf         []byte
+	asksBuf         []byte
+	tradeDigestBuf  []byte
+	tradePayloadBuf []byte
 }
 
 func openCEXOrderBookFastReader(
@@ -150,6 +165,7 @@ func (r *cexOrderBookFastReader) finalizePrepared() {
 		r.exact,
 		r.older,
 		r.newer,
+		r.trade,
 	} {
 		if stmt != nil {
 			_ = stmt.Finalize()
@@ -161,6 +177,115 @@ func (r *cexOrderBookFastReader) finalizePrepared() {
 	r.exact = nil
 	r.older = nil
 	r.newer = nil
+	r.trade = nil
+}
+
+type cexMarketTradeBatchRow struct {
+	exchangeID        apptypes.CEXExchangeID
+	marketTypeID      apptypes.CEXMarketTypeID
+	symbolID          apptypes.CEXSymbolID
+	firstSourceTimeMS uint64
+	lastSourceTimeMS  uint64
+	tradeCount        uint32
+	encodedBytes      uint32
+	digest            [32]byte
+	payload           []byte
+}
+
+func (r *cexOrderBookFastReader) readCEXMarketTradeBatchRow(
+	ctx context.Context,
+	ref apptypes.CEXMarketTradeBatchRef,
+) (*cexMarketTradeBatchRow, error) {
+	// SQLite stores signed integers. A reference outside that domain cannot
+	// identify a persisted row, and must not be narrowed before comparison.
+	if ref.BatchID > maxCEXMarketTradeBatchSQLiteInt ||
+		ref.FirstSourceTimeMS > maxCEXMarketTradeBatchSQLiteInt ||
+		ref.LastSourceTimeMS > maxCEXMarketTradeBatchSQLiteInt {
+		return nil, fmt.Errorf(
+			"%w: ref exceeds SQLite integer range",
+			ErrCEXMarketTradeBatchInvalid,
+		)
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.trade == nil {
+		stmt, err := r.conn.Prepare(cexMarketTradeBatchExactReadQuery)
+		if err != nil {
+			return nil, fmt.Errorf("prepare cex market trade batch read: %w", err)
+		}
+
+		r.trade = stmt
+	}
+
+	oldDone := r.conn.SetInterrupt(ctx.Done())
+	defer r.conn.SetInterrupt(oldDone)
+
+	r.trade.BindInt64(1, int64(ref.BatchID))
+
+	hasRow, err := r.trade.Step()
+	if err != nil {
+		_ = resetCEXOrderBookStmt(r.trade)
+
+		return nil, err
+	}
+
+	if !hasRow {
+		if err := resetCEXOrderBookStmt(r.trade); err != nil {
+			return nil, err
+		}
+
+		return nil, ErrCEXMarketTradeBatchNotFound
+	}
+
+	digestRaw := readSQLiteColumnBytes(r.trade, 7, &r.tradeDigestBuf)
+	if len(digestRaw) != 32 {
+		_ = resetCEXOrderBookStmt(r.trade)
+
+		return nil, fmt.Errorf("%w: stored digest length", ErrCEXMarketTradeBatchInvalid)
+	}
+
+	var digest [32]byte
+	copy(digest[:], digestRaw)
+
+	exchangeID := r.trade.ColumnInt64(0)
+	marketTypeID := r.trade.ColumnInt64(1)
+	symbolID := r.trade.ColumnInt64(2)
+	firstSourceTimeMS := r.trade.ColumnInt64(3)
+	lastSourceTimeMS := r.trade.ColumnInt64(4)
+	tradeCount := r.trade.ColumnInt64(5)
+
+	encodedBytes := r.trade.ColumnInt64(6)
+	if exchangeID <= 0 || exchangeID > maxCEXMarketTradeBatchExchange ||
+		marketTypeID <= 0 || marketTypeID > maxCEXMarketTradeBatchMarket ||
+		symbolID <= 0 || symbolID > maxCEXMarketTradeBatchSymbol ||
+		firstSourceTimeMS <= 0 || lastSourceTimeMS <= 0 ||
+		tradeCount <= 0 || tradeCount > maxCEXMarketTradeBatchCount ||
+		encodedBytes <= 0 || encodedBytes > maxCEXMarketTradeBatchCount {
+		_ = resetCEXOrderBookStmt(r.trade)
+
+		return nil, fmt.Errorf("%w: stored metadata range", ErrCEXMarketTradeBatchInvalid)
+	}
+
+	row := &cexMarketTradeBatchRow{
+		exchangeID:        apptypes.CEXExchangeID(exchangeID),
+		marketTypeID:      apptypes.CEXMarketTypeID(marketTypeID),
+		symbolID:          apptypes.CEXSymbolID(symbolID),
+		firstSourceTimeMS: uint64(firstSourceTimeMS),
+		lastSourceTimeMS:  uint64(lastSourceTimeMS),
+		tradeCount:        uint32(tradeCount),
+		encodedBytes:      uint32(encodedBytes),
+		digest:            digest,
+		payload: append(
+			[]byte(nil),
+			readSQLiteColumnBytes(r.trade, 8, &r.tradePayloadBuf)...),
+	}
+	if err := resetCEXOrderBookStmt(r.trade); err != nil {
+		return nil, err
+	}
+
+	return row, nil
 }
 
 func (r *cexOrderBookFastReader) readCEXOrderBooks(
