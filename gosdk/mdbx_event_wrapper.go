@@ -20,6 +20,10 @@ import (
 	"github.com/0xAtelerix/sdk/gosdk/utility"
 )
 
+// eventStreamHeaderSize is the byte offset of the first batch record in an
+// epoch stream file: reads of a fresh epoch start right after the header.
+const eventStreamHeaderSize = int64(8)
+
 type MdbxEventStreamWrapper[appTx apptypes.AppTransaction[R], R apptypes.Receipt] struct {
 	streamPath        string
 	eventReader       *EventReader
@@ -93,10 +97,22 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) InitReader(ctx context.Context) err
 		return err
 	}
 
+	return ews.openEpoch(ctx, epoch, pos)
+}
+
+// openEpoch points the reader at the given position of the given epoch file
+// without consulting persisted positions: during a rollover the durable
+// position still belongs to the finished epoch until processBatch commits a
+// batch of the new one.
+func (ews *MdbxEventStreamWrapper[appTx, R]) openEpoch(
+	ctx context.Context,
+	epoch uint32,
+	pos int64,
+) error {
 	ews.currentEpoch = epoch
 	newPath := filepath.Join(ews.streamPath, fmt.Sprintf("epoch_%d.data", epoch))
 
-	err = WaitFile(ctx, newPath, log.Ctx(ctx))
+	err := WaitFile(ctx, newPath, log.Ctx(ctx))
 	if err != nil {
 		return err
 	}
@@ -483,6 +499,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 			CEXOrderBookRefs:        cexOrderBookRefs,
 			HyperliquidAllMidsRefs:  hyperliquidAllMidsRefs,
 			CEXMarketTradeBatchRefs: cexMarketTradeBatchRefs,
+			Epoch:                   ews.currentEpoch,
 		})
 
 		// Reset for the next batch by dropping the slice, not by reslicing it to
@@ -498,19 +515,24 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 		err = ews.appchainDB.Update(ctx, func(tx kv.RwTx) error {
 			epochkey := make([]byte, 4)
 			binary.BigEndian.PutUint32(epochkey, newEpoch)
-			err = tx.Put(ValsetBucket, epochkey, newValset)
 			ews.logger.Warn().
 				Uint32("epoch", newEpoch).
 				Int("valset len", len(newValset)).
 				Msg("new epoch")
 
-			return WriteSnapshotPosition(tx, newEpoch, 8)
+			return tx.Put(ValsetBucket, epochkey, newValset)
 		})
 		if err != nil {
 			return nil, err
 		}
 
-		err = ews.InitReader(ctx)
+		// Switch the reader in memory only. The snapshot position for the new
+		// epoch is committed by processBatch together with the first processed
+		// batch of that epoch; persisting it here would let a restart resume
+		// past tail batches of the finished epoch that were returned above but
+		// never committed. After such a restart the reader re-reads the
+		// end-of-epoch marker and rolls over again, so nothing is lost.
+		err = ews.openEpoch(ctx, newEpoch, eventStreamHeaderSize)
 		if err != nil {
 			return nil, err
 		}

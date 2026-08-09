@@ -395,7 +395,7 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 
 	logger.Debug().Int64("Next snapshot pos", batch.EndOffset).Msg("Write checkpoint")
 
-	err = WriteSnapshotPosition(rwtx, eventStream.currentEpoch, batch.EndOffset)
+	err = WriteSnapshotPosition(rwtx, batch.Epoch, batch.EndOffset)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to write snapshot pos")
 
@@ -448,7 +448,7 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 
 	HeadBlockNumber.WithLabelValues(vid, cid).Set(float64(blockNumber))
 	EventStreamPosition.
-		WithLabelValues(vid, cid, strconv.FormatUint(uint64(eventStream.currentEpoch), 10)).
+		WithLabelValues(vid, cid, strconv.FormatUint(uint64(batch.Epoch), 10)).
 		Set(float64(batch.EndOffset))
 	BlockExternalTxs.WithLabelValues(vid, cid).Observe(float64(len(extTxs)))
 	BlockInternalTxs.WithLabelValues(vid, cid).Observe(float64(len(batch.Transactions)))

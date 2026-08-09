@@ -46,6 +46,11 @@ type Batch[appTx AppTransaction[R], R Receipt] struct {
 	// CEXMarketTradeBatchRefs carries immutable compact trade-batch references.
 	// It is independent from order-book and Hyperliquid allMids references.
 	CEXMarketTradeBatchRefs []CEXMarketTradeBatchRef `cbor:"9,keyasint"`
+	// Epoch is the epoch of the stream file this batch was read from. The
+	// snapshot position committed after processing must be keyed by it, not by
+	// the reader's current epoch: by commit time the reader may already have
+	// rolled over to the next epoch file.
+	Epoch uint32 `cbor:"10,keyasint"`
 }
 
 type ExternalEntity interface {
