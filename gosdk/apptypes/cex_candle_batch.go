@@ -148,6 +148,10 @@ type CEXCandleBatchRef struct {
 	LastBarCloseMS  uint64          `json:"lastBarCloseMs"  cbor:"12,keyasint"`
 	EncodedBytes    uint32          `json:"encodedBytes"    cbor:"13,keyasint"`
 	PayloadSHA256   [32]byte        `json:"payloadSha256"   cbor:"14,keyasint"`
+	// BatchID is the immutable storage row identity in the producer store;
+	// consumers use it for the exact payload lookup and outbox acknowledgement,
+	// exactly like CEXMarketTradeBatchRef.BatchID.
+	BatchID uint64 `json:"batchId" cbor:"15,keyasint"`
 }
 
 // Validate rejects incomplete, unregistered, or out-of-contract candle batch
@@ -218,6 +222,10 @@ func (r CEXCandleBatchRef) Validate() error {
 
 	if r.GenerationID == 0 {
 		return fmt.Errorf("%w: generation_id is zero", ErrCEXCandleBatchRefInvalid)
+	}
+
+	if r.BatchID == 0 {
+		return fmt.Errorf("%w: batch_id is zero", ErrCEXCandleBatchRefInvalid)
 	}
 
 	if r.BatchCount == 0 {

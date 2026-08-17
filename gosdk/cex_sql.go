@@ -31,6 +31,8 @@ const (
 	ErrCEXOrderBookNotFound        sdkerrors.SDKError = "cex order book not found"
 	ErrCEXMarketTradeBatchNotFound sdkerrors.SDKError = "cex market trade batch not found"
 	ErrCEXMarketTradeBatchInvalid  sdkerrors.SDKError = "invalid cex market trade batch"
+	ErrCEXCandleBatchNotFound      sdkerrors.SDKError = "cex candle batch not found"
+	ErrCEXCandleBatchInvalid       sdkerrors.SDKError = "invalid cex candle batch"
 )
 
 // CEXOrderBookReadDiagnostic captures one exact-order-book read attempt.
@@ -249,6 +251,66 @@ func (c *CEXDataAccessSQL) ReadCEXMarketTradeBatch(
 	}
 
 	return trades, nil
+}
+
+
+// ReadCEXCandleBatch performs one exact primary-key lookup and returns a
+// fully validated immutable candle payload. Any mismatch returns no bars.
+func (c *CEXDataAccessSQL) ReadCEXCandleBatch(
+	ctx context.Context,
+	ref apptypes.CEXCandleBatchRef,
+) ([]apptypes.CEXCandleBar, error) {
+	if c == nil || c.reader == nil {
+		return nil, errCEXSQLiteReaderNotInit
+	}
+
+	if err := ref.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: ref: %w", ErrCEXCandleBatchInvalid, err)
+	}
+
+	row, err := c.reader.readCEXCandleBatchRow(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+
+	metadataMatches := row.exchangeID == ref.ExchangeID &&
+		row.marketTypeID == ref.MarketTypeID &&
+		row.symbolID == ref.SymbolID &&
+		row.timeframeMS == ref.TimeframeMS &&
+		row.priceSource == ref.PriceSource &&
+		row.policy == ref.Policy &&
+		row.generationID == ref.GenerationID &&
+		row.batchIndex == ref.BatchIndex &&
+		row.batchCount == ref.BatchCount &&
+		row.barCount == ref.BarCount &&
+		row.firstBarStartMS == ref.FirstBarStartMS &&
+		row.lastBarCloseMS == ref.LastBarCloseMS &&
+		row.encodedBytes == ref.EncodedBytes &&
+		row.digest == ref.PayloadSHA256
+	if !metadataMatches {
+		return nil, fmt.Errorf("%w: row metadata mismatch", ErrCEXCandleBatchInvalid)
+	}
+
+	if uint64(len(row.payload)) != uint64(ref.EncodedBytes) {
+		return nil, fmt.Errorf("%w: row byte length mismatch", ErrCEXCandleBatchInvalid)
+	}
+
+	if sha256.Sum256(row.payload) != ref.PayloadSHA256 {
+		return nil, fmt.Errorf("%w: row digest mismatch", ErrCEXCandleBatchInvalid)
+	}
+
+	bars, err := DecodeCEXCandleBars(row.payload, ref.TimeframeMS)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrCEXCandleBatchInvalid, err)
+	}
+
+	if uint32(len(bars)) != ref.BarCount ||
+		bars[0].BarStartMS != ref.FirstBarStartMS ||
+		bars[len(bars)-1].BarCloseMS != ref.LastBarCloseMS {
+		return nil, fmt.Errorf("%w: decoded range mismatch", ErrCEXCandleBatchInvalid)
+	}
+
+	return bars, nil
 }
 
 // Close closes the underlying SQLite database.

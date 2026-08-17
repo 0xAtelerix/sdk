@@ -53,6 +53,13 @@ SELECT exchange_id, market_type_id, symbol_id, first_source_time_ms,
 FROM cex_market_trade_batches_v1
 WHERE id = ?
 LIMIT 1`
+	cexCandleBatchExactReadQuery = `
+SELECT exchange_id, market_type_id, symbol_id, timeframe_ms, price_source,
+       policy, generation_id, batch_index, batch_count, bar_count,
+       first_bar_start_ms, last_bar_close_ms, encoded_bytes, payload_sha256, payload
+FROM cex_candle_batches_v1
+WHERE id = ?
+LIMIT 1`
 )
 
 type cexOrderBookFastReader struct {
@@ -65,12 +72,15 @@ type cexOrderBookFastReader struct {
 	older      *zsqlite.Stmt
 	newer      *zsqlite.Stmt
 	trade      *zsqlite.Stmt
+	candle     *zsqlite.Stmt
 	idRegistry *apptypes.OrderBookIDRegistry
 
 	bidsBuf         []byte
 	asksBuf         []byte
-	tradeDigestBuf  []byte
-	tradePayloadBuf []byte
+	tradeDigestBuf   []byte
+	tradePayloadBuf  []byte
+	candleDigestBuf  []byte
+	candlePayloadBuf []byte
 }
 
 func openCEXOrderBookFastReader(
@@ -166,6 +176,7 @@ func (r *cexOrderBookFastReader) finalizePrepared() {
 		r.older,
 		r.newer,
 		r.trade,
+		r.candle,
 	} {
 		if stmt != nil {
 			_ = stmt.Finalize()
@@ -178,6 +189,7 @@ func (r *cexOrderBookFastReader) finalizePrepared() {
 	r.older = nil
 	r.newer = nil
 	r.trade = nil
+	r.candle = nil
 }
 
 type cexMarketTradeBatchRow struct {
@@ -282,6 +294,140 @@ func (r *cexOrderBookFastReader) readCEXMarketTradeBatchRow(
 			readSQLiteColumnBytes(r.trade, 8, &r.tradePayloadBuf)...),
 	}
 	if err := resetCEXOrderBookStmt(r.trade); err != nil {
+		return nil, err
+	}
+
+	return row, nil
+}
+
+
+type cexCandleBatchRow struct {
+	exchangeID      apptypes.CEXExchangeID
+	marketTypeID    apptypes.CEXMarketTypeID
+	symbolID        apptypes.CEXSymbolID
+	timeframeMS     uint64
+	priceSource     uint8
+	policy          uint8
+	generationID    uint64
+	batchIndex      uint32
+	batchCount      uint32
+	barCount        uint32
+	firstBarStartMS uint64
+	lastBarCloseMS  uint64
+	encodedBytes    uint32
+	digest          [32]byte
+	payload         []byte
+}
+
+//nolint:funlen,gocognit,cyclop // One exact read with exhaustive stored-range checks, mirroring the trade-batch reader.
+func (r *cexOrderBookFastReader) readCEXCandleBatchRow(
+	ctx context.Context,
+	ref apptypes.CEXCandleBatchRef,
+) (*cexCandleBatchRow, error) {
+	// SQLite stores signed integers. A reference outside that domain cannot
+	// identify a persisted row, and must not be narrowed before comparison.
+	if ref.BatchID > maxCEXMarketTradeBatchSQLiteInt ||
+		ref.GenerationID > maxCEXMarketTradeBatchSQLiteInt ||
+		ref.TimeframeMS > maxCEXMarketTradeBatchSQLiteInt ||
+		ref.FirstBarStartMS > maxCEXMarketTradeBatchSQLiteInt ||
+		ref.LastBarCloseMS > maxCEXMarketTradeBatchSQLiteInt {
+		return nil, fmt.Errorf(
+			"%w: ref exceeds SQLite integer range",
+			ErrCEXCandleBatchInvalid,
+		)
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.candle == nil {
+		stmt, err := r.conn.Prepare(cexCandleBatchExactReadQuery)
+		if err != nil {
+			return nil, fmt.Errorf("prepare cex candle batch read: %w", err)
+		}
+
+		r.candle = stmt
+	}
+
+	oldDone := r.conn.SetInterrupt(ctx.Done())
+	defer r.conn.SetInterrupt(oldDone)
+
+	r.candle.BindInt64(1, int64(ref.BatchID))
+
+	hasRow, err := r.candle.Step()
+	if err != nil {
+		_ = resetCEXOrderBookStmt(r.candle)
+
+		return nil, err
+	}
+
+	if !hasRow {
+		if err := resetCEXOrderBookStmt(r.candle); err != nil {
+			return nil, err
+		}
+
+		return nil, ErrCEXCandleBatchNotFound
+	}
+
+	digestRaw := readSQLiteColumnBytes(r.candle, 13, &r.candleDigestBuf)
+	if len(digestRaw) != 32 {
+		_ = resetCEXOrderBookStmt(r.candle)
+
+		return nil, fmt.Errorf("%w: stored digest length", ErrCEXCandleBatchInvalid)
+	}
+
+	var digest [32]byte
+	copy(digest[:], digestRaw)
+
+	exchangeID := r.candle.ColumnInt64(0)
+	marketTypeID := r.candle.ColumnInt64(1)
+	symbolID := r.candle.ColumnInt64(2)
+	timeframeMS := r.candle.ColumnInt64(3)
+	priceSource := r.candle.ColumnInt64(4)
+	policy := r.candle.ColumnInt64(5)
+	generationID := r.candle.ColumnInt64(6)
+	batchIndex := r.candle.ColumnInt64(7)
+	batchCount := r.candle.ColumnInt64(8)
+	barCount := r.candle.ColumnInt64(9)
+	firstBarStartMS := r.candle.ColumnInt64(10)
+	lastBarCloseMS := r.candle.ColumnInt64(11)
+	encodedBytes := r.candle.ColumnInt64(12)
+
+	if exchangeID <= 0 || exchangeID > maxCEXMarketTradeBatchExchange ||
+		marketTypeID <= 0 || marketTypeID > maxCEXMarketTradeBatchMarket ||
+		symbolID <= 0 || symbolID > maxCEXMarketTradeBatchSymbol ||
+		timeframeMS <= 0 || priceSource <= 0 || priceSource > maxCEXMarketTradeBatchMarket ||
+		policy <= 0 || policy > maxCEXMarketTradeBatchMarket ||
+		generationID <= 0 || batchIndex < 0 || batchCount <= 0 ||
+		batchIndex >= batchCount || batchCount > maxCEXMarketTradeBatchCount ||
+		barCount <= 0 || barCount > maxCEXMarketTradeBatchCount ||
+		firstBarStartMS <= 0 || lastBarCloseMS <= firstBarStartMS ||
+		encodedBytes <= 0 || encodedBytes > maxCEXMarketTradeBatchCount {
+		_ = resetCEXOrderBookStmt(r.candle)
+
+		return nil, fmt.Errorf("%w: stored metadata range", ErrCEXCandleBatchInvalid)
+	}
+
+	row := &cexCandleBatchRow{
+		exchangeID:      apptypes.CEXExchangeID(exchangeID),
+		marketTypeID:    apptypes.CEXMarketTypeID(marketTypeID),
+		symbolID:        apptypes.CEXSymbolID(symbolID),
+		timeframeMS:     uint64(timeframeMS),
+		priceSource:     uint8(priceSource),
+		policy:          uint8(policy),
+		generationID:    uint64(generationID),
+		batchIndex:      uint32(batchIndex),
+		batchCount:      uint32(batchCount),
+		barCount:        uint32(barCount),
+		firstBarStartMS: uint64(firstBarStartMS),
+		lastBarCloseMS:  uint64(lastBarCloseMS),
+		encodedBytes:    uint32(encodedBytes),
+		digest:          digest,
+		payload: append(
+			[]byte(nil),
+			readSQLiteColumnBytes(r.candle, 14, &r.candlePayloadBuf)...),
+	}
+	if err := resetCEXOrderBookStmt(r.candle); err != nil {
 		return nil, err
 	}
 
