@@ -230,6 +230,9 @@ func TestCandleRefReportingHelpers(t *testing.T) {
 
 	unregistered := first
 	unregistered.SymbolID = 4_000_000_000
-	_, _, symbol, _ = CEXCandleRefLabels(unregistered)
+	exchange, marketType, symbol, timeframe = CEXCandleRefLabels(unregistered)
+	require.Equal(t, "binance", exchange)
+	require.Equal(t, "perp", marketType)
 	require.Equal(t, "4000000000", symbol)
+	require.Equal(t, "900000", timeframe)
 }

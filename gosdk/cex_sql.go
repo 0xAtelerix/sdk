@@ -253,7 +253,6 @@ func (c *CEXDataAccessSQL) ReadCEXMarketTradeBatch(
 	return trades, nil
 }
 
-
 // ReadCEXCandleBatch performs one exact primary-key lookup and returns a
 // fully validated immutable candle payload. Any mismatch returns no bars.
 func (c *CEXDataAccessSQL) ReadCEXCandleBatch(

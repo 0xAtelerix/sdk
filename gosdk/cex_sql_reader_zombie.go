@@ -75,8 +75,8 @@ type cexOrderBookFastReader struct {
 	candle     *zsqlite.Stmt
 	idRegistry *apptypes.OrderBookIDRegistry
 
-	bidsBuf         []byte
-	asksBuf         []byte
+	bidsBuf          []byte
+	asksBuf          []byte
 	tradeDigestBuf   []byte
 	tradePayloadBuf  []byte
 	candleDigestBuf  []byte
@@ -299,7 +299,6 @@ func (r *cexOrderBookFastReader) readCEXMarketTradeBatchRow(
 
 	return row, nil
 }
-
 
 type cexCandleBatchRow struct {
 	exchangeID      apptypes.CEXExchangeID

@@ -41,10 +41,9 @@ type cexCandleBatchReaderFixture struct {
 	ref     apptypes.CEXCandleBatchRef
 }
 
-func newCEXCandleBatchReaderFixture(t *testing.T) cexCandleBatchReaderFixture {
+func newCEXCandleBatchReaderFixture(ctx context.Context, t *testing.T) cexCandleBatchReaderFixture {
 	t.Helper()
 
-	ctx := t.Context()
 	dbPath := filepath.Join(t.TempDir(), "cex.sqlite")
 
 	db, err := openSQLite(ctx, dbPath, "rwc")
@@ -123,7 +122,7 @@ func TestReadCEXCandleBatchReturnsValidatedPayload(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	fixture := newCEXCandleBatchReaderFixture(t)
+	fixture := newCEXCandleBatchReaderFixture(ctx, t)
 
 	accessor, err := NewCEXDataAccessSQL(ctx, fixture.dbPath)
 	require.NoError(t, err)
@@ -143,7 +142,7 @@ func TestReadCEXCandleBatchRejectsMismatches(t *testing.T) {
 	t.Run("missing row", func(t *testing.T) {
 		t.Parallel()
 
-		fixture := newCEXCandleBatchReaderFixture(t)
+		fixture := newCEXCandleBatchReaderFixture(ctx, t)
 		fixture.ref.BatchID = 99
 
 		accessor, err := NewCEXDataAccessSQL(ctx, fixture.dbPath)
@@ -158,7 +157,7 @@ func TestReadCEXCandleBatchRejectsMismatches(t *testing.T) {
 	t.Run("ref metadata drift", func(t *testing.T) {
 		t.Parallel()
 
-		fixture := newCEXCandleBatchReaderFixture(t)
+		fixture := newCEXCandleBatchReaderFixture(ctx, t)
 		fixture.ref.GenerationID++
 
 		accessor, err := NewCEXDataAccessSQL(ctx, fixture.dbPath)
@@ -173,7 +172,7 @@ func TestReadCEXCandleBatchRejectsMismatches(t *testing.T) {
 	t.Run("tampered payload", func(t *testing.T) {
 		t.Parallel()
 
-		fixture := newCEXCandleBatchReaderFixture(t)
+		fixture := newCEXCandleBatchReaderFixture(ctx, t)
 
 		db, err := openSQLite(ctx, fixture.dbPath, "rw")
 		require.NoError(t, err)
