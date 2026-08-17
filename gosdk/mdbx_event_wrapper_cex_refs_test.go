@@ -37,6 +37,13 @@ func TestGetNewBatchesCarriesEveryPublicDataRefKind(t *testing.T) {
 		CEXMarketTradeBatchRefs: []apptypes.CEXMarketTradeBatchRef{
 			{ExchangeID: 1, MarketTypeID: 2, SymbolID: 7, BatchID: 1, TradeCount: 3},
 		},
+		CEXCandleBatchRefs: []apptypes.CEXCandleBatchRef{
+			{
+				ExchangeID: 1, MarketTypeID: 2, SymbolID: 7,
+				TimeframeMS: 14_400_000, GenerationID: 5, BatchIndex: 0, BatchCount: 1,
+				BarCount: 3, BatchID: 1,
+			},
+		},
 	}
 
 	appendCEXRefTestEvents(t, path, [32]byte{31: 1}, event)
@@ -56,6 +63,13 @@ func TestGetNewBatchesCarriesEveryPublicDataRefKind(t *testing.T) {
 		"the event carried a trade batch reference and the batch arrived without it",
 	)
 	require.Equal(t, uint64(1), batches[0].CEXMarketTradeBatchRefs[0].BatchID)
+	require.Len(
+		t,
+		batches[0].CEXCandleBatchRefs,
+		1,
+		"the event carried a candle batch reference and the batch arrived without it",
+	)
+	require.Equal(t, uint64(1), batches[0].CEXCandleBatchRefs[0].BatchID)
 }
 
 // Accumulators were reset with [:0], which keeps the backing array a batch
@@ -75,6 +89,9 @@ func TestGetNewBatchesDoesNotAliasRefsAcrossBatches(t *testing.T) {
 		CEXMarketTradeBatchRefs: []apptypes.CEXMarketTradeBatchRef{
 			{ExchangeID: 1, MarketTypeID: 2, SymbolID: 7, BatchID: 1},
 		},
+		CEXCandleBatchRefs: []apptypes.CEXCandleBatchRef{
+			{ExchangeID: 1, MarketTypeID: 2, SymbolID: 7, TimeframeMS: 14_400_000, BatchID: 1},
+		},
 	}
 	second := apptypes.Event{
 		Base: apptypes.BaseEvent{Epoch: cexRefTestEpoch, Creator: 1},
@@ -83,6 +100,9 @@ func TestGetNewBatchesDoesNotAliasRefsAcrossBatches(t *testing.T) {
 		},
 		CEXMarketTradeBatchRefs: []apptypes.CEXMarketTradeBatchRef{
 			{ExchangeID: 1, MarketTypeID: 2, SymbolID: 9, BatchID: 2},
+		},
+		CEXCandleBatchRefs: []apptypes.CEXCandleBatchRef{
+			{ExchangeID: 1, MarketTypeID: 2, SymbolID: 9, TimeframeMS: 14_400_000, BatchID: 2},
 		},
 	}
 
@@ -108,8 +128,15 @@ func TestGetNewBatchesDoesNotAliasRefsAcrossBatches(t *testing.T) {
 		batches[0].CEXMarketTradeBatchRefs[0].BatchID,
 		"the second batch overwrote the first batch's trade batch reference",
 	)
+	require.Equal(
+		t,
+		uint64(1),
+		batches[0].CEXCandleBatchRefs[0].BatchID,
+		"the second batch overwrote the first batch's candle batch reference",
+	)
 	require.Equal(t, apptypes.CEXSymbolID(9), batches[1].CEXOrderBookRefs[0].SymbolID)
 	require.Equal(t, uint64(2), batches[1].CEXMarketTradeBatchRefs[0].BatchID)
+	require.Equal(t, uint64(2), batches[1].CEXCandleBatchRefs[0].BatchID)
 }
 
 const cexRefTestEpoch = uint32(1)
