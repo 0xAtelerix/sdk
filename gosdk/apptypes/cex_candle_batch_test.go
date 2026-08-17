@@ -209,3 +209,27 @@ func TestBatchAndEventCarryCandleBatchRefs(t *testing.T) {
 	require.NoError(t, cbor.Unmarshal(encodedBatch, &decodedBatch))
 	require.Equal(t, []CEXCandleBatchRef{ref}, decodedBatch.CEXCandleBatchRefs)
 }
+
+func TestCandleRefReportingHelpers(t *testing.T) {
+	t.Parallel()
+
+	first := validCEXCandleBatchRef()
+
+	second := validCEXCandleBatchRef()
+	second.TimeframeMS = 3_600_000
+
+	rendered := FormatCEXCandleRefMarkets([]CEXCandleBatchRef{first, first, second})
+	require.Equal(t, "3/2/1@900000=2,3/2/1@3600000=1", rendered)
+	require.Empty(t, FormatCEXCandleRefMarkets(nil))
+
+	exchange, marketType, symbol, timeframe := CEXCandleRefLabels(first)
+	require.Equal(t, "binance", exchange)
+	require.Equal(t, "perp", marketType)
+	require.Equal(t, "BTCUSDT", symbol)
+	require.Equal(t, "900000", timeframe)
+
+	unregistered := first
+	unregistered.SymbolID = 4_000_000_000
+	_, _, symbol, _ = CEXCandleRefLabels(unregistered)
+	require.Equal(t, "4000000000", symbol)
+}
