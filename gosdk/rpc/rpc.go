@@ -19,10 +19,18 @@ import (
 // NewStandardRPCServer creates a new standard RPC server with optional CORS configuration.
 func NewStandardRPCServer(corsConfig *CORSConfig) *StandardRPCServer {
 	return &StandardRPCServer{
-		methods:     make(map[string]handler),
-		corsConfig:  corsConfig,
-		middlewares: make([]Middleware, 0),
+		methods:            make(map[string]handler),
+		corsConfig:         corsConfig,
+		middlewares:        make([]Middleware, 0),
+		longRunningMethods: make(map[string]struct{}),
 	}
+}
+
+// AddLongRunningMethod marks a method whose synchronous handler may outlive
+// the server's normal write deadline. Other RPCs retain the bounded default.
+func (s *StandardRPCServer) AddLongRunningMethod(method string, handler handler) {
+	s.AddMethod(method, handler)
+	s.longRunningMethods[method] = struct{}{}
 }
 
 // AddMethod allows adding custom RPC methods
@@ -98,6 +106,7 @@ func (s *StandardRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 
 			return
 		}
+		s.allowLongRunningResponse(w, singleReq.Method)
 		// Handle single request
 		response := s.executeRequest(r.Context(), singleReq)
 		// Process response middlewares - single response
@@ -116,6 +125,12 @@ func (s *StandardRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		}
 
 		return
+	}
+	for _, req := range batchReq {
+		if _, ok := s.longRunningMethods[req.Method]; ok {
+			s.allowLongRunningResponse(w, req.Method)
+			break
+		}
 	}
 
 	// Handle batch request
@@ -138,6 +153,15 @@ func (s *StandardRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewEncoder(w).Encode(responses); err != nil {
 		http.Error(w, "Failed to encode batch response", http.StatusInternalServerError)
+	}
+}
+
+func (s *StandardRPCServer) allowLongRunningResponse(w http.ResponseWriter, method string) {
+	if _, ok := s.longRunningMethods[method]; !ok {
+		return
+	}
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil {
+		s.logger.Warn().Err(err).Str("method", method).Msg("disable long-running RPC write deadline")
 	}
 }
 
