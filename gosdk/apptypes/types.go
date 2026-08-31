@@ -167,6 +167,18 @@ type TxPoolInterface[T AppTransaction[R], R Receipt] interface {
 	Close() error
 }
 
+// TxPoolArtifactStore is an optional extension implemented by transaction pools
+// that can admit a transaction and its opaque compiled artifact atomically.
+type TxPoolArtifactStore[T AppTransaction[R], R Receipt] interface {
+	AddTransactionWithArtifact(
+		ctx context.Context,
+		tx T,
+		artifactKey []byte,
+		artifact []byte,
+	) error
+	GetArtifact(ctx context.Context, artifactKey []byte) ([]byte, error)
+}
+
 // Checkpoint captures finalization of an appchain state transition.
 type Checkpoint struct {
 	ChainID                  uint64   `json:"chainId"                  cbor:"1,keyasint"`

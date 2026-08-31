@@ -3,6 +3,7 @@ package txpool
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 
 	"github.com/fxamacker/cbor/v2"
@@ -17,13 +18,78 @@ import (
 const (
 	txPoolBucket    = "txpool"
 	txBatchedBucket = "txBatched" // txHash -> batch_hash
+	artifactBucket  = "txArtifacts"
+)
+
+// ErrArtifactNotFound reports that no artifact exists for an opaque key.
+var ErrArtifactNotFound = errors.New("txpool artifact not found")
+
+var (
+	errArtifactKeyEmpty = errors.New("txpool artifact key is empty")
+	errArtifactEmpty    = errors.New("txpool artifact is empty")
 )
 
 func Tables() kv.TableCfg {
 	return kv.TableCfg{
 		txPoolBucket:    {},
 		txBatchedBucket: {},
+		artifactBucket:  {},
 	}
+}
+
+// AddTransactionWithArtifact atomically adds a transaction and an opaque
+// compiled artifact. The artifact key and value schema belong to the caller.
+func (p *TxPool[T, R]) AddTransactionWithArtifact(
+	ctx context.Context,
+	tx T,
+	artifactKey []byte,
+	artifact []byte,
+) error {
+	data, err := cbor.Marshal(tx)
+	if err != nil {
+		return err
+	}
+	if len(artifactKey) == 0 {
+		return errArtifactKeyEmpty
+	}
+	if len(artifact) == 0 {
+		return errArtifactEmpty
+	}
+
+	hash := tx.Hash()
+
+	return p.db.Update(ctx, func(txn kv.RwTx) error {
+		if err := txn.Put(artifactBucket, artifactKey, artifact); err != nil {
+			return fmt.Errorf("put txpool artifact: %w", err)
+		}
+		if err := txn.Put(txPoolBucket, hash[:], data); err != nil {
+			return fmt.Errorf("put txpool transaction: %w", err)
+		}
+
+		return nil
+	})
+}
+
+// GetArtifact returns an owned copy of opaque artifact bytes.
+func (p *TxPool[T, R]) GetArtifact(ctx context.Context, artifactKey []byte) ([]byte, error) {
+	var artifact []byte
+	err := p.db.View(ctx, func(txn kv.Tx) error {
+		stored, err := txn.GetOne(artifactBucket, artifactKey)
+		if err != nil {
+			return err
+		}
+		if len(stored) == 0 {
+			return ErrArtifactNotFound
+		}
+		artifact = append([]byte(nil), stored...)
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return artifact, nil
 }
 
 // TxPool - generic пул транзакций с MDBX-хранилищем

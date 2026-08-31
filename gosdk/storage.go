@@ -66,6 +66,17 @@ func (s *Storage[AppTx, R]) TxPool() apptypes.TxPoolInterface[AppTx, R] {
 	return s.txPool
 }
 
+// TxPoolArtifactStore exposes the optional narrow artifact API without
+// exposing the transaction-pool database.
+func (s *Storage[AppTx, R]) TxPoolArtifactStore() (
+	apptypes.TxPoolArtifactStore[AppTx, R],
+	bool,
+) {
+	store, ok := s.txPool.(apptypes.TxPoolArtifactStore[AppTx, R])
+
+	return store, ok
+}
+
 func (s *Storage[AppTx, R]) Multichain() MultichainStateAccessor {
 	return s.multichain
 }
