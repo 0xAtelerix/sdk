@@ -156,6 +156,8 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 	var cexMarketTradeBatchRefs []apptypes.CEXMarketTradeBatchRef
 
+	var cexCandleBatchRefs []apptypes.CEXCandleBatchRef
+
 	for _, eventBatch := range eventBatches {
 		ews.logger.Debug().
 			Str("atropos", hex.EncodeToString(eventBatch.Atropos[4:])).
@@ -311,6 +313,10 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 			cexMarketTradeBatchRefs = append(
 				cexMarketTradeBatchRefs,
 				evt.CEXMarketTradeBatchRefs...,
+			)
+			cexCandleBatchRefs = append(
+				cexCandleBatchRefs,
+				evt.CEXCandleBatchRefs...,
 			)
 		}
 
@@ -474,6 +480,13 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 				Msg("cex market trade refs emitted on batch")
 		}
 
+		if ews.logger != nil && len(cexCandleBatchRefs) > 0 {
+			ews.logger.Info().
+				Int("refs", len(cexCandleBatchRefs)).
+				Str("sources", apptypes.FormatCEXCandleRefMarkets(cexCandleBatchRefs)).
+				Msg("cex candle refs emitted on batch")
+		}
+
 		result = append(result, apptypes.Batch[appTx, R]{
 			Atropos:                 eventBatch.Atropos,
 			Transactions:            allParsedTxs,
@@ -483,6 +496,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 			CEXOrderBookRefs:        cexOrderBookRefs,
 			HyperliquidAllMidsRefs:  hyperliquidAllMidsRefs,
 			CEXMarketTradeBatchRefs: cexMarketTradeBatchRefs,
+			CEXCandleBatchRefs:      cexCandleBatchRefs,
 		})
 
 		// Reset for the next batch by dropping the slice, not by reslicing it to
@@ -492,6 +506,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 		cexOrderBookRefs = nil
 		hyperliquidAllMidsRefs = nil
 		cexMarketTradeBatchRefs = nil
+		cexCandleBatchRefs = nil
 	}
 
 	if newEpoch > 0 {

@@ -26,5 +26,18 @@ type CEXDataAccessor interface {
 	Close()
 }
 
-// Ensure SQL implementation satisfies the interface.
-var _ CEXDataAccessor = (*CEXDataAccessSQL)(nil)
+// CEXCandleDataAccessor is the additive venue-candle payload reader. It is a
+// separate interface so existing CEXDataAccessor implementations and fakes
+// stay valid; consumers that adopt candle batches require both.
+type CEXCandleDataAccessor interface {
+	ReadCEXCandleBatch(
+		ctx context.Context,
+		ref apptypes.CEXCandleBatchRef,
+	) ([]apptypes.CEXCandleBar, error)
+}
+
+// Ensure SQL implementation satisfies the interfaces.
+var (
+	_ CEXDataAccessor       = (*CEXDataAccessSQL)(nil)
+	_ CEXCandleDataAccessor = (*CEXDataAccessSQL)(nil)
+)

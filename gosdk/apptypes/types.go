@@ -46,6 +46,9 @@ type Batch[appTx AppTransaction[R], R Receipt] struct {
 	// CEXMarketTradeBatchRefs carries immutable compact trade-batch references.
 	// It is independent from order-book and Hyperliquid allMids references.
 	CEXMarketTradeBatchRefs []CEXMarketTradeBatchRef `cbor:"9,keyasint"`
+	// CEXCandleBatchRefs carries immutable venue-candle batch references
+	// (bootstrap and finalized continuation). Independent from trade batches.
+	CEXCandleBatchRefs []CEXCandleBatchRef `cbor:"10,keyasint"`
 }
 
 type ExternalEntity interface {
@@ -212,6 +215,8 @@ type Event struct {
 	HyperliquidAllMidsRefs []HyperliquidAllMidsRef `json:"hyperliquidAllMidsRefs" cbor:"9,keyasint"`
 
 	CEXMarketTradeBatchRefs []CEXMarketTradeBatchRef `json:"cexMarketTradeBatchRefs" cbor:"10,keyasint"`
+
+	CEXCandleBatchRefs []CEXCandleBatchRef `json:"cexCandleBatchRefs" cbor:"11,keyasint"`
 }
 
 func (e Event) Bytes() ([]byte, error) {
