@@ -11,7 +11,11 @@ import (
 )
 
 func TestAddTransactionAdmissionHookIsAdditive(t *testing.T) {
+	t.Parallel()
+
 	t.Run("existing-behaviour-unchanged", func(t *testing.T) {
+		t.Parallel()
+
 		pool := newArtifactTestPool(t)
 		ctx := context.Background()
 		tx := CustomTransaction[Receipt]{From: "alice", To: "bob", Value: 1}
@@ -27,6 +31,8 @@ func TestAddTransactionAdmissionHookIsAdditive(t *testing.T) {
 	})
 
 	t.Run("artifact-and-transaction-admitted-together", func(t *testing.T) {
+		t.Parallel()
+
 		pool := newArtifactTestPool(t)
 		ctx := context.Background()
 		tx := CustomTransaction[Receipt]{From: "alice", To: "bob", Value: 2}
@@ -38,6 +44,7 @@ func TestAddTransactionAdmissionHookIsAdditive(t *testing.T) {
 		storedTx, err := pool.GetTransaction(ctx, txHash[:])
 		require.NoError(t, err)
 		require.Equal(t, tx, storedTx)
+
 		storedArtifact, err := pool.GetArtifact(ctx, key)
 		require.NoError(t, err)
 		require.Equal(t, artifact, storedArtifact)
@@ -45,7 +52,11 @@ func TestAddTransactionAdmissionHookIsAdditive(t *testing.T) {
 }
 
 func TestArtifactSurvivesTransactionBatching(t *testing.T) {
+	t.Parallel()
+
 	t.Run("admission-batch-apply", func(t *testing.T) {
+		t.Parallel()
+
 		pool := newArtifactTestPool(t)
 		ctx := context.Background()
 		tx := CustomTransaction[Receipt]{From: "alice", To: "bob", Value: 3}
@@ -73,7 +84,10 @@ func newArtifactTestPool(t *testing.T) *TxPool[CustomTransaction[Receipt], Recei
 		WithTableCfg(func(_ kv.TableCfg) kv.TableCfg { return Tables() }).
 		Open()
 	require.NoError(t, err)
+
 	pool := NewTxPool[CustomTransaction[Receipt]](db)
+
 	t.Cleanup(func() { require.NoError(t, pool.Close()) })
+
 	return pool
 }

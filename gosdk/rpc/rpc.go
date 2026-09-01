@@ -106,6 +106,7 @@ func (s *StandardRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 
 			return
 		}
+
 		s.allowLongRunningResponse(w, singleReq.Method)
 		// Handle single request
 		response := s.executeRequest(r.Context(), singleReq)
@@ -126,9 +127,11 @@ func (s *StandardRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+
 	for _, req := range batchReq {
 		if _, ok := s.longRunningMethods[req.Method]; ok {
 			s.allowLongRunningResponse(w, req.Method)
+
 			break
 		}
 	}
@@ -160,8 +163,12 @@ func (s *StandardRPCServer) allowLongRunningResponse(w http.ResponseWriter, meth
 	if _, ok := s.longRunningMethods[method]; !ok {
 		return
 	}
+
 	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil {
-		s.logger.Warn().Err(err).Str("method", method).Msg("disable long-running RPC write deadline")
+		s.logger.Warn().
+			Err(err).
+			Str("method", method).
+			Msg("disable long-running RPC write deadline")
 	}
 }
 

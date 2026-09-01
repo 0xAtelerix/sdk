@@ -12,6 +12,7 @@ import (
 type deadlineRecorder struct {
 	header    http.Header
 	deadlines []time.Time
+	err       error
 }
 
 func (w *deadlineRecorder) Header() http.Header     { return w.header }
@@ -19,10 +20,13 @@ func (*deadlineRecorder) Write([]byte) (int, error) { return 0, nil }
 func (*deadlineRecorder) WriteHeader(int)           {}
 func (w *deadlineRecorder) SetWriteDeadline(v time.Time) error {
 	w.deadlines = append(w.deadlines, v)
-	return nil
+
+	return w.err
 }
 
 func TestLongRunningMethodDisablesOnlyItsWriteDeadline(t *testing.T) {
+	t.Parallel()
+
 	server := NewStandardRPCServer(nil)
 	handler := func(context.Context, []any) (any, error) { return "ok", nil }
 	server.AddLongRunningMethod("deployStrategy", handler)

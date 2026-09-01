@@ -49,9 +49,11 @@ func (p *TxPool[T, R]) AddTransactionWithArtifact(
 	if err != nil {
 		return err
 	}
+
 	if len(artifactKey) == 0 {
 		return errArtifactKeyEmpty
 	}
+
 	if len(artifact) == 0 {
 		return errArtifactEmpty
 	}
@@ -62,6 +64,7 @@ func (p *TxPool[T, R]) AddTransactionWithArtifact(
 		if err := txn.Put(artifactBucket, artifactKey, artifact); err != nil {
 			return fmt.Errorf("put txpool artifact: %w", err)
 		}
+
 		if err := txn.Put(txPoolBucket, hash[:], data); err != nil {
 			return fmt.Errorf("put txpool transaction: %w", err)
 		}
@@ -73,14 +76,17 @@ func (p *TxPool[T, R]) AddTransactionWithArtifact(
 // GetArtifact returns an owned copy of opaque artifact bytes.
 func (p *TxPool[T, R]) GetArtifact(ctx context.Context, artifactKey []byte) ([]byte, error) {
 	var artifact []byte
+
 	err := p.db.View(ctx, func(txn kv.Tx) error {
 		stored, err := txn.GetOne(artifactBucket, artifactKey)
 		if err != nil {
 			return err
 		}
+
 		if len(stored) == 0 {
 			return ErrArtifactNotFound
 		}
+
 		artifact = append([]byte(nil), stored...)
 
 		return nil
