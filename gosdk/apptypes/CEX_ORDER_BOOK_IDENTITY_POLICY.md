@@ -84,6 +84,17 @@ equities are therefore **included on spot** and **excluded on perp**.
 
 **Check after any refresh:** every Binance perp row is `PERPETUAL`.
 
+### Included, despite looking excludable: multiplier contracts
+
+`1000PEPE`, `1000SHIB`, `1000BONK`, `1MBABYDOGE` and similar are Binance contract
+multipliers, not tokens — one contract is 1000 PEPE. They **are** in scope: the
+registry already carried `1000CAT`, `1000CHEEMS`, `1000SATS` and `1MBABYDOGE` before
+any recent refresh, on both spot and perp.
+
+Do not filter them out for looking synthetic. Their base assets have no `cex.json`
+scale entry, but that is the general Binance scale gap, not a reason to withhold the
+identity.
+
 ### 5. Hyperliquid: skip `isDelisted`
 
 `meta` keeps delisted perps in the universe with `isDelisted` set. A shipped delisted
