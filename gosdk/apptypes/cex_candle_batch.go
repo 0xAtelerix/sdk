@@ -151,7 +151,7 @@ type CEXCandleBatchRef struct {
 	// BatchID is the immutable storage row identity in the producer store;
 	// consumers use it for the exact payload lookup and outbox acknowledgement,
 	// exactly like CEXMarketTradeBatchRef.BatchID.
-	BatchID uint64 `json:"batchId" cbor:"15,keyasint"`
+	BatchID uint64 `json:"batchId"         cbor:"15,keyasint"`
 }
 
 // Validate rejects incomplete, unregistered, or out-of-contract candle batch

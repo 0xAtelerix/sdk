@@ -45,10 +45,11 @@ type handler func(context.Context, []any) (any, error)
 
 // StandardRPCServer provides standard blockchain RPC methods
 type StandardRPCServer struct {
-	logger      *zerolog.Logger
-	methods     map[string]handler
-	corsConfig  *CORSConfig
-	middlewares []Middleware
+	logger             *zerolog.Logger
+	methods            map[string]handler
+	corsConfig         *CORSConfig
+	middlewares        []Middleware
+	longRunningMethods map[string]struct{}
 }
 
 type Middleware interface {

@@ -19,10 +19,18 @@ import (
 // NewStandardRPCServer creates a new standard RPC server with optional CORS configuration.
 func NewStandardRPCServer(corsConfig *CORSConfig) *StandardRPCServer {
 	return &StandardRPCServer{
-		methods:     make(map[string]handler),
-		corsConfig:  corsConfig,
-		middlewares: make([]Middleware, 0),
+		methods:            make(map[string]handler),
+		corsConfig:         corsConfig,
+		middlewares:        make([]Middleware, 0),
+		longRunningMethods: make(map[string]struct{}),
 	}
+}
+
+// AddLongRunningMethod marks a method whose synchronous handler may outlive
+// the server's normal write deadline. Other RPCs retain the bounded default.
+func (s *StandardRPCServer) AddLongRunningMethod(method string, handler handler) {
+	s.AddMethod(method, handler)
+	s.longRunningMethods[method] = struct{}{}
 }
 
 // AddMethod allows adding custom RPC methods
@@ -38,23 +46,31 @@ func (s *StandardRPCServer) AddMiddleware(middleware Middleware) {
 // StartHTTPServer starts the HTTP JSON-RPC server
 func (s *StandardRPCServer) StartHTTPServer(ctx context.Context, addr string) error {
 	s.logger = log.Ctx(ctx)
-	mux := http.NewServeMux()
-	mux.HandleFunc("/rpc", s.handleRPC)
-	mux.HandleFunc("/health", s.healthcheck)
-
 	s.logger.Info().Msgf("Starting Standard RPC server on %s", addr)
 	s.logger.Info().Msgf("Available methods: %d methods registered", len(s.methods))
 	s.logger.Info().Msgf("Health endpoint available at: %s/health", addr)
 
-	server := &http.Server{
-		Addr:         addr,
-		Handler:      mux,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
+	server := s.newHTTPServer(addr, 15*time.Second)
 
 	return server.ListenAndServe()
+}
+
+func (s *StandardRPCServer) newHTTPServer(addr string, writeTimeout time.Duration) *http.Server {
+	return &http.Server{
+		Addr:         addr,
+		Handler:      s.rpcHandler(),
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: writeTimeout,
+		IdleTimeout:  60 * time.Second,
+	}
+}
+
+func (s *StandardRPCServer) rpcHandler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/rpc", s.handleRPC)
+	mux.HandleFunc("/health", s.healthcheck)
+
+	return mux
 }
 
 // handleRPC handles incoming JSON-RPC requests
@@ -98,6 +114,12 @@ func (s *StandardRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 
 			return
 		}
+
+		if err := s.allowLongRunningResponse(w, singleReq.Method); err != nil {
+			s.writeError(w, -32603, "Long-running response deadline is unsupported")
+
+			return
+		}
 		// Handle single request
 		response := s.executeRequest(r.Context(), singleReq)
 		// Process response middlewares - single response
@@ -114,6 +136,19 @@ func (s *StandardRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			s.writeError(w, http.StatusInternalServerError, "Failed to encode response")
 		}
+
+		return
+	}
+
+	if method, ok := s.batchLongRunningMethod(batchReq); ok {
+		s.writeError(
+			w,
+			-32600,
+			fmt.Sprintf(
+				"Invalid Request - long-running method %q is not allowed in a batch",
+				method,
+			),
+		)
 
 		return
 	}
@@ -139,6 +174,33 @@ func (s *StandardRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(responses); err != nil {
 		http.Error(w, "Failed to encode batch response", http.StatusInternalServerError)
 	}
+}
+
+func (s *StandardRPCServer) batchLongRunningMethod(batchReq []JSONRPCRequest) (string, bool) {
+	for _, req := range batchReq {
+		if _, ok := s.longRunningMethods[req.Method]; ok {
+			return req.Method, true
+		}
+	}
+
+	return "", false
+}
+
+func (s *StandardRPCServer) allowLongRunningResponse(w http.ResponseWriter, method string) error {
+	if _, ok := s.longRunningMethods[method]; !ok {
+		return nil
+	}
+
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil {
+		s.logger.Warn().
+			Err(err).
+			Str("method", method).
+			Msg("disable long-running RPC write deadline")
+
+		return fmt.Errorf("disable long-running RPC write deadline for %s: %w", method, err)
+	}
+
+	return nil
 }
 
 // handleBatchRequest processes a batch of JSON-RPC requests
