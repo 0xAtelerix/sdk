@@ -56,9 +56,9 @@ Order in that list is load-bearing (longest-first), so it is not a free append.
 These would resolve and split fine. They are out of scope by decision, and adding
 them silently widens what the platform claims to support.
 
-### 3. Quote asset restricted to USDT and USDC
+### 3. Binance quote asset restricted to USDT and USDC
 
-Set by #56, *"add all binance + mexc USDT/USDC pairs"*. `BTC` and `ETH` quotes are
+Set by #56, *"add all binance + mexc USDT/USDC pairs"*. This is Binance/MEXC-scoped: Hyperliquid legitimately carries `USDT0`, `USDH` and `USDE` quotes. `BTC` and `ETH` quotes are
 splittable, so roughly 50 Binance cross pairs could be added — they are not, because
 settlement and PnL are denominated in stablecoin quotes.
 
@@ -105,6 +105,17 @@ Removal of an already-shipped delisted row is a separate question: symbol ids ar
 persisted, so deleting a row can orphan stored data. `VINEUSDC` is currently present
 and delisted for that reason.
 
+### 6. Binance: `status == TRADING` only
+
+`SETTLING` (perp) and `BREAK` (spot) are Binance's wind-down and halted states. A row
+in either is authorable but not tradeable — the same failure mode as a shipped
+delisted Hyperliquid perp.
+
+The shipped file currently carries **7 `SETTLING` perps** (`ACXUSDT HFTUSDT ICXUSDT
+SCRTUSDT STORJUSDT VANRYUSDT VICUSDT`) and **21 `BREAK` spots**. Those predate this
+policy and are not removed for the same persisted-id reason as `VINEUSDC`, but no
+refresh should add more.
+
 ## Structural rules for adding rows
 
 - **Additions only.** Symbol ids are persisted downstream. Never renumber. Verify
@@ -134,4 +145,7 @@ Assert all of these after generating, before opening a PR:
 3. No non-ASCII label or base asset
 4. Zero pre-existing rows mutated
 5. No duplicate `(exchange, market_type, label)` or `(exchange, market_type, symbol_id)`
-6. Every Hyperliquid row has a `venue_asset_ids` entry for its network
+6. Every **newly added** Hyperliquid row has a `venue_asset_ids` entry for its
+   network. This does **not** hold for the file as a whole: 14 of 518 Hyperliquid
+   rows have no mainnet id — the 12 fixtures listed in §5 plus spot `BTCUSDC` and
+   `SPXUSDC`, which are testnet-only. Assert it over the diff, not the file.
