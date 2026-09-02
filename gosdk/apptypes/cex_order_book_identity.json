@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 7,
   "exchanges": [
     {
       "id": 1,
@@ -35792,6 +35792,486 @@
       "base_asset": "ZYN",
       "quote_asset": "USDT",
       "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 2,
+      "symbol_id": 918,
+      "label": "1000000BOBUSDT",
+      "base_asset": "1000000BOB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 2,
+      "symbol_id": 919,
+      "label": "1000000MOGUSDT",
+      "base_asset": "1000000MOG",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 2,
+      "symbol_id": 920,
+      "label": "1000BONKUSDC",
+      "base_asset": "1000BONK",
+      "quote_asset": "USDC",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 2,
+      "symbol_id": 921,
+      "label": "1000BONKUSDT",
+      "base_asset": "1000BONK",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 2,
+      "symbol_id": 922,
+      "label": "1000FLOKIUSDT",
+      "base_asset": "1000FLOKI",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 2,
+      "symbol_id": 923,
+      "label": "1000LUNCUSDT",
+      "base_asset": "1000LUNC",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 2,
+      "symbol_id": 924,
+      "label": "1000PEPEUSDC",
+      "base_asset": "1000PEPE",
+      "quote_asset": "USDC",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 2,
+      "symbol_id": 925,
+      "label": "1000PEPEUSDT",
+      "base_asset": "1000PEPE",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 2,
+      "symbol_id": 926,
+      "label": "1000RATSUSDT",
+      "base_asset": "1000RATS",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 2,
+      "symbol_id": 927,
+      "label": "1000SHIBUSDC",
+      "base_asset": "1000SHIB",
+      "quote_asset": "USDC",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 2,
+      "symbol_id": 928,
+      "label": "1000SHIBUSDT",
+      "base_asset": "1000SHIB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 2,
+      "symbol_id": 929,
+      "label": "1000XECUSDT",
+      "base_asset": "1000XEC",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 2,
+      "symbol_id": 930,
+      "label": "BTCDOMUSDT",
+      "base_asset": "BTCDOM",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 2,
+      "symbol_id": 931,
+      "label": "DOSUSDT",
+      "base_asset": "DOS",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 2,
+      "symbol_id": 932,
+      "label": "GRVTUSDT",
+      "base_asset": "GRVT",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 2,
+      "symbol_id": 933,
+      "label": "MARSCOINUSDT",
+      "base_asset": "MARSCOIN",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 2,
+      "symbol_id": 934,
+      "label": "PHAROSUSDT",
+      "base_asset": "PHAROS",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 935,
+      "label": "AAPLBUSDT",
+      "base_asset": "AAPLB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 936,
+      "label": "ACEUSDC",
+      "base_asset": "ACE",
+      "quote_asset": "USDC",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 937,
+      "label": "ALABBUSDT",
+      "base_asset": "ALABB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 938,
+      "label": "AMATBUSDT",
+      "base_asset": "AMATB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 939,
+      "label": "AMZNBUSDT",
+      "base_asset": "AMZNB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 940,
+      "label": "ASMLBUSDT",
+      "base_asset": "ASMLB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 941,
+      "label": "ASTSBUSDT",
+      "base_asset": "ASTSB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 942,
+      "label": "BEBUSDT",
+      "base_asset": "BEB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 943,
+      "label": "BMNRBUSDT",
+      "base_asset": "BMNRB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 944,
+      "label": "COHRBUSDT",
+      "base_asset": "COHRB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 945,
+      "label": "CRDOBUSDT",
+      "base_asset": "CRDOB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 946,
+      "label": "DELLBUSDT",
+      "base_asset": "DELLB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 947,
+      "label": "DJTBUSDT",
+      "base_asset": "DJTB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 948,
+      "label": "FLNCBUSDT",
+      "base_asset": "FLNCB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 949,
+      "label": "GMEBUSDT",
+      "base_asset": "GMEB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 950,
+      "label": "GSBUSDT",
+      "base_asset": "GSB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 951,
+      "label": "IRENBUSDT",
+      "base_asset": "IRENB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 952,
+      "label": "NFLXBUSDT",
+      "base_asset": "NFLXB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 953,
+      "label": "PYPLBUSDT",
+      "base_asset": "PYPLB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 954,
+      "label": "SMCIBUSDT",
+      "base_asset": "SMCIB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 955,
+      "label": "SMHBUSDT",
+      "base_asset": "SMHB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 956,
+      "label": "SOXSBUSDT",
+      "base_asset": "SOXSB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 3,
+      "market_type_id": 1,
+      "symbol_id": 957,
+      "label": "USARBUSDT",
+      "base_asset": "USARB",
+      "quote_asset": "USDT",
+      "canonical": true
+    },
+    {
+      "exchange_id": 2,
+      "market_type_id": 2,
+      "symbol_id": 20232,
+      "label": "PONSUSDC",
+      "base_asset": "PONS",
+      "quote_asset": "USDC",
+      "canonical": true,
+      "venue_asset_ids": {
+        "mainnet": 232
+      }
+    },
+    {
+      "exchange_id": 2,
+      "market_type_id": 1,
+      "symbol_id": 20233,
+      "label": "AAPLXUSDC",
+      "base_asset": "AAPLX",
+      "quote_asset": "USDC",
+      "canonical": true,
+      "venue_asset_ids": {
+        "mainnet": 10713
+      }
+    },
+    {
+      "exchange_id": 2,
+      "market_type_id": 1,
+      "symbol_id": 20234,
+      "label": "AIW3USDC",
+      "base_asset": "AIW3",
+      "quote_asset": "USDC",
+      "canonical": true,
+      "venue_asset_ids": {
+        "mainnet": 10711
+      }
+    },
+    {
+      "exchange_id": 2,
+      "market_type_id": 1,
+      "symbol_id": 20235,
+      "label": "CRCLXUSDC",
+      "base_asset": "CRCLX",
+      "quote_asset": "USDC",
+      "canonical": true,
+      "venue_asset_ids": {
+        "mainnet": 10714
+      }
+    },
+    {
+      "exchange_id": 2,
+      "market_type_id": 1,
+      "symbol_id": 20236,
+      "label": "FXMRUSDC",
+      "base_asset": "FXMR",
+      "quote_asset": "USDC",
+      "canonical": true,
+      "venue_asset_ids": {
+        "mainnet": 10708
+      }
+    },
+    {
+      "exchange_id": 2,
+      "market_type_id": 1,
+      "symbol_id": 20237,
+      "label": "RAINUSDC",
+      "base_asset": "RAIN",
+      "quote_asset": "USDC",
+      "canonical": true,
+      "venue_asset_ids": {
+        "mainnet": 10716
+      }
+    },
+    {
+      "exchange_id": 2,
+      "market_type_id": 1,
+      "symbol_id": 20238,
+      "label": "SNDKXUSDC",
+      "base_asset": "SNDKX",
+      "quote_asset": "USDC",
+      "canonical": true,
+      "venue_asset_ids": {
+        "mainnet": 10709
+      }
+    },
+    {
+      "exchange_id": 2,
+      "market_type_id": 1,
+      "symbol_id": 20239,
+      "label": "SPCXXUSDC",
+      "base_asset": "SPCXX",
+      "quote_asset": "USDC",
+      "canonical": true,
+      "venue_asset_ids": {
+        "mainnet": 10710
+      }
+    },
+    {
+      "exchange_id": 2,
+      "market_type_id": 1,
+      "symbol_id": 20240,
+      "label": "TSLAXUSDC",
+      "base_asset": "TSLAX",
+      "quote_asset": "USDC",
+      "canonical": true,
+      "venue_asset_ids": {
+        "mainnet": 10712
+      }
+    },
+    {
+      "exchange_id": 2,
+      "market_type_id": 1,
+      "symbol_id": 20241,
+      "label": "XAUMUSDC",
+      "base_asset": "XAUM",
+      "quote_asset": "USDC",
+      "canonical": true,
+      "venue_asset_ids": {
+        "mainnet": 10715
+      }
     }
   ]
 }
