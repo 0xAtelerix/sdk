@@ -43,7 +43,15 @@ func (s *StandardRPCServer) AddMiddleware(middleware Middleware) {
 	s.middlewares = append(s.middlewares, middleware)
 }
 
-// StartHTTPServer starts the HTTP JSON-RPC server
+// rpcServerShutdownTimeout bounds how long StartHTTPServer drains in-flight
+// requests once its context is cancelled before the listener is torn down.
+const rpcServerShutdownTimeout = 5 * time.Second
+
+// StartHTTPServer starts the HTTP JSON-RPC server and serves until the server
+// fails or ctx is cancelled. On cancellation it stops accepting connections,
+// drains in-flight requests for up to rpcServerShutdownTimeout and returns nil,
+// so an owner that cancels its run context can join this call before closing
+// the dependencies the handlers use.
 func (s *StandardRPCServer) StartHTTPServer(ctx context.Context, addr string) error {
 	s.logger = log.Ctx(ctx)
 	s.logger.Info().Msgf("Starting Standard RPC server on %s", addr)
@@ -52,7 +60,39 @@ func (s *StandardRPCServer) StartHTTPServer(ctx context.Context, addr string) er
 
 	server := s.newHTTPServer(addr, 15*time.Second)
 
-	return server.ListenAndServe()
+	serveErr := make(chan error, 1)
+
+	go func() {
+		serveErr <- server.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serveErr:
+		return err
+	case <-ctx.Done():
+	}
+
+	s.logger.Info().Msg("Standard RPC server context cancelled, shutting down")
+
+	shutdownCtx, cancel := context.WithTimeout(
+		context.WithoutCancel(ctx),
+		rpcServerShutdownTimeout,
+	)
+	defer cancel()
+
+	shutdownErr := server.Shutdown(shutdownCtx)
+
+	// ListenAndServe returns http.ErrServerClosed once Shutdown has closed the
+	// listener; wait for it so no serve goroutine outlives this call.
+	if err := <-serveErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+
+	if shutdownErr != nil {
+		return fmt.Errorf("rpc server shutdown: %w", shutdownErr)
+	}
+
+	return nil
 }
 
 func (s *StandardRPCServer) newHTTPServer(addr string, writeTimeout time.Duration) *http.Server {
