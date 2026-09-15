@@ -105,6 +105,21 @@ Removal of an already-shipped delisted row is a separate question: symbol ids ar
 persisted, so deleting a row can orphan stored data. `VINEUSDC` is currently present
 and delisted for that reason.
 
+### Included: Hyperliquid HIP-3 builder-DEX perps (`xyz`)
+
+Builder-deployed perps are rows under exchange `hyperliquid`, market type `perp`.
+
+- **Label is dex-prefixed and colon-free**: venue coin `xyz:TSLA` → label
+  `XYZTSLAUSDC`, base `XYZTSLA`. The venue coin cannot be a label base (consumer
+  token symbols are letters and digits only), and a bare `TSLA` collides with the
+  Hyperliquid spot token and other venues' assets.
+- **`venue_asset_ids` follow the HIP-3 schema** `100000 + perp_dex_index*10000 +
+  index`, per network: xyz is dex 1 on mainnet (`110000+i`) and dex 65 on testnet
+  (`750000+i`).
+- Only USDC-collateral DEXs, `isDelisted` skipped as in §5.
+- Generated, not hand-written: `smart_example/scripts/hyperliquid/hip3_markets.py
+  --dex <dex>` appends registry rows and tokenlist rows from live `perpDexs`/`meta`.
+
 ### 6. Binance: `status == TRADING` only
 
 `SETTLING` (perp) and `BREAK` (spot) are Binance's wind-down and halted states. A row

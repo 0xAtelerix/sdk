@@ -77,3 +77,40 @@ func TestResolveVenueAssetSymbolIDMapsHyperliquidAssetIDs(t *testing.T) {
 		t.Fatal("spot and perp must not share one venue asset id mapping")
 	}
 }
+
+// TestResolveVenueAssetSymbolIDMapsHyperliquidHIP3AssetIDs pins the builder-DEX
+// asset id schema, 100000 + perp_dex_index*10000 + index. xyz is dex 1 on mainnet
+// and dex 65 on testnet, so one market carries a different id per network.
+func TestResolveVenueAssetSymbolIDMapsHyperliquidHIP3AssetIDs(t *testing.T) {
+	t.Parallel()
+
+	registry := DefaultOrderBookIDRegistry
+
+	symbolID, err := registry.ResolveSymbolID(CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "XYZTSLAUSDC")
+	if err != nil {
+		t.Fatalf("resolve XYZTSLAUSDC: %v", err)
+	}
+
+	for network, venueAssetID := range map[string]uint32{"mainnet": 110001, "testnet": 750001} {
+		got, resolveErr := registry.ResolveVenueAssetSymbolID(
+			CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, network, venueAssetID,
+		)
+		if resolveErr != nil {
+			t.Fatalf("resolve %s asset %d: %v", network, venueAssetID, resolveErr)
+		}
+
+		if got != symbolID {
+			t.Fatalf("%s asset %d resolved to %d, want XYZTSLAUSDC %d", network, venueAssetID, got, symbolID)
+		}
+	}
+
+	base, quote, ok := registry.SymbolAssets(CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, symbolID)
+	if !ok || base != "XYZTSLA" || quote != "USDC" {
+		t.Fatalf("XYZTSLAUSDC assets = %q/%q ok=%v, want XYZTSLA/USDC", base, quote, ok)
+	}
+
+	// The dex prefix keeps the builder market apart from the Hyperliquid spot TSLA token.
+	if _, err = registry.ResolveSymbolID(CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "TSLAUSDC"); err == nil {
+		t.Fatal("a bare TSLAUSDC perp must not exist; xyz markets are dex-prefixed")
+	}
+}
