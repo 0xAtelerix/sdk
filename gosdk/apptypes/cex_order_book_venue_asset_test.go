@@ -86,7 +86,9 @@ func TestResolveVenueAssetSymbolIDMapsHyperliquidHIP3AssetIDs(t *testing.T) {
 
 	registry := DefaultOrderBookIDRegistry
 
-	symbolID, err := registry.ResolveSymbolID(CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "XYZTSLAUSDC")
+	symbolID, err := registry.ResolveSymbolID(
+		CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "XYZTSLAUSDC",
+	)
 	if err != nil {
 		t.Fatalf("resolve XYZTSLAUSDC: %v", err)
 	}
@@ -100,17 +102,30 @@ func TestResolveVenueAssetSymbolIDMapsHyperliquidHIP3AssetIDs(t *testing.T) {
 		}
 
 		if got != symbolID {
-			t.Fatalf("%s asset %d resolved to %d, want XYZTSLAUSDC %d", network, venueAssetID, got, symbolID)
+			t.Fatalf(
+				"%s asset %d resolved to %d, want XYZTSLAUSDC %d",
+				network,
+				venueAssetID,
+				got,
+				symbolID,
+			)
 		}
 	}
 
-	base, quote, ok := registry.SymbolAssets(CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, symbolID)
+	base, quote, ok := registry.SymbolAssets(
+		CEXExchangeIDHyperliquid,
+		CEXMarketTypeIDPerp,
+		symbolID,
+	)
 	if !ok || base != "XYZTSLA" || quote != "USDC" {
 		t.Fatalf("XYZTSLAUSDC assets = %q/%q ok=%v, want XYZTSLA/USDC", base, quote, ok)
 	}
 
 	// The dex prefix keeps the builder market apart from the Hyperliquid spot TSLA token.
-	if _, err = registry.ResolveSymbolID(CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "TSLAUSDC"); err == nil {
+	_, err = registry.ResolveSymbolID(
+		CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "TSLAUSDC",
+	)
+	if err == nil {
 		t.Fatal("a bare TSLAUSDC perp must not exist; xyz markets are dex-prefixed")
 	}
 }
