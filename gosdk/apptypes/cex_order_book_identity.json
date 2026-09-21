@@ -1,5 +1,5 @@
 {
-  "version": 8,
+  "version": 9,
   "exchanges": [
     {
       "id": 1,
@@ -12,6 +12,10 @@
     {
       "id": 3,
       "label": "binance"
+    },
+    {
+      "id": 4,
+      "label": "gmx"
     }
   ],
   "market_types": [
@@ -37568,6 +37572,15 @@
       "venue_asset_ids": {
         "testnet": 750050
       }
+    },
+    {
+      "exchange_id": 4,
+      "market_type_id": 2,
+      "symbol_id": 1,
+      "label": "ETHUSDC",
+      "base_asset": "ETH",
+      "quote_asset": "USDC",
+      "canonical": true
     }
   ]
 }
