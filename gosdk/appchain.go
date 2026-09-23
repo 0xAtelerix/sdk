@@ -287,47 +287,63 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 	vid, cid string,
 ) error {
 	logger := log.Ctx(ctx)
+	ledger := newBlockPhaseLedger(vid, cid)
 
 	batchProcessor, prepareErr := a.prepareBatchProcessor(ctx, batch)
 	if prepareErr != nil {
+		ledger.abort(blockPhasePrepareProcessor)
 		logger.Error().Err(prepareErr).Msg("Failed to prepare batch processor")
 
 		return fmt.Errorf("failed to prepare batch processor: %w", prepareErr)
 	}
 
+	ledger.observe(blockPhasePrepareProcessor)
+
 	rwtx, err := a.storage.appchainDB.BeginRw(ctx)
 	if err != nil {
+		ledger.abort(blockPhaseBeginTx)
 		logger.Error().Err(err).Msg("Failed to begin write transaction")
 
 		return fmt.Errorf("failed to begin write tx: %w", err)
 	}
 	defer rwtx.Rollback()
 
+	ledger.observe(blockPhaseBeginTx)
+
 	// Process Batch
 	logger.Debug().Int("tx", len(batch.Transactions)).Msg("Process batch")
 
 	processedReceipts, extTxs, err := batchProcessor.ProcessBatch(ctx, batch, rwtx)
 	if err != nil {
+		ledger.abort(blockPhaseProcessBatch)
 		logger.Error().Err(err).Msg("Failed to process batch")
 
 		return fmt.Errorf("failed to process batch: %w", err)
 	}
 
+	ledger.observe(blockPhaseProcessBatch)
+
 	for _, processedReceipt := range processedReceipts {
 		if storeErr := receipt.StoreReceipt(rwtx, processedReceipt); storeErr != nil {
+			ledger.abort(blockPhaseStoreReceipts)
 			logger.Error().Err(storeErr).Msg("Failed to store receipt")
 
 			return fmt.Errorf("failed to store receipt: %w", storeErr)
 		}
 	}
 
+	ledger.observe(blockPhaseStoreReceipts)
+
 	// Calculate state root
 	stateRoot, err := a.rootCalculator.StateRootCalculator(rwtx)
 	if err != nil {
+		ledger.abort(blockPhaseStateRoot)
 		logger.Error().Err(err).Msg("Failed to calculate state root")
 
 		return fmt.Errorf("failed to calculate state root: %w", err)
 	}
+
+	ledger.observe(blockPhaseStateRoot)
 
 	// Build block
 	blockNumber := *previousBlockNumber + 1
@@ -338,12 +354,16 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 
 	blockBytes, marshalErr := cbor.Marshal(block)
 	if marshalErr != nil {
+		ledger.abort(blockPhaseBuildBlock)
 		logger.Error().Err(marshalErr).Msg("Failed to marshal block")
 
 		return fmt.Errorf("%w: %w", library.ErrBlockMarshalling, marshalErr)
 	}
 
+	ledger.observe(blockPhaseBuildBlock)
+
 	if err = WriteBlock(rwtx, blockNumber, blockBytes); err != nil {
+		ledger.abort(blockPhaseWriteBlock)
 		logger.Error().Err(err).Msg("Failed to write block")
 
 		return fmt.Errorf("%w: %w", library.ErrBlockWrite, err)
@@ -351,6 +371,7 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 
 	// Store transactions with relation to the block
 	if err = WriteBlockTransactions(rwtx, blockNumber, batch.Transactions); err != nil {
+		ledger.abort(blockPhaseWriteBlock)
 		logger.Error().Err(err).Msg("Failed to write block transactions")
 
 		return fmt.Errorf("%w: %w", library.ErrBlockTransactionsWrite, err)
@@ -360,6 +381,7 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 
 	externalTXRoot, err := WriteExternalTransactions(rwtx, blockNumber, extTxs)
 	if err != nil {
+		ledger.abort(blockPhaseWriteBlock)
 		logger.Error().Err(err).Msg("Failed to write external transactions")
 
 		return fmt.Errorf("failed to write external transactions: %w", err)
@@ -377,6 +399,7 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 
 	err = WriteCheckpoint(ctx, rwtx, checkpoint)
 	if err != nil {
+		ledger.abort(blockPhaseWriteBlock)
 		logger.Error().Err(err).Msg("Failed to write checkpoint")
 
 		return fmt.Errorf("failed to write checkpoint: %w", err)
@@ -388,6 +411,7 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 
 	err = WriteLastBlock(rwtx, blockNumber, blockHash)
 	if err != nil {
+		ledger.abort(blockPhaseWriteBlock)
 		logger.Error().Err(err).Msg("Failed to write last block")
 
 		return fmt.Errorf("failed to write last block: %w", err)
@@ -397,6 +421,7 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 
 	err = WriteSnapshotPosition(rwtx, eventStream.currentEpoch, batch.EndOffset)
 	if err != nil {
+		ledger.abort(blockPhaseWriteBlock)
 		logger.Error().Err(err).Msg("Failed to write snapshot pos")
 
 		return fmt.Errorf("failed to write snapshot pos: %w", err)
@@ -405,6 +430,7 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 	// Write voting
 	err = votingBlocks.StoreProgress(rwtx)
 	if err != nil {
+		ledger.abort(blockPhaseWriteBlock)
 		logger.Error().Err(err).Msg("Failed to store progress block")
 
 		return fmt.Errorf("failed to store progress block: %w", err)
@@ -412,17 +438,23 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 
 	err = votingCheckpoints.StoreProgress(rwtx)
 	if err != nil {
+		ledger.abort(blockPhaseWriteBlock)
 		logger.Error().Err(err).Msg("Failed to store progress checkpoint")
 
 		return fmt.Errorf("failed to store progress checkpoint: %w", err)
 	}
 
+	ledger.observe(blockPhaseWriteBlock)
+
 	err = rwtx.Commit()
 	if err != nil {
+		ledger.abort(blockPhaseCommit)
 		logger.Error().Err(err).Msg("Failed to commit")
 
 		return fmt.Errorf("failed to commit: %w", err)
 	}
+
+	ledger.observe(blockPhaseCommit)
 
 	if observer, ok := batchProcessor.(BatchCommitObserver); ok {
 		result := "success"
@@ -436,6 +468,8 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 
 		BatchCommitObserverCalls.WithLabelValues(vid, cid, result).Inc()
 	}
+
+	ledger.observe(blockPhaseAfterCommit)
 
 	logger.
 		Info().
@@ -456,6 +490,8 @@ func (a *Appchain[AppTx, BP, AppBlock, R]) processBatch(
 
 	*previousBlockNumber = blockNumber
 	*previousBlockHash = blockHash
+
+	ledger.observeTotal()
 
 	return nil
 }
