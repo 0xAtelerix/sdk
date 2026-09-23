@@ -33,6 +33,37 @@ var (
 		},
 		[]string{"validator_id", "chain_id"},
 	)
+	// BlockPhaseDuration splits one appchain block into phases. The phases
+	// prepare_processor, begin_tx, process_batch, store_receipts, state_root,
+	// build_block, write_block, commit and after_commit tile the block, and with
+	// unaccounted they add up to total. Its buckets resolve the 100-500ms region
+	// the default set collapses into two buckets.
+	BlockPhaseDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "appchain",
+			Subsystem: "run",
+			Name:      "block_phase_duration_seconds",
+			Help:      "Duration of each block-production phase; phases plus unaccounted sum to total",
+			Buckets: []float64{
+				.0001, .0002, .0004, .0008, .0016, .0032, .0064, .0128, .0256, .0512, .064,
+				.1, .128, .16, .18, .2, .22, .24, .256, .26, .28, .3, .32, .34, .36, .38, .4, .42, .44, .46, .48, .5,
+				.512, 1.024, 2.048, 4.096, 8.192, 16.384, 32.768, 52.4288,
+			},
+		},
+		[]string{"validator_id", "chain_id", "phase"},
+	)
+	// BlockAbortedTotal counts blocks whose production stopped, by the phase it
+	// stopped in. An aborted block publishes no duration at all, so this is the
+	// only positive signal that the node halted rather than idled.
+	BlockAbortedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "appchain",
+			Subsystem: "run",
+			Name:      "block_aborted_total",
+			Help:      "Blocks whose production aborted, labelled by the phase that failed",
+		},
+		[]string{"validator_id", "chain_id", "phase"},
+	)
 	BatchProcessingDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "appchain",
@@ -291,6 +322,8 @@ func init() {
 		ProcessedBlocks,
 		ProcessedTransactions,
 		BlockProcessingDuration,
+		BlockPhaseDuration,
+		BlockAbortedTotal,
 		BatchProcessingDuration,
 		BatchTransactions,
 		BatchExternalBlocks,
