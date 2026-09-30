@@ -506,7 +506,7 @@ func (r *OrderBookIDRegistry) ResolveSymbolID(
 	symbolID, ok := r.symbolByLookup[cexSymbolLookupKey{
 		exchangeID:   exchangeID,
 		marketTypeID: marketTypeID,
-		label:        label,
+		label:        normalizeCEXLabel(label),
 	}]
 	if !ok {
 		return 0, fmt.Errorf(
@@ -541,7 +541,7 @@ func (r *OrderBookIDRegistry) ResolveLegacySymbolID(
 
 	candidates := r.legacyCandidates[cexLegacySymbolKey{
 		exchangeID: exchangeID,
-		label:      label,
+		label:      normalizeCEXLabel(label),
 	}]
 	if len(candidates) == 0 {
 		return 0, fmt.Errorf(
@@ -612,7 +612,7 @@ func (r *OrderBookIDRegistry) SymbolAssets(
 
 	metadata, ok := r.metadataByLabel[cexLegacySymbolKey{
 		exchangeID: exchangeID,
-		label:      label,
+		label:      normalizeCEXLabel(label),
 	}]
 	if !ok || metadata.baseAsset == "" || metadata.quoteAsset == "" {
 		return "", "", false
@@ -645,7 +645,7 @@ func (r *OrderBookIDRegistry) SymbolCandidates(
 
 	candidates := r.legacyCandidates[cexLegacySymbolKey{
 		exchangeID: exchangeID,
-		label:      label,
+		label:      normalizeCEXLabel(label),
 	}]
 	if len(candidates) == 0 {
 		return nil
@@ -678,7 +678,7 @@ func addOrderBookSymbol(r *OrderBookIDRegistry, symbol OrderBookSymbolJSON) erro
 	lookupKey := cexSymbolLookupKey{
 		exchangeID:   symbol.ExchangeID,
 		marketTypeID: symbol.MarketTypeID,
-		label:        label,
+		label:        normalizeCEXLabel(label),
 	}
 	if _, exists := r.symbolByLookup[lookupKey]; exists {
 		return fmt.Errorf(
@@ -712,7 +712,7 @@ func addOrderBookSymbol(r *OrderBookIDRegistry, symbol OrderBookSymbolJSON) erro
 
 	legacyKey := cexLegacySymbolKey{
 		exchangeID: symbol.ExchangeID,
-		label:      label,
+		label:      normalizeCEXLabel(label),
 	}
 
 	metadata := cexSymbolMetadata{
