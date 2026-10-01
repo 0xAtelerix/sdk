@@ -522,7 +522,7 @@ func TestOrderBookIDRegistryCoversCompleteStudioMarketCatalogSnapshot(t *testing
 	require.Equal(t, 1985, counts[marketKey{CEXExchangeIDMEXC, CEXMarketTypeIDSpot}])
 	require.Equal(t, 333, counts[marketKey{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot}])
 	require.Equal(t, 290, counts[marketKey{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp}])
-	require.Equal(t, 1, counts[marketKey{CEXExchangeIDGMX, CEXMarketTypeIDPerp}])
+	require.Equal(t, 103, counts[marketKey{CEXExchangeIDGMX, CEXMarketTypeIDPerp}])
 
 	for _, tc := range []struct {
 		exchangeID   CEXExchangeID

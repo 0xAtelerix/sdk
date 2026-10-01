@@ -93,8 +93,10 @@ type DefaultOrderBookIDRegistryHandle uint8
 //
 // The registry is a deliberate subset of what the venues list, not a mirror of
 // them. Non-ASCII labels and quote assets outside canonicalQuoteSuffixes cannot
-// work downstream at all; TRADIFI_PERPETUAL, dated delivery contracts and non
-// USDT/USDC quotes are excluded by decision. See
+// work downstream at all. The Binance admission policy excludes its
+// TRADIFI_PERPETUAL and dated-delivery products; it is not a blanket exclusion
+// of another venue's supported index assets. A GMX USDC label is the stable
+// market identity, never proof of a USDC collateral pool or USD/USDC peg. See
 // CEX_ORDER_BOOK_IDENTITY_POLICY.md before adding rows.
 type OrderBookIdentityJSON struct {
 	Version     uint32                  `json:"version"`
