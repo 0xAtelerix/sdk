@@ -517,11 +517,11 @@ func TestOrderBookIDRegistryCoversCompleteStudioMarketCatalogSnapshot(t *testing
 		counts[marketKey{symbol.ExchangeID, symbol.MarketTypeID}]++
 	}
 
-	require.Equal(t, 771, counts[marketKey{CEXExchangeIDBinance, CEXMarketTypeIDSpot}])
-	require.Equal(t, 567, counts[marketKey{CEXExchangeIDBinance, CEXMarketTypeIDPerp}])
+	require.Equal(t, 799, counts[marketKey{CEXExchangeIDBinance, CEXMarketTypeIDSpot}])
+	require.Equal(t, 569, counts[marketKey{CEXExchangeIDBinance, CEXMarketTypeIDPerp}])
 	require.Equal(t, 1985, counts[marketKey{CEXExchangeIDMEXC, CEXMarketTypeIDSpot}])
-	require.Equal(t, 333, counts[marketKey{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot}])
-	require.Equal(t, 290, counts[marketKey{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp}])
+	require.Equal(t, 338, counts[marketKey{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot}])
+	require.Equal(t, 301, counts[marketKey{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp}])
 
 	for _, tc := range []struct {
 		exchangeID   CEXExchangeID
@@ -536,6 +536,12 @@ func TestOrderBookIDRegistryCoversCompleteStudioMarketCatalogSnapshot(t *testing
 		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "ATOMUSDC"},
 		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "POLUSDC"},
 		{CEXExchangeIDMEXC, CEXMarketTypeIDSpot, "ATOMUSDC"},
+		// 2026-10-13 refresh: one row from each added group.
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "XYZOURAUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "USELESSUSDC"},
+		{CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, "ZEC1USDC"},
+		{CEXExchangeIDBinance, CEXMarketTypeIDSpot, "JPMBUSDT"},
+		{CEXExchangeIDBinance, CEXMarketTypeIDPerp, "CTUSDT"},
 	} {
 		_, err := DefaultOrderBookIDRegistry.ResolveSymbolID(
 			tc.exchangeID,
