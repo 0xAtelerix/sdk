@@ -1,8 +1,10 @@
 package apptypes
 
 import (
+	"cmp"
 	"encoding/binary"
 	"hash/fnv"
+	"slices"
 )
 
 const (
@@ -96,4 +98,55 @@ func IsKnownOrDerivedSymbolID(
 	_, ok := registry.SymbolLabel(exchangeID, marketTypeID, symbolID)
 
 	return ok
+}
+
+// CEXSymbolEntry is one frozen v9 row of a market type on an exchange.
+type CEXSymbolEntry struct {
+	SymbolID   CEXSymbolID
+	Label      string
+	BaseAsset  string
+	QuoteAsset string
+	Canonical  bool
+}
+
+type cexMarketKey struct {
+	exchangeID   CEXExchangeID
+	marketTypeID CEXMarketTypeID
+}
+
+// Symbols returns the frozen rows of one market type on one exchange, sorted
+// by id. Markets added after v9 are not here; they reach appchains as facts.
+func (h DefaultOrderBookIDRegistryHandle) Symbols(
+	exchangeID CEXExchangeID,
+	marketTypeID CEXMarketTypeID,
+) []CEXSymbolEntry {
+	registry, err := h.registry()
+	if err != nil {
+		return nil
+	}
+
+	return registry.Symbols(exchangeID, marketTypeID)
+}
+
+// Symbols returns a copy of this table's rows for one market, sorted by id.
+func (r *OrderBookIDRegistry) Symbols(
+	exchangeID CEXExchangeID,
+	marketTypeID CEXMarketTypeID,
+) []CEXSymbolEntry {
+	if r == nil {
+		return nil
+	}
+
+	return slices.Clone(r.symbolsByMarket[cexMarketKey{
+		exchangeID:   exchangeID,
+		marketTypeID: marketTypeID,
+	}])
+}
+
+func sortCEXSymbolEntries(byMarket map[cexMarketKey][]CEXSymbolEntry) {
+	for _, entries := range byMarket {
+		slices.SortFunc(entries, func(a, b CEXSymbolEntry) int {
+			return cmp.Compare(a.SymbolID, b.SymbolID)
+		})
+	}
 }
