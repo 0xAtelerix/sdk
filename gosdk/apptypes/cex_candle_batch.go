@@ -186,11 +186,7 @@ func (r CEXCandleBatchRef) Validate() error {
 		return fmt.Errorf("%w: symbol_id is zero", ErrCEXCandleBatchRefInvalid)
 	}
 
-	if _, ok := DefaultOrderBookIDRegistry.SymbolLabel(
-		r.ExchangeID,
-		r.MarketTypeID,
-		r.SymbolID,
-	); !ok {
+	if !IsKnownOrDerivedSymbolID(r.ExchangeID, r.MarketTypeID, r.SymbolID) {
 		return fmt.Errorf(
 			"%w: unknown symbol identity=%d/%d/%d",
 			ErrCEXCandleBatchRefInvalid,

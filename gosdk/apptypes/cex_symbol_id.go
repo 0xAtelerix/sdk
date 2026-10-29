@@ -70,3 +70,30 @@ func derivedCEXSymbolID(exchangeID CEXExchangeID, label string) CEXSymbolID {
 
 	return CEXDerivedSymbolIDBase | CEXSymbolID(hasher.Sum64()&cexDerivedSymbolIDMask)
 }
+
+// IsKnownOrDerivedSymbolID is the stateless ref check: the exchange and market
+// type must be known, and the id must be frozen for that exchange and market
+// type or lie in the derived range. An appchain then resolves a derived id
+// against its stored facts and drops a ref with no facts or a collided id.
+func IsKnownOrDerivedSymbolID(
+	exchangeID CEXExchangeID,
+	marketTypeID CEXMarketTypeID,
+	symbolID CEXSymbolID,
+) bool {
+	registry := DefaultOrderBookIDRegistry
+	if _, ok := registry.ExchangeLabel(exchangeID); !ok {
+		return false
+	}
+
+	if _, ok := registry.MarketTypeLabel(marketTypeID); !ok {
+		return false
+	}
+
+	if symbolID >= CEXDerivedSymbolIDBase {
+		return true
+	}
+
+	_, ok := registry.SymbolLabel(exchangeID, marketTypeID, symbolID)
+
+	return ok
+}
