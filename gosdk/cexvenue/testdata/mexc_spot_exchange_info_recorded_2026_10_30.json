@@ -1,0 +1,384 @@
+{
+ "timezone": "CST",
+ "serverTime": 1793298875067,
+ "symbols": [
+  {
+   "symbol": "牛来USDT",
+   "status": "1",
+   "baseAsset": "牛来",
+   "baseAssetPrecision": 2,
+   "quoteAsset": "USDT",
+   "quotePrecision": 6,
+   "quoteAssetPrecision": 6,
+   "baseCommissionPrecision": 2,
+   "quoteCommissionPrecision": 6,
+   "orderTypes": [
+    "LIMIT",
+    "MARKET",
+    "LIMIT_MAKER"
+   ],
+   "isSpotTradingAllowed": true,
+   "isMarginTradingAllowed": false,
+   "quoteAmountPrecision": "1",
+   "baseSizePrecision": "0",
+   "permissions": [
+    "SPOT"
+   ],
+   "filters": [
+    {
+     "filterType": "PERCENT_PRICE_BY_SIDE",
+     "bidMultiplierUp": "0.2",
+     "askMultiplierDown": "0.2"
+    }
+   ],
+   "maxQuoteAmount": "2000000",
+   "makerCommission": "0",
+   "takerCommission": "0.0008",
+   "quoteAmountPrecisionMarket": "1",
+   "maxQuoteAmountMarket": "100000",
+   "fullName": "Bull Coming",
+   "tradeSideType": 1,
+   "contractAddress": "0xBEEA1D618e533a387D941F58a7d4c9b7bD377777",
+   "conceptPlateIds": [
+    51,
+    29,
+    94
+   ],
+   "firstOpenTime": 1786784400000,
+   "conceptPlates": [
+    "Innovation",
+    "MEME",
+    "Stock Meme Tokens"
+   ],
+   "st": false
+  },
+  {
+   "symbol": "GOLD(XAUT)EUR",
+   "status": "1",
+   "baseAsset": "GOLD(XAUT)",
+   "baseAssetPrecision": 5,
+   "quoteAsset": "EUR",
+   "quotePrecision": 1,
+   "quoteAssetPrecision": 1,
+   "baseCommissionPrecision": 5,
+   "quoteCommissionPrecision": 1,
+   "orderTypes": [
+    "LIMIT",
+    "MARKET",
+    "LIMIT_MAKER"
+   ],
+   "isSpotTradingAllowed": true,
+   "isMarginTradingAllowed": false,
+   "quoteAmountPrecision": "1",
+   "baseSizePrecision": "0",
+   "permissions": [
+    "SPOT"
+   ],
+   "filters": [
+    {
+     "filterType": "PERCENT_PRICE_BY_SIDE",
+     "bidMultiplierUp": "0.2",
+     "askMultiplierDown": "0.2"
+    }
+   ],
+   "maxQuoteAmount": "1000000",
+   "makerCommission": "0",
+   "takerCommission": "0",
+   "quoteAmountPrecisionMarket": "1",
+   "maxQuoteAmountMarket": "500000",
+   "fullName": "Tether Gold",
+   "tradeSideType": 1,
+   "contractAddress": "0x68749665FF8D2d112Fa859AA293F07A622782F38",
+   "conceptPlateIds": [
+    50
+   ],
+   "firstOpenTime": 1774440000000,
+   "conceptPlates": [
+    "Main"
+   ],
+   "st": false
+  },
+  {
+   "symbol": "PREDICTUSDC",
+   "status": "2",
+   "baseAsset": "PREDICT",
+   "baseAssetPrecision": 2,
+   "quoteAsset": "USDC",
+   "quotePrecision": 5,
+   "quoteAssetPrecision": 5,
+   "baseCommissionPrecision": 2,
+   "quoteCommissionPrecision": 5,
+   "orderTypes": [
+    "LIMIT",
+    "MARKET",
+    "LIMIT_MAKER"
+   ],
+   "isSpotTradingAllowed": false,
+   "isMarginTradingAllowed": false,
+   "quoteAmountPrecision": "1",
+   "baseSizePrecision": "0",
+   "permissions": [
+    "SPOT"
+   ],
+   "filters": [
+    {
+     "filterType": "PERCENT_PRICE_BY_SIDE",
+     "bidMultiplierUp": "0.2",
+     "askMultiplierDown": "0.2"
+    }
+   ],
+   "maxQuoteAmount": "2000000",
+   "makerCommission": "0",
+   "takerCommission": "0",
+   "quoteAmountPrecisionMarket": "1",
+   "maxQuoteAmountMarket": "100000",
+   "fullName": "Predict.fun",
+   "tradeSideType": 4,
+   "contractAddress": "0x8888cef3923385c7F90ADE66d09f41fB16668888",
+   "conceptPlateIds": [
+    51
+   ],
+   "conceptPlates": [
+    "Innovation"
+   ],
+   "st": false
+  },
+  {
+   "symbol": "VELODROMEUSDT",
+   "status": "2",
+   "baseAsset": "VELODROME",
+   "baseAssetPrecision": 2,
+   "quoteAsset": "USDT",
+   "quotePrecision": 5,
+   "quoteAssetPrecision": 5,
+   "baseCommissionPrecision": 2,
+   "quoteCommissionPrecision": 5,
+   "orderTypes": [
+    "LIMIT",
+    "MARKET",
+    "LIMIT_MAKER"
+   ],
+   "isSpotTradingAllowed": true,
+   "isMarginTradingAllowed": false,
+   "quoteAmountPrecision": "1",
+   "baseSizePrecision": "0",
+   "permissions": [
+    "SPOT"
+   ],
+   "filters": [
+    {
+     "filterType": "PERCENT_PRICE_BY_SIDE",
+     "bidMultiplierUp": "0.2",
+     "askMultiplierDown": "0.2"
+    }
+   ],
+   "maxQuoteAmount": "2000000",
+   "makerCommission": "0",
+   "takerCommission": "0.0008",
+   "quoteAmountPrecisionMarket": "1",
+   "maxQuoteAmountMarket": "200000",
+   "fullName": "Velodrome Finance",
+   "tradeSideType": 4,
+   "contractAddress": "0x9560e827aF36c94D2Ac33a39bCE1Fe78631088Db",
+   "conceptPlateIds": [
+    51
+   ],
+   "conceptPlates": [
+    "Innovation"
+   ],
+   "st": false
+  },
+  {
+   "symbol": "PREDICTUSDT",
+   "status": "2",
+   "baseAsset": "PREDICT",
+   "baseAssetPrecision": 2,
+   "quoteAsset": "USDT",
+   "quotePrecision": 5,
+   "quoteAssetPrecision": 5,
+   "baseCommissionPrecision": 2,
+   "quoteCommissionPrecision": 5,
+   "orderTypes": [
+    "LIMIT",
+    "MARKET",
+    "LIMIT_MAKER"
+   ],
+   "isSpotTradingAllowed": false,
+   "isMarginTradingAllowed": false,
+   "quoteAmountPrecision": "1",
+   "baseSizePrecision": "0",
+   "permissions": [
+    "SPOT"
+   ],
+   "filters": [
+    {
+     "filterType": "PERCENT_PRICE_BY_SIDE",
+     "bidMultiplierUp": "0.2",
+     "askMultiplierDown": "0.2"
+    }
+   ],
+   "maxQuoteAmount": "2000000",
+   "makerCommission": "0",
+   "takerCommission": "0.0008",
+   "quoteAmountPrecisionMarket": "1",
+   "maxQuoteAmountMarket": "100000",
+   "fullName": "Predict.fun",
+   "tradeSideType": 4,
+   "contractAddress": "0x8888cef3923385c7F90ADE66d09f41fB16668888",
+   "conceptPlateIds": [
+    51
+   ],
+   "conceptPlates": [
+    "Innovation"
+   ],
+   "st": false
+  },
+  {
+   "symbol": "VELODROMEUSDC",
+   "status": "2",
+   "baseAsset": "VELODROME",
+   "baseAssetPrecision": 2,
+   "quoteAsset": "USDC",
+   "quotePrecision": 5,
+   "quoteAssetPrecision": 5,
+   "baseCommissionPrecision": 2,
+   "quoteCommissionPrecision": 5,
+   "orderTypes": [
+    "LIMIT",
+    "MARKET",
+    "LIMIT_MAKER"
+   ],
+   "isSpotTradingAllowed": true,
+   "isMarginTradingAllowed": false,
+   "quoteAmountPrecision": "1",
+   "baseSizePrecision": "0",
+   "permissions": [
+    "SPOT"
+   ],
+   "filters": [
+    {
+     "filterType": "PERCENT_PRICE_BY_SIDE",
+     "bidMultiplierUp": "0.2",
+     "askMultiplierDown": "0.2"
+    }
+   ],
+   "maxQuoteAmount": "2000000",
+   "makerCommission": "0",
+   "takerCommission": "0",
+   "quoteAmountPrecisionMarket": "1",
+   "maxQuoteAmountMarket": "100000",
+   "fullName": "Velodrome Finance",
+   "tradeSideType": 4,
+   "contractAddress": "0x9560e827aF36c94D2Ac33a39bCE1Fe78631088Db",
+   "conceptPlateIds": [
+    51,
+    45
+   ],
+   "conceptPlates": [
+    "Innovation",
+    "0 Fees"
+   ],
+   "st": false
+  },
+  {
+   "symbol": "BTCUSDT",
+   "status": "1",
+   "baseAsset": "BTC",
+   "baseAssetPrecision": 8,
+   "quoteAsset": "USDT",
+   "quotePrecision": 2,
+   "quoteAssetPrecision": 2,
+   "baseCommissionPrecision": 8,
+   "quoteCommissionPrecision": 2,
+   "orderTypes": [
+    "LIMIT",
+    "MARKET",
+    "LIMIT_MAKER"
+   ],
+   "isSpotTradingAllowed": true,
+   "isMarginTradingAllowed": false,
+   "quoteAmountPrecision": "1",
+   "baseSizePrecision": "0.000001",
+   "permissions": [
+    "SPOT"
+   ],
+   "filters": [
+    {
+     "filterType": "PERCENT_PRICE_BY_SIDE",
+     "bidMultiplierUp": "0.005",
+     "askMultiplierDown": "0.005"
+    }
+   ],
+   "maxQuoteAmount": "4000000",
+   "makerCommission": "0",
+   "takerCommission": "0.0005",
+   "quoteAmountPrecisionMarket": "1",
+   "maxQuoteAmountMarket": "4000000",
+   "fullName": "Bitcoin",
+   "tradeSideType": 1,
+   "contractAddress": "",
+   "conceptPlateIds": [
+    50,
+    5,
+    39,
+    12
+   ],
+   "firstOpenTime": 1506787200000,
+   "conceptPlates": [
+    "Main",
+    "LAYER 1 / LAYER 2",
+    "BTC Ecosystem",
+    "POW"
+   ],
+   "st": false
+  },
+  {
+   "symbol": "GOLD(PAXG)USDT",
+   "status": "1",
+   "baseAsset": "GOLD(PAXG)",
+   "baseAssetPrecision": 5,
+   "quoteAsset": "USDT",
+   "quotePrecision": 2,
+   "quoteAssetPrecision": 2,
+   "baseCommissionPrecision": 5,
+   "quoteCommissionPrecision": 2,
+   "orderTypes": [
+    "LIMIT",
+    "MARKET",
+    "LIMIT_MAKER"
+   ],
+   "isSpotTradingAllowed": true,
+   "isMarginTradingAllowed": false,
+   "quoteAmountPrecision": "1",
+   "baseSizePrecision": "0.000001",
+   "permissions": [
+    "SPOT"
+   ],
+   "filters": [
+    {
+     "filterType": "PERCENT_PRICE_BY_SIDE",
+     "bidMultiplierUp": "0.2",
+     "askMultiplierDown": "0.2"
+    }
+   ],
+   "maxQuoteAmount": "2000000",
+   "makerCommission": "0",
+   "takerCommission": "0.0005",
+   "quoteAmountPrecisionMarket": "1",
+   "maxQuoteAmountMarket": "600000",
+   "fullName": "PAX Gold",
+   "tradeSideType": 1,
+   "contractAddress": "0x45804880De22913dAFE09f4980848ECE6EcbAf78",
+   "conceptPlateIds": [
+    50,
+    69
+   ],
+   "firstOpenTime": 1654779600000,
+   "conceptPlates": [
+    "Main",
+    "Precious Metals"
+   ],
+   "st": false
+  }
+ ]
+}
