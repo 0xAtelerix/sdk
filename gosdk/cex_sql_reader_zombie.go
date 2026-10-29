@@ -672,7 +672,14 @@ func (r *cexOrderBookFastReader) validateCEXOrderBookRefIdentity(
 		return fmt.Errorf("%w: market_type_id=%d", errCEXOrderBookUnknownIdentity, ref.MarketTypeID)
 	}
 
-	if _, ok := r.idRegistry.SymbolLabel(ref.ExchangeID, ref.MarketTypeID, ref.SymbolID); !ok {
+	if _, ok := r.idRegistry.SymbolLabel(ref.ExchangeID, ref.MarketTypeID, ref.SymbolID); ok {
+		return nil
+	}
+
+	// A derived id is outside the frozen table, so the ref names its label and
+	// the label must hash to the id.
+	if ref.SymbolID < apptypes.CEXDerivedSymbolIDBase || ref.Symbol == "" ||
+		r.idRegistry.SymbolID(ref.ExchangeID, ref.Symbol) != ref.SymbolID {
 		return fmt.Errorf(
 			"%w: exchange_id=%d market_type_id=%d symbol_id=%d",
 			errCEXOrderBookUnknownIdentity,
