@@ -52,7 +52,7 @@ func TestCEXCandleBatchRefValidateRejects(t *testing.T) {
 		"unknown exchange":     func(r *CEXCandleBatchRef) { r.ExchangeID = 250 },
 		"zero market type":     func(r *CEXCandleBatchRef) { r.MarketTypeID = 0 },
 		"zero symbol":          func(r *CEXCandleBatchRef) { r.SymbolID = 0 },
-		"unregistered symbol":  func(r *CEXCandleBatchRef) { r.SymbolID = 4_000_000_000 },
+		"unregistered symbol":  func(r *CEXCandleBatchRef) { r.SymbolID = 40_000 },
 		"zero timeframe":       func(r *CEXCandleBatchRef) { r.TimeframeMS = 0 },
 		"foreign price source": func(r *CEXCandleBatchRef) { r.PriceSource = 1 },
 		"foreign policy":       func(r *CEXCandleBatchRef) { r.Policy = 2 },

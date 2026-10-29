@@ -1,5 +1,11 @@
 # Order-book identity registry — what belongs in it
 
+> **Frozen at version 9.** `cex_order_book_identity.json` must not change; CI
+> (`cexidentitycheck`) and `TestEmbeddedOrderBookIdentityIsFrozenV9` fail on any
+> edit. A label in this table keeps its id. Every other label gets its id from
+> `SymbolID(exchange, label)`, and its market reaches appchains as facts records,
+> not as a new row. The rules below explain why v9 has the rows it has.
+
 `cex_order_book_identity.json` is not "every market the venues list". It carries a
 deliberate subset, and the exclusions are load-bearing. This file records why, so a
 refresh does not re-add things that were removed on purpose.

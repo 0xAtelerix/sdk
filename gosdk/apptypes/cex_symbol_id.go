@@ -1,0 +1,157 @@
+package apptypes
+
+import (
+	"cmp"
+	"encoding/binary"
+	"hash/fnv"
+	"slices"
+)
+
+// CEXOrderBookIdentityV9SHA256 is the sha256 of cex_order_book_identity.json,
+// the frozen v9 table. The table never changes; new markets get ids from
+// SymbolID. Tests and the cexidentitycheck CI step fail on any edit.
+const CEXOrderBookIdentityV9SHA256 = "0b1193832e9c6a668a71576aff5cea41765f249729f14d4966173f23a4b8cb5f"
+
+const (
+	// cexDerivedSymbolIDMask keeps the lower 31 bits of the label hash.
+	cexDerivedSymbolIDMask = 0x7fffffff
+	// cexSymbolIDHashSeparator separates the exchange id from the label bytes.
+	cexSymbolIDHashSeparator = 0x00
+	cexExchangeIDHashBytes   = 2
+)
+
+// SymbolID returns the permanent id of a market label on an exchange. A label
+// in the frozen v9 table on that exchange keeps its id, whatever its market
+// type. Any other label gets CEXDerivedSymbolIDBase | (FNV-1a 64 & 0x7fffffff)
+// over the exchange id as 2-byte big-endian, a 0x00 byte and the label bytes.
+// The market type is not an input, so spot and perp with one label share an id.
+//
+// The label is used exactly as given; it is not trimmed or case-folded, because
+// receivers recompute the id from the label in a facts record. SymbolID returns
+// 0, which no ref check accepts, for an empty label or if the embedded table
+// cannot load.
+func SymbolID(exchangeID CEXExchangeID, label string) CEXSymbolID {
+	return DefaultOrderBookIDRegistry.SymbolID(exchangeID, label)
+}
+
+// SymbolID returns the permanent id of a label through the embedded table.
+func (h DefaultOrderBookIDRegistryHandle) SymbolID(
+	exchangeID CEXExchangeID,
+	label string,
+) CEXSymbolID {
+	registry, err := h.registry()
+	if err != nil {
+		return 0
+	}
+
+	return registry.SymbolID(exchangeID, label)
+}
+
+// SymbolID returns the frozen id of a label in this table, or its derived id.
+func (r *OrderBookIDRegistry) SymbolID(exchangeID CEXExchangeID, label string) CEXSymbolID {
+	if r == nil || label == "" {
+		return 0
+	}
+
+	// addOrderBookSymbol enforces one id per (exchange, label) across market
+	// types, so the first candidate is the label's id.
+	if frozen := r.legacyCandidates[cexLegacySymbolKey{
+		exchangeID: exchangeID,
+		label:      label,
+	}]; len(frozen) > 0 {
+		return frozen[0].SymbolID
+	}
+
+	return derivedCEXSymbolID(exchangeID, label)
+}
+
+func derivedCEXSymbolID(exchangeID CEXExchangeID, label string) CEXSymbolID {
+	var prefix [cexExchangeIDHashBytes + 1]byte
+
+	binary.BigEndian.PutUint16(prefix[:cexExchangeIDHashBytes], uint16(exchangeID))
+	prefix[cexExchangeIDHashBytes] = cexSymbolIDHashSeparator
+
+	hasher := fnv.New64a()
+	_, _ = hasher.Write(prefix[:])
+	_, _ = hasher.Write([]byte(label))
+
+	return CEXDerivedSymbolIDBase | CEXSymbolID(hasher.Sum64()&cexDerivedSymbolIDMask)
+}
+
+// IsKnownOrDerivedSymbolID is the stateless ref check: the exchange and market
+// type must be known, and the id must be frozen for that exchange and market
+// type or lie in the derived range. An appchain then resolves a derived id
+// against its stored facts and drops a ref with no facts or a collided id.
+func IsKnownOrDerivedSymbolID(
+	exchangeID CEXExchangeID,
+	marketTypeID CEXMarketTypeID,
+	symbolID CEXSymbolID,
+) bool {
+	registry := DefaultOrderBookIDRegistry
+	if _, ok := registry.ExchangeLabel(exchangeID); !ok {
+		return false
+	}
+
+	if _, ok := registry.MarketTypeLabel(marketTypeID); !ok {
+		return false
+	}
+
+	if symbolID >= CEXDerivedSymbolIDBase {
+		return true
+	}
+
+	_, ok := registry.SymbolLabel(exchangeID, marketTypeID, symbolID)
+
+	return ok
+}
+
+// CEXSymbolEntry is one frozen v9 row of a market type on an exchange.
+type CEXSymbolEntry struct {
+	SymbolID   CEXSymbolID
+	Label      string
+	BaseAsset  string
+	QuoteAsset string
+	Canonical  bool
+}
+
+type cexMarketKey struct {
+	exchangeID   CEXExchangeID
+	marketTypeID CEXMarketTypeID
+}
+
+// Symbols returns the frozen rows of one market type on one exchange, sorted
+// by id. Markets added after v9 are not here; they reach appchains as facts.
+func (h DefaultOrderBookIDRegistryHandle) Symbols(
+	exchangeID CEXExchangeID,
+	marketTypeID CEXMarketTypeID,
+) []CEXSymbolEntry {
+	registry, err := h.registry()
+	if err != nil {
+		return nil
+	}
+
+	return registry.Symbols(exchangeID, marketTypeID)
+}
+
+// Symbols returns a copy of this table's rows for one market, sorted by id.
+func (r *OrderBookIDRegistry) Symbols(
+	exchangeID CEXExchangeID,
+	marketTypeID CEXMarketTypeID,
+) []CEXSymbolEntry {
+	if r == nil {
+		return nil
+	}
+
+	return slices.Clone(r.symbolsByMarket[cexMarketKey{
+		exchangeID:   exchangeID,
+		marketTypeID: marketTypeID,
+	}])
+}
+
+func sortCEXSymbolEntries(byMarket map[cexMarketKey][]CEXSymbolEntry) {
+	for _, entries := range byMarket {
+		slices.SortFunc(entries, func(a, b CEXSymbolEntry) int {
+			return cmp.Compare(a.SymbolID, b.SymbolID)
+		})
+	}
+}
