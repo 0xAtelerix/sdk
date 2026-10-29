@@ -16,16 +16,23 @@ func recordedHyperliquid(t *testing.T) HyperliquidInput {
 	t.Helper()
 
 	var doc struct {
-		SpotMeta json.RawMessage `json:"spotMeta"`
+		PerpDexs       json.RawMessage            `json:"perpDexs"`
+		Meta           map[string]json.RawMessage `json:"meta"`
+		SpotMeta       json.RawMessage            `json:"spotMeta"`
+		PerpCategories json.RawMessage            `json:"perpCategories"`
 	}
 
 	raw := readFixture(t, filepath.Join("testdata", "hyperliquid_mainnet_recorded_2026_10_30.json"))
 	require.NoError(t, json.Unmarshal(raw, &doc))
 
+	metas := make(map[string][]byte, len(doc.Meta))
+	for dex, meta := range doc.Meta {
+		metas[dex] = meta
+	}
+
 	return HyperliquidInput{
-		Network:          "mainnet",
-		SpotMeta:         doc.SpotMeta,
-		ObservedAtUnixMs: hlObservedAt,
+		Network: "mainnet", PerpDexs: doc.PerpDexs, PerpMetas: metas, SpotMeta: doc.SpotMeta,
+		PerpCategories: doc.PerpCategories, ObservedAtUnixMs: hlObservedAt,
 	}
 }
 
@@ -80,6 +87,7 @@ func TestNormalizeHyperliquidRejectsBadInput(t *testing.T) {
 		"bad spot":      func(in *HyperliquidInput) { in.SpotMeta = []byte(`{"tokens":`) },
 		"unknown token": func(in *HyperliquidInput) { in.SpotMeta = []byte(`{"tokens":[],"universe":[{"tokens":[1,0]}]}`) },
 		"no network":    func(in *HyperliquidInput) { in.Network = "" },
+		"bad category":  func(in *HyperliquidInput) { in.PerpCategories = []byte(`{}`) },
 	}
 	for name, mutate := range inputs {
 		in := recordedHyperliquid(t)

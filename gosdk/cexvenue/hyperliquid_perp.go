@@ -1,6 +1,7 @@
 package cexvenue
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/0xAtelerix/sdk/gosdk/apptypes"
@@ -25,6 +26,72 @@ type hlPerpAsset struct {
 type hlPerpMeta struct {
 	Universe        []hlPerpAsset `json:"universe"`
 	CollateralToken uint32        `json:"collateralToken"`
+}
+
+type hlPerpDex struct {
+	Name string `json:"name"`
+}
+
+// addHyperliquidPerps reads every dex listed by perpDexs (null is the core
+// dex). A perp is quoted in its dex's collateral token.
+func (c *collector) addHyperliquidPerps(in *HyperliquidInput, tokens map[uint32]hlToken) error {
+	var (
+		dexs     []*hlPerpDex
+		category [][2]string
+	)
+
+	if err := decode("perpDexs", in.PerpDexs, &dexs); err != nil {
+		return err
+	}
+
+	if in.PerpCategories != nil {
+		if err := decode("perpCategories", in.PerpCategories, &category); err != nil {
+			return err
+		}
+	}
+
+	categories := make(map[string]string, len(category))
+	for _, pair := range category {
+		categories[pair[0]] = pair[1]
+	}
+
+	for dexIndex, dex := range dexs {
+		name := ""
+		if dex != nil {
+			name = dex.Name
+		}
+
+		raw, ok := in.PerpMetas[name]
+		if !ok {
+			return fmt.Errorf(
+				"%w: hyperliquid meta missing for dex %q",
+				ErrInvalidVenueResponse,
+				name,
+			)
+		}
+
+		var meta hlPerpMeta
+		if err := decode("meta", raw, &meta); err != nil {
+			return err
+		}
+
+		quote, ok := tokens[meta.CollateralToken]
+		if !ok {
+			return fmt.Errorf(
+				"%w: hyperliquid dex %q collateral token unknown",
+				ErrInvalidVenueResponse,
+				name,
+			)
+		}
+
+		for i := range meta.Universe {
+			f, base := hlPerpFacts(name, dexIndex, i, &meta.Universe[i])
+			f.QuoteAsset, f.Category = quote.Name, categories[f.VenueCoin]
+			c.add(&f, base+quote.Name)
+		}
+	}
+
+	return nil
 }
 
 // hlPerpFacts returns a perp's facts and its label base: the coin for the core
