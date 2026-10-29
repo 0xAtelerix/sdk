@@ -20,6 +20,9 @@ type binanceSymbol struct {
 	QuoteAsset          string          `json:"quoteAsset"`
 	BaseAssetPrecision  *uint8          `json:"baseAssetPrecision"`
 	QuoteAssetPrecision *uint8          `json:"quoteAssetPrecision"`
+	QuotePrecision      *uint8          `json:"quotePrecision"` // USD-M
+	ContractType        string          `json:"contractType"`   // USD-M
+	UnderlyingType      string          `json:"underlyingType"` // USD-M
 	Filters             []binanceFilter `json:"filters"`
 }
 
@@ -51,6 +54,43 @@ func NormalizeBinanceSpot(raw []byte, observedAtUnixMs int64) (Normalized, error
 	}
 
 	return finalize(c.facts, c.skipped), nil
+}
+
+// NormalizeBinanceUSDM turns a GET /fapi/v1/exchangeInfo response into
+// records. The contract type sets the kind and underlyingType the category;
+// no symbol is dropped for its contract type.
+func NormalizeBinanceUSDM(raw []byte, observedAtUnixMs int64) (Normalized, error) {
+	var info binanceExchangeInfo
+	if err := decode("binance usdm exchangeInfo", raw, &info); err != nil {
+		return Normalized{}, err
+	}
+
+	c := &collector{exchangeID: ExchangeBinance, observedAt: observedAtUnixMs}
+
+	for i := range info.Symbols {
+		s := &info.Symbols[i]
+		f := binanceFacts(
+			s,
+			MarketTypePerp,
+			binanceUSDMKind(s.ContractType),
+			binanceUSDMStatus(s.Status),
+		)
+		f.QuoteAssetPrecision, f.Category = s.QuotePrecision, s.UnderlyingType
+		c.add(&f, s.Symbol)
+	}
+
+	return finalize(c.facts, c.skipped), nil
+}
+
+func binanceUSDMKind(contractType string) apptypes.CEXMarketKind {
+	switch contractType {
+	case "PERPETUAL":
+		return apptypes.CEXMarketKindBinanceUSDMPerpetual
+	case "TRADIFI_PERPETUAL":
+		return apptypes.CEXMarketKindBinanceTradFiPerp
+	default:
+		return apptypes.CEXMarketKindBinanceOtherFutures
+	}
 }
 
 func binanceFacts(
