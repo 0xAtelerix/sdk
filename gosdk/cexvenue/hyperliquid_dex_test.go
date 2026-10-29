@@ -73,3 +73,39 @@ func TestNormalizeHyperliquidDexFacts(t *testing.T) {
 	require.Equal(t, "USDH", flx.QuoteAsset)
 	require.Equal(t, apptypes.CEXMarketStatusDelisted, flx.Status)
 }
+
+// No live market takes a frozen label whose frozen row names a different
+// mainnet asset. One frozen label (XYZVIXUSDC) has only a testnet asset id.
+func TestNormalizeHyperliquidFrozenLabelsKeepTheirAsset(t *testing.T) {
+	t.Parallel()
+
+	out, err := NormalizeHyperliquid(recordedHyperliquid(t))
+	require.NoError(t, err)
+
+	reg := apptypes.DefaultOrderBookIDRegistry
+
+	var unbound []string
+
+	for _, f := range out.Markets {
+		id, err := reg.ResolveSymbolID(f.ExchangeID, f.MarketTypeID, f.Label)
+		if err != nil {
+			continue
+		}
+
+		byAssetID, err := reg.ResolveVenueAssetSymbolID(
+			f.ExchangeID,
+			f.MarketTypeID,
+			"mainnet",
+			f.VenueAssetID,
+		)
+		if err != nil {
+			unbound = append(unbound, f.Label)
+
+			continue
+		}
+
+		require.Equal(t, id, byAssetID, f.Label)
+	}
+
+	require.Equal(t, []string{"XYZVIXUSDC"}, unbound)
+}
