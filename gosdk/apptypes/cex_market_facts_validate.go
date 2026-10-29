@@ -1,13 +1,47 @@
 package apptypes
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 
 	sdkerrors "github.com/0xAtelerix/sdk/gosdk/library/errors"
 )
 
 // ErrCEXMarketFactsInvalid is the root of every market facts validation error.
 const ErrCEXMarketFactsInvalid sdkerrors.SDKError = "invalid cex market facts"
+
+// CEXMarketFactsKey identifies the market a facts record describes. A newer
+// record with the same key replaces the stored one.
+type CEXMarketFactsKey struct {
+	ExchangeID   CEXExchangeID
+	MarketTypeID CEXMarketTypeID
+	Network      string
+	Label        string
+}
+
+// Key returns the record key (ExchangeID, MarketTypeID, Network, Label).
+func (f CEXMarketFacts) Key() CEXMarketFactsKey {
+	return CEXMarketFactsKey{
+		ExchangeID:   f.ExchangeID,
+		MarketTypeID: f.MarketTypeID,
+		Network:      f.Network,
+		Label:        f.Label,
+	}
+}
+
+// SortCEXMarketFacts sorts records by key; records with equal keys keep their
+// input order.
+func SortCEXMarketFacts(records []CEXMarketFacts) {
+	slices.SortStableFunc(records, func(a, b CEXMarketFacts) int {
+		return cmp.Or(
+			cmp.Compare(a.ExchangeID, b.ExchangeID),
+			cmp.Compare(a.MarketTypeID, b.MarketTypeID),
+			cmp.Compare(a.Network, b.Network),
+			cmp.Compare(a.Label, b.Label),
+		)
+	})
+}
 
 // Validate checks a record without registry state beyond the embedded
 // exchange and market-type tables. SymbolID is not checked here; receivers

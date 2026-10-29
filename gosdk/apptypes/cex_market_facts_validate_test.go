@@ -80,3 +80,60 @@ func TestCEXMarketFactsValidate(t *testing.T) {
 		})
 	}
 }
+
+func TestCEXMarketFactsKeyAndSort(t *testing.T) {
+	t.Parallel()
+
+	rec := func(ex CEXExchangeID, mt CEXMarketTypeID, network, label string, observed int64) CEXMarketFacts {
+		return CEXMarketFacts{
+			ExchangeID: ex, MarketTypeID: mt, Network: network, Label: label,
+			ObservedAtUnixMs: observed,
+		}
+	}
+
+	a := rec(CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "testnet", "BTCUSDC", 1)
+	b := rec(CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "testnet", "BTCUSDC", 2)
+	require.Equal(t, a.Key(), b.Key(), "facts fields outside the key do not change it")
+	require.Equal(t, CEXMarketFactsKey{
+		ExchangeID: CEXExchangeIDHyperliquid, MarketTypeID: CEXMarketTypeIDPerp,
+		Network: "testnet", Label: "BTCUSDC",
+	}, a.Key())
+
+	records := []CEXMarketFacts{
+		b,
+		rec(CEXExchangeIDBinance, CEXMarketTypeIDSpot, "", "ETHUSDT", 3),
+		rec(CEXExchangeIDHyperliquid, CEXMarketTypeIDPerp, "mainnet", "BTCUSDC", 4),
+		rec(CEXExchangeIDHyperliquid, CEXMarketTypeIDSpot, "testnet", "AAAUSDC", 5),
+		a,
+		rec(CEXExchangeIDMEXC, CEXMarketTypeIDSpot, "", "ZZZUSDT", 6),
+		rec(CEXExchangeIDBinance, CEXMarketTypeIDSpot, "", "BTCUSDT", 7),
+	}
+	SortCEXMarketFacts(records)
+
+	got := make([]int64, 0, len(records))
+	for _, record := range records {
+		got = append(got, record.ObservedAtUnixMs)
+	}
+
+	// exchange, market type, network, label; equal keys keep input order.
+	require.Equal(t, []int64{6, 5, 4, 2, 1, 7, 3}, got)
+
+	// Enough equal keys to leave the insertion-sort range of an unstable sort.
+	many := make([]CEXMarketFacts, 0, 40)
+
+	for i := range 40 {
+		label := []string{"B", "A"}[i%2]
+		many = append(many, rec(CEXExchangeIDBinance, CEXMarketTypeIDSpot, "", label, int64(i)))
+	}
+
+	SortCEXMarketFacts(many)
+
+	for i := 1; i < len(many); i++ {
+		if many[i].Label == many[i-1].Label {
+			require.Less(
+				t, many[i-1].ObservedAtUnixMs, many[i].ObservedAtUnixMs,
+				"equal keys keep input order",
+			)
+		}
+	}
+}
