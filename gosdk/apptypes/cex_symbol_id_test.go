@@ -1,6 +1,8 @@
 package apptypes
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"testing"
 
@@ -96,4 +98,15 @@ func TestSymbolIDDerivedPropertyStableAndInRange(t *testing.T) {
 
 		require.GreaterOrEqual(rt, first, CEXDerivedSymbolIDBase)
 	})
+}
+
+// TestEmbeddedOrderBookIdentityIsFrozenV9: the embedded table is the frozen
+// v9 table byte for byte. New markets get ids from SymbolID, not new rows.
+func TestEmbeddedOrderBookIdentityIsFrozenV9(t *testing.T) {
+	t.Parallel()
+
+	sum := sha256.Sum256(defaultOrderBookIdentityJSON)
+	require.Equal(t, CEXOrderBookIdentityV9SHA256, hex.EncodeToString(sum[:]),
+		"cex_order_book_identity.json is the frozen v9 table and must not change; "+
+			"new markets get ids from SymbolID")
 }

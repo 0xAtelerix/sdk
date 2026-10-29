@@ -7,6 +7,11 @@ import (
 	"slices"
 )
 
+// CEXOrderBookIdentityV9SHA256 is the sha256 of cex_order_book_identity.json,
+// the frozen v9 table. The table never changes; new markets get ids from
+// SymbolID. Tests and the cexidentitycheck CI step fail on any edit.
+const CEXOrderBookIdentityV9SHA256 = "0b1193832e9c6a668a71576aff5cea41765f249729f14d4966173f23a4b8cb5f"
+
 const (
 	// cexDerivedSymbolIDMask keeps the lower 31 bits of the label hash.
 	cexDerivedSymbolIDMask = 0x7fffffff

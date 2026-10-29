@@ -55,6 +55,15 @@ func run(ctx context.Context, baseRef, currentPath string) error {
 		return err
 	}
 
+	contents, err := os.ReadFile(currentPath)
+	if err != nil {
+		return fmt.Errorf("read current registry: %w", err)
+	}
+
+	if err = cexidentity.ValidateFrozen(contents); err != nil {
+		return err
+	}
+
 	current, err := readDocument(currentPath)
 	if err != nil {
 		return fmt.Errorf("read current registry: %w", err)
