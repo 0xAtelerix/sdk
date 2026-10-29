@@ -158,6 +158,8 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 
 	var cexCandleBatchRefs []apptypes.CEXCandleBatchRef
 
+	var cexMarketFacts []apptypes.CEXMarketFacts
+
 	for _, eventBatch := range eventBatches {
 		ews.logger.Debug().
 			Str("atropos", hex.EncodeToString(eventBatch.Atropos[4:])).
@@ -318,6 +320,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 				cexCandleBatchRefs,
 				evt.CEXCandleBatchRefs...,
 			)
+			cexMarketFacts = append(cexMarketFacts, evt.CEXMarketFacts...)
 		}
 
 		MdbxEventParseDuration.WithLabelValues(vid, cid).Observe(time.Since(tParseEvt).Seconds())
@@ -497,6 +500,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 			HyperliquidAllMidsRefs:  hyperliquidAllMidsRefs,
 			CEXMarketTradeBatchRefs: cexMarketTradeBatchRefs,
 			CEXCandleBatchRefs:      cexCandleBatchRefs,
+			CEXMarketFacts:          cexMarketFacts,
 		})
 
 		// Reset for the next batch by dropping the slice, not by reslicing it to
@@ -507,6 +511,7 @@ func (ews *MdbxEventStreamWrapper[appTx, R]) GetNewBatchesBlocking(
 		hyperliquidAllMidsRefs = nil
 		cexMarketTradeBatchRefs = nil
 		cexCandleBatchRefs = nil
+		cexMarketFacts = nil
 	}
 
 	if newEpoch > 0 {
