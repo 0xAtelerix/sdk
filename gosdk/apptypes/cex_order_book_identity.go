@@ -87,7 +87,8 @@ var defaultOrderBookIdentityJSON []byte
 type DefaultOrderBookIDRegistryHandle uint8
 
 // OrderBookIdentityJSON is the checked-in order-book identity snapshot format.
-// The SDK embeds this JSON so adding symbols changes data, not Go routing code.
+// The embedded table is frozen at v9 (see CEXOrderBookIdentityV9SHA256); labels
+// outside it get ids from SymbolID instead of new rows.
 //
 // The registry is a deliberate subset of what the venues list, not a mirror of
 // them. Non-ASCII labels and quote assets outside canonicalQuoteSuffixes cannot
