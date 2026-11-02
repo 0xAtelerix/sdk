@@ -49,6 +49,9 @@ type Batch[appTx AppTransaction[R], R Receipt] struct {
 	// CEXCandleBatchRefs carries immutable venue-candle batch references
 	// (bootstrap and finalized continuation). Independent from trade batches.
 	CEXCandleBatchRefs []CEXCandleBatchRef `cbor:"10,keyasint"`
+	// CEXMarketFacts carries venue market facts records in event order.
+	// Omitted when empty so a batch without records encodes as before.
+	CEXMarketFacts []CEXMarketFacts `cbor:"11,keyasint,omitempty"`
 }
 
 type ExternalEntity interface {
@@ -229,6 +232,10 @@ type Event struct {
 	CEXMarketTradeBatchRefs []CEXMarketTradeBatchRef `json:"cexMarketTradeBatchRefs" cbor:"10,keyasint"`
 
 	CEXCandleBatchRefs []CEXCandleBatchRef `json:"cexCandleBatchRefs" cbor:"11,keyasint"`
+
+	// CEXMarketFacts carries venue market facts records. Omitted when empty
+	// so an event without records encodes as before.
+	CEXMarketFacts []CEXMarketFacts `json:"cexMarketFacts,omitempty" cbor:"12,keyasint,omitempty"`
 }
 
 func (e Event) Bytes() ([]byte, error) {
@@ -463,11 +470,7 @@ func (r CEXMarketTradeBatchRef) Validate() error {
 		return fmt.Errorf("%w: symbol_id is zero", ErrCEXMarketTradeBatchRefInvalid)
 	}
 
-	if _, ok := DefaultOrderBookIDRegistry.SymbolLabel(
-		r.ExchangeID,
-		r.MarketTypeID,
-		r.SymbolID,
-	); !ok {
+	if !IsKnownOrDerivedSymbolID(r.ExchangeID, r.MarketTypeID, r.SymbolID) {
 		return fmt.Errorf(
 			"%w: unknown symbol identity=%d/%d/%d",
 			ErrCEXMarketTradeBatchRefInvalid,

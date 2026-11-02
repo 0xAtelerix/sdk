@@ -139,6 +139,56 @@ func TestGetNewBatchesDoesNotAliasRefsAcrossBatches(t *testing.T) {
 	require.Equal(t, uint64(2), batches[1].CEXCandleBatchRefs[0].BatchID)
 }
 
+// Market facts are latest-value records; the appchain applies them in batch
+// order and the last one wins, so the wrapper must keep event order.
+func TestGetNewBatchesCarriesMarketFactsInEventOrder(t *testing.T) {
+	t.Parallel()
+
+	wrapper, path := newCEXRefTestWrapper(t)
+
+	facts := func(label string) apptypes.CEXMarketFacts {
+		return apptypes.CEXMarketFacts{
+			ExchangeID: apptypes.CEXExchangeIDBinance, MarketTypeID: apptypes.CEXMarketTypeIDSpot,
+			Label: label, VenueCoin: label, Kind: apptypes.CEXMarketKindBinanceSpot,
+			Status: apptypes.CEXMarketStatusTrading, BaseAsset: "B", QuoteAsset: "Q",
+			ObservedAtUnixMs: 1,
+		}
+	}
+	first := apptypes.Event{
+		Base:           apptypes.BaseEvent{Epoch: cexRefTestEpoch, Creator: 1},
+		CEXMarketFacts: []apptypes.CEXMarketFacts{facts("AAA"), facts("BBB")},
+	}
+	second := apptypes.Event{
+		Base:           apptypes.BaseEvent{Epoch: cexRefTestEpoch, Creator: 2},
+		CEXMarketFacts: []apptypes.CEXMarketFacts{facts("CCC")},
+	}
+	third := apptypes.Event{
+		Base:           apptypes.BaseEvent{Epoch: cexRefTestEpoch, Creator: 1},
+		CEXMarketFacts: []apptypes.CEXMarketFacts{facts("DDD")},
+	}
+
+	appendCEXRefTestEvents(t, path, [32]byte{31: 1}, first, second)
+	appendCEXRefTestEvents(t, path, [32]byte{31: 2}, third)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+
+	batches, err := wrapper.GetNewBatchesBlocking(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, batches, 2)
+
+	labels := func(records []apptypes.CEXMarketFacts) []string {
+		out := make([]string, 0, len(records))
+		for _, record := range records {
+			out = append(out, record.Label)
+		}
+
+		return out
+	}
+	require.Equal(t, []string{"AAA", "BBB", "CCC"}, labels(batches[0].CEXMarketFacts))
+	require.Equal(t, []string{"DDD"}, labels(batches[1].CEXMarketFacts))
+}
+
 const cexRefTestEpoch = uint32(1)
 
 // newCEXRefTestWrapper builds the wrapper over a real event file and a real
